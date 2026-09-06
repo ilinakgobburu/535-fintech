@@ -1,0 +1,577 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Option Surface Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+<style>
+  :root{
+    --base:#0B1020; --panel:#141A2E; --panel-hi:#1B2340;
+    --line:#26304A; --line-soft:#1D2438;
+    --text:#E8ECF5; --muted:#8792AB; --faint:#5A6580;
+    --mark:#199e70; --print:#c98500; --both:#9085e9;
+    --font:'Inter',ui-sans-serif,system-ui,-apple-system,sans-serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--base); color:var(--text); font-family:var(--font);
+    font-size:14px; line-height:1.55; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1240px;margin:0 auto;padding:36px 24px 80px}
+
+  header{border-bottom:1px solid var(--line);padding-bottom:22px;margin-bottom:26px}
+  .eyebrow{
+    font-size:11px;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--faint);font-weight:600;margin-bottom:8px
+  }
+  h1{font-size:30px;line-height:1.15;margin:0 0 10px;font-weight:700;letter-spacing:-.02em}
+  h1 .accent{color:var(--mark)}
+  .lede{color:var(--muted);max-width:74ch;margin:0;font-size:15px}
+
+  .prov{
+    display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:16px;
+    font-family:var(--mono);font-size:11.5px;color:var(--faint)
+  }
+  .prov b{color:var(--muted);font-weight:500}
+
+  .banner{
+    margin:18px 0 0;padding:12px 16px;border-radius:8px;font-size:13px;
+    border:1px solid #6b4a12;background:rgba(201,133,0,.10);color:#f0c76e
+  }
+  .banner.hidden{display:none}
+
+  h2{
+    font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);
+    font-weight:600;margin:44px 0 14px;padding-bottom:8px;border-bottom:1px solid var(--line-soft)
+  }
+
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin:22px 0 6px}
+  .tile{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px}
+  .tile.hero{border-color:var(--mark);background:linear-gradient(180deg,rgba(25,158,112,.10),var(--panel))}
+  .tile.hero2{border-color:var(--both);background:linear-gradient(180deg,rgba(144,133,233,.10),var(--panel))}
+  .tile .label{font-size:11px;color:var(--muted);letter-spacing:.04em;margin-bottom:7px}
+  .tile .value{font-size:27px;font-weight:700;font-family:var(--mono);letter-spacing:-.02em;line-height:1.1}
+  .tile .sub{font-size:11.5px;color:var(--faint);margin-top:6px}
+  .tile.hero .value{color:var(--mark)} .tile.hero2 .value{color:var(--both)}
+
+  .controls{
+    display:flex;flex-wrap:wrap;gap:10px 22px;align-items:center;
+    background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:14px 18px;margin:20px 0 14px
+  }
+  .ctl{display:flex;align-items:center;gap:9px}
+  .ctl label{font-size:11px;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;font-weight:500}
+  select{
+    background:var(--panel-hi);color:var(--text);border:1px solid var(--line);
+    border-radius:7px;padding:7px 11px;font-family:var(--mono);font-size:12.5px;cursor:pointer
+  }
+  select:focus-visible,button:focus-visible{outline:2px solid var(--both);outline-offset:2px}
+  .seg{display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+  .seg button{
+    background:var(--panel-hi);color:var(--muted);border:0;padding:7px 15px;
+    font-family:var(--font);font-size:12.5px;font-weight:500;cursor:pointer
+  }
+  .seg button+button{border-left:1px solid var(--line)}
+  .seg button[aria-pressed="true"]{background:var(--both);color:#0B1020;font-weight:600}
+  .toggles{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto}
+  .chip{
+    display:inline-flex;align-items:center;gap:7px;background:var(--panel-hi);
+    border:1px solid var(--line);border-radius:20px;padding:6px 13px;
+    font-size:12px;cursor:pointer;color:var(--muted);font-family:var(--font)
+  }
+  .chip[aria-pressed="true"]{color:var(--text);border-color:currentColor}
+  .chip .dot{width:9px;height:9px;border-radius:50%;background:currentColor;flex:none}
+  .chip .dot.diamond{border-radius:2px;transform:rotate(45deg)}
+  .chip[data-k="mark"][aria-pressed="true"]{color:var(--mark)}
+  .chip[data-k="print"][aria-pressed="true"]{color:var(--print)}
+  .chip[data-k="sheet"][aria-pressed="true"]{color:var(--both)}
+  .chip[aria-pressed="false"] .dot{opacity:.3}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px;margin-bottom:18px}
+  .plot{width:100%}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media(max-width:900px){.grid2{grid-template-columns:1fr}}
+
+  .reading{max-width:76ch}
+  .qa{margin:0 0 22px;padding-left:15px;border-left:2px solid var(--line)}
+  .qa .q{color:var(--muted);font-size:13px;margin:0 0 6px;font-style:italic}
+  .qa .a{margin:0;color:var(--text)}
+  code{
+    font-family:var(--mono);font-size:.9em;background:var(--panel-hi);
+    padding:1.5px 5px;border-radius:4px;border:1px solid var(--line)
+  }
+  .k-mark{color:var(--mark);font-weight:600}
+  .k-print{color:var(--print);font-weight:600}
+  .k-both{color:var(--both);font-weight:600}
+
+  .notes{color:var(--muted);font-size:13px;max-width:76ch}
+  .notes li{margin-bottom:9px}
+  footer{margin-top:52px;padding-top:20px;border-top:1px solid var(--line);color:var(--faint);font-size:12px}
+  table.tbl{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:12px;margin-top:10px}
+  table.tbl th,table.tbl td{border:1px solid var(--line);padding:6px 10px;text-align:right}
+  table.tbl th{color:var(--muted);font-weight:500;text-align:left;background:var(--panel-hi)}
+  table.tbl td:first-child{text-align:left;color:var(--muted)}
+  details{margin-top:12px}
+  summary{cursor:pointer;color:var(--muted);font-size:12.5px;padding:6px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">MEng FinTech · Algorithmic Trading II · Assignment 1.1</div>
+  <h1>Option Surface Lab <span class="accent">·</span> <span id="h-ticker">—</span></h1>
+  <p class="lede">
+    Listed options are not a filled sheet. They are a sparse cloud with large,
+    structured holes. This page plots the two prices a stranger might confuse —
+    the <span class="k-mark" id="lede-mark">mark</span> and the
+    <span class="k-print" id="lede-print">last trade</span> — and then shows you
+    exactly where each one stops existing.
+  </p>
+  <div class="prov" id="prov"></div>
+  <div class="banner hidden" id="banner"></div>
+</header>
+
+<h2>The two numbers</h2>
+<div class="tiles" id="tiles"></div>
+
+<h2>Pick a slice</h2>
+<div class="controls">
+  <div class="ctl">
+    <label for="sel-date">As-of date</label>
+    <select id="sel-date"></select>
+  </div>
+  <div class="ctl">
+    <label for="seg-cp">Right</label>
+    <div class="seg" id="seg-cp" role="group" aria-label="Option right"></div>
+  </div>
+  <div class="toggles" id="toggles">
+    <button class="chip" data-k="mark"  aria-pressed="true"><span class="dot"></span><span id="lbl-mark">MID_PRICE</span></button>
+    <button class="chip" data-k="print" aria-pressed="true"><span class="dot diamond"></span><span id="lbl-print">TRDPRC_1</span></button>
+    <button class="chip" data-k="sheet" aria-pressed="true"><span class="dot"></span>Interpolated sheet</button>
+  </div>
+</div>
+
+<div class="card"><div id="p-surface" class="plot"></div></div>
+
+<h2>Reading the plot</h2>
+<div class="reading">
+  <div class="qa">
+    <p class="q">Where is the cloud of price data dense, and where is it empty?</p>
+    <p class="a" id="a1"></p>
+  </div>
+  <div class="qa">
+    <p class="q">Why is interpolating across empty cells dangerous on a $0.50 strike grid for a name like UUUU?</p>
+    <p class="a" id="a2"></p>
+  </div>
+  <div class="qa">
+    <p class="q">Which field will you treat as the mark next week, and which field will you treat as evidence that someone traded?</p>
+    <p class="a" id="a3"></p>
+  </div>
+</div>
+
+<h2>The mark is not the trade</h2>
+<div class="card"><div id="p-compare" class="plot"></div></div>
+
+<h2>Where the data actually stops</h2>
+<div class="grid2">
+  <div class="card"><div id="p-occ-mark" class="plot"></div></div>
+  <div class="card"><div id="p-occ-print" class="plot"></div></div>
+</div>
+<details>
+  <summary>Show the numbers behind this slice as a table</summary>
+  <table class="tbl" id="tbl"></table>
+</details>
+
+<h2>The underlying, for context</h2>
+<div class="card"><div id="p-stock" class="plot"></div></div>
+
+<h2>Method &amp; honest caveats</h2>
+<ul class="notes">
+  <li><b>Sparsity here is a lower bound.</b> A "listed series" is a
+    <code>(date, RIC)</code> carrying at least one of the two fields. A contract
+    that was listed but had neither a quote nor a print leaves no trace in the
+    pull, so it cannot appear in the denominator. The real holes are at least
+    this bad, probably worse.</li>
+  <li><b>The sheet stops where the data stops.</b> Interpolation is Delaunay-linear,
+    which returns nothing outside the convex hull of the observations, and grid
+    nodes further than $1.25 in strike-space from any real observation are blanked
+    as well. A wide interior hole stays a hole instead of becoming a smooth ramp.</li>
+  <li><b>Every view is computed once, in Python.</b> The browser picks a
+    precomputed slice rather than recomputing it, so this page and the Reflex app
+    cannot disagree about a number.</li>
+  <li><b>Color is never the only encoding.</b> The mark draws as a circle, the
+    trade as a diamond. The palette was checked against the plot surface with a
+    contrast and colour-vision validator rather than chosen by eye.</li>
+  <li id="note-fields"></li>
+</ul>
+
+<footer id="footer"></footer>
+</div>
+
+<script>
+const DATA = /*__PAYLOAD__*/null;
+
+const T = DATA.theme, M = DATA.meta;
+const MARK = M.mark_field, PRINT = M.print_field;
+const state = {
+  date: DATA.default.date, cp: DATA.default.cp,
+  mark: true, print: true, sheet: true,
+};
+
+const base = (over={}) => Object.assign({
+  paper_bgcolor:T.base, plot_bgcolor:T.panel,
+  font:{color:T.text,family:T.font,size:12},
+  margin:{l:56,r:24,t:60,b:48},
+  hoverlabel:{bgcolor:T.panelHi,bordercolor:T.line,font:{family:T.mono,size:11,color:T.text}},
+  legend:{bgcolor:'rgba(11,16,32,.78)',bordercolor:T.line,borderwidth:1,
+          font:{size:11,color:T.text},itemsizing:'constant'},
+  title:{font:{size:15,color:T.text,family:T.font},x:0,xanchor:'left',y:.97,yanchor:'top'},
+}, over);
+const ax = (title,over={}) => Object.assign({
+  gridcolor:T.lineSoft, zeroline:false, linecolor:T.line,
+  tickfont:{size:10,color:T.muted,family:T.font},
+  title:title?{text:title,font:{size:11,color:T.muted,family:T.font}}:undefined,
+}, over);
+const sceneAx = (title,over={}) => Object.assign({
+  title:{text:title,font:{size:11,color:T.muted,family:T.font}},
+  backgroundcolor:T.panel, gridcolor:T.line, showbackground:true, zeroline:false,
+  tickfont:{size:9,color:T.muted,family:T.font},
+}, over);
+const cap = t => ({text:t,xref:'paper',yref:'paper',x:0,y:1,xanchor:'left',yanchor:'bottom',
+                   showarrow:false,font:{size:10.5,color:T.faint,family:T.font}});
+const CFG = {displayModeBar:false, responsive:true};
+const combo = () => DATA.combos[state.date+'|'+state.cp];
+const money = v => v==null ? 'n/a' : '$'+Number(v).toFixed(3);
+const pct   = v => v==null ? 'n/a' : Math.round(v)+'%';
+
+/* ---------- provenance + tiles ---------- */
+function renderChrome(){
+  document.getElementById('h-ticker').textContent = M.underlying;
+  document.getElementById('lede-mark').textContent = MARK;
+  document.getElementById('lede-print').textContent = PRINT;
+  document.getElementById('lbl-mark').textContent = MARK;
+  document.getElementById('lbl-print').textContent = PRINT;
+
+  document.getElementById('prov').innerHTML = [
+    ['source', M.synthetic ? 'SYNTHETIC PANEL' : 'LSEG cache'],
+    ['pulled', M.fetched_at],
+    ['window', M.date_min+' → '+M.date_max],
+    ['series', M.n_series_total+' contracts · '+M.n_expiries+' expiries'],
+    ['strikes','$'+M.strike_min.toFixed(2)+' – $'+M.strike_max.toFixed(2)],
+    ['fields', M.fields_present.join(' + ')],
+  ].map(([k,v])=>`<span><b>${k}</b> ${v}</span>`).join('');
+
+  const missing = [];
+  if(!M.has_mark)  missing.push(MARK);
+  if(!M.has_print) missing.push(PRINT);
+  const b = document.getElementById('banner');
+  if(missing.length){
+    b.classList.remove('hidden');
+    b.innerHTML = `<b>Incomplete pull.</b> This cache contains no
+      <code>${missing.join('</code> and no <code>')}</code>. Every panel below is
+      drawn from what survived (<code>${M.fields_present.join('</code>, <code>')}</code>),
+      so the mark-versus-trade comparison is not yet meaningful. Re-run
+      <code>scripts/fetch_lseg.py</code> with LSEG Workspace running to complete it.`;
+  }
+  document.getElementById('note-fields').innerHTML =
+    `<b>Fields in this build:</b> <code>${M.fields_present.join('</code>, <code>')}</code>. `+
+    `LSEG exposes no true settlement price for expired US equity options — `+
+    `<code>SETTLE</code> returns "universe does not support" on this RIC space — `+
+    `so <code>${MARK}</code>, the closing NBBO midpoint, is the closest mark-of-the-close available.`;
+
+  document.getElementById('footer').innerHTML =
+    `Built from ${M.synthetic?'a synthetic panel':'an LSEG pickle'} pulled `+
+    `${M.fetched_at}. ${M.n_series_total} contracts over ${M.n_dates_total} sessions. `+
+    `Figures are Plotly; all statistics computed in Python at build time.`;
+}
+
+function renderTiles(){
+  const s = combo().stats;
+  document.getElementById('tiles').innerHTML = `
+    <div class="tile hero">
+      <div class="label">Listed with a mark, no trade</div>
+      <div class="value">${s.pct_txt}</div>
+      <div class="sub">${s.n_mark_only} of ${s.n_series} series on ${state.date}</div>
+    </div>
+    <div class="tile hero2">
+      <div class="label">Median |${MARK} − ${PRINT}|</div>
+      <div class="value">${s.gap_txt}</div>
+      <div class="sub">${s.median_rel_diff_pct==null?'no paired series':
+        s.median_rel_diff_pct.toFixed(1)+'% of the mark · '+s.n_both+' paired'}</div>
+    </div>
+    <div class="tile">
+      <div class="label">Series in this slice</div>
+      <div class="value">${s.n_series}</div>
+      <div class="sub">${state.cp==='C'?'calls':'puts'} on ${state.date}</div>
+    </div>
+    <div class="tile">
+      <div class="label">Widest single disagreement</div>
+      <div class="value">${money(s.max_abs_diff)}</div>
+      <div class="sub">largest |mark − trade| in the slice</div>
+    </div>`;
+}
+
+/* ---------- figures ---------- */
+function renderSurface(){
+  const c = combo(), traces = [];
+  if(state.sheet && state.mark && c.sheet){
+    traces.push({type:'surface', x:c.sheet.x, y:c.sheet.y, z:c.sheet.z,
+      name:'Interpolated sheet', colorscale:T.interpScale, opacity:T.interpOpacity,
+      showscale:false, hoverinfo:'skip', showlegend:true,
+      contours:{x:{show:false},y:{show:false},z:{show:false}}});
+  }
+  if(state.mark && c.mark.k.length){
+    traces.push({type:'scatter3d', mode:'markers', name:MARK+' (mark)',
+      x:c.mark.k, y:c.mark.d, z:c.mark.v, customdata:c.mark.ric,
+      marker:{size:4,color:T.mark,opacity:.9,symbol:'circle',line:{width:0}},
+      hovertemplate:`<b>${MARK}</b> $%{z:.3f}<br>K %{x:.2f} · DTE %{y}<br>%{customdata}<extra></extra>`});
+  }
+  if(state.print && c.print.k.length){
+    traces.push({type:'scatter3d', mode:'markers', name:PRINT+' (traded)',
+      x:c.print.k, y:c.print.d, z:c.print.v, customdata:c.print.ric,
+      marker:{size:6,color:T.print,opacity:1,symbol:'diamond',line:{width:.5,color:T.base}},
+      hovertemplate:`<b>${PRINT}</b> $%{z:.3f}<br>K %{x:.2f} · DTE %{y}<br>%{customdata}<extra></extra>`});
+  }
+  if(c.spot!=null){
+    const all = c.mark.v.concat(c.print.v).filter(v=>v!=null);
+    const zhi = all.length?Math.max.apply(null,all):1;
+    const ds  = c.mark.d.concat(c.print.d).filter(v=>v!=null);
+    if(ds.length){
+      const ylo=Math.min.apply(null,ds), yhi=Math.max.apply(null,ds);
+      if(yhi>ylo) traces.push({type:'surface', name:`K = S ($${c.spot.toFixed(2)})`,
+        x:[[c.spot,c.spot],[c.spot,c.spot]], y:[[ylo,yhi],[ylo,yhi]], z:[[0,0],[zhi,zhi]],
+        colorscale:[[0,T.faint],[1,T.faint]], opacity:.13, showscale:false,
+        hoverinfo:'skip', showlegend:true});
+    }
+  }
+  const label = state.cp==='C'?'Calls':'Puts';
+  Plotly.react('p-surface', traces, base({
+    height:640, margin:{l:8,r:8,t:64,b:8},
+    title:{text:`${M.underlying} ${label} · ${state.date}`+
+      (c.spot!=null?`  ·  spot $${c.spot.toFixed(2)}`:''),
+      font:{size:15,color:T.text,family:T.font},x:0,xanchor:'left',y:.97,yanchor:'top'},
+    scene:{xaxis:sceneAx('Strike ($)'), yaxis:sceneAx('Days to expiry',{autorange:'reversed'}),
+      zaxis:sceneAx('Option price ($)'), bgcolor:T.base, aspectmode:'manual',
+      aspectratio:{x:1.2,y:1,z:.68}, camera:{eye:{x:1.6,y:-1.5,z:.82},center:{x:0,y:0,z:-.06}}},
+    legend:{orientation:'h',yanchor:'bottom',y:1,x:1,xanchor:'right',
+      bgcolor:'rgba(11,16,32,.78)',bordercolor:T.line,borderwidth:1,
+      font:{size:11,color:T.text},itemsizing:'constant'},
+    annotations:[cap('Circles are the mark. Diamonds are actual trades. The violet sheet is interpolated — an assumption, not a market.')],
+  }), CFG);
+}
+
+function renderCompare(){
+  const c = combo(), s = c.stats, traces = [];
+  const b = c.both;
+  if(b.x.length){
+    const all = b.x.concat(b.y);
+    const lo=Math.min.apply(null,all), hi=Math.max.apply(null,all);
+    const pad = hi>lo ? (hi-lo)*.08 : .05;
+    traces.push({type:'scatter',mode:'lines',name:'mark = trade',hoverinfo:'skip',
+      x:[lo-pad,hi+pad],y:[lo-pad,hi+pad],
+      line:{color:T.faint,dash:'dash',width:1},xaxis:'x',yaxis:'y'});
+    traces.push({type:'scatter',mode:'markers',name:'carries both',
+      x:b.x,y:b.y,xaxis:'x',yaxis:'y',
+      customdata:b.ric.map((r,i)=>[r,b.k[i],b.d[i],b.gap[i]]),
+      marker:{size:9,color:T.both,opacity:.85,line:{width:2,color:T.panel}},
+      hovertemplate:`${PRINT} $%{x:.3f}<br>${MARK} $%{y:.3f}<br>gap $%{customdata[3]:.3f}`+
+        `<br>K %{customdata[1]:.2f} · DTE %{customdata[2]}<br>%{customdata[0]}<extra></extra>`});
+  }
+  const counts=[s.n_mark_only,s.n_both,s.n_print_only];
+  traces.push({type:'bar',xaxis:'x2',yaxis:'y2',showlegend:false,
+    x:['Mark only<br>(no trade)','Both','Trade only<br>(no mark)'],y:counts,
+    text:counts,textposition:'outside',cliponaxis:false,
+    textfont:{color:T.text,size:12,family:T.font},
+    marker:{color:[T.mark,T.both,T.print],line:{width:2,color:T.panel}},
+    hovertemplate:'%{x}<br><b>%{y}</b> series<extra></extra>'});
+
+  const lay = base({
+    height:450, margin:{l:64,r:24,t:96,b:92}, bargap:.45,
+    title:{text:`${M.underlying} · the mark is not the trade`,
+      font:{size:15,color:T.text,family:T.font},x:0,xanchor:'left',y:.97,yanchor:'top'},
+    xaxis:Object.assign(ax(`${PRINT} — last trade ($)`),{domain:[0,.55]}),
+    yaxis:ax(`${MARK} — the mark ($)`),
+    xaxis2:Object.assign(ax(),{domain:[.68,1],anchor:'y2'}),
+    yaxis2:Object.assign(ax('Series'),{anchor:'x2',
+      range:[0,Math.max.apply(null,counts.concat([1]))*1.22]}),
+    legend:{orientation:'h',yanchor:'bottom',y:1.14,x:1,xanchor:'right',
+      bgcolor:'rgba(0,0,0,0)',font:{size:11,color:T.text}},
+    annotations:[
+      {text:'Every point off the dashed line is a series where the mark and the day’s only real trade disagree.',
+       xref:'paper',yref:'paper',x:0,y:-0.22,xanchor:'left',yanchor:'top',
+       showarrow:false,font:{size:10.5,color:T.faint,family:T.font}},
+      {text:'Where both exist, they disagree',xref:'paper',yref:'paper',x:0,y:1.04,
+       xanchor:'left',yanchor:'bottom',showarrow:false,
+       font:{size:12,color:T.text,family:T.font}},
+      {text:'Which series carry which field',xref:'paper',yref:'paper',x:.68,y:1.04,
+       xanchor:'left',yanchor:'bottom',showarrow:false,
+       font:{size:12,color:T.text,family:T.font}},
+    ],
+  });
+  if(!b.x.length){
+    lay.annotations.push({text:'No series carries both fields on this date.',
+      xref:'paper',yref:'paper',x:.27,y:.5,xanchor:'center',showarrow:false,
+      font:{size:12,color:T.muted,family:T.font}});
+  }
+  Plotly.react('p-compare', traces, lay, CFG);
+}
+
+function renderOcc(divId, occ, field, scale){
+  // An entirely empty grid renders as a flat dark rectangle, which reads as a
+  // broken chart rather than as "this field is not in the cache". Say so.
+  if(!occ || occ.filled === 0){
+    const why = occ ? `<b>${field}</b> is not in this cache — nothing to map.`
+                    : `No ${field} coverage on this date.`;
+    Plotly.react(divId, [], base({height:360,
+      xaxis:{visible:false},yaxis:{visible:false},
+      title:{text:`${field} coverage · 0%`,
+        font:{size:15,color:T.text,family:T.font},x:0,xanchor:'left',y:.97,yanchor:'top'},
+      annotations:[{text:why.replace(/<\/?b>/g,''),xref:'paper',yref:'paper',
+        x:.5,y:.5,xanchor:'center',showarrow:false,
+        font:{size:12.5,color:T.muted,family:T.font}}]}), CFG);
+    return;
+  }
+  // 20+ rotated strike labels collide; show roughly a dozen.
+  const step = Math.max(1, Math.ceil(occ.x.length/12));
+  Plotly.react(divId, [{type:'heatmap', z:occ.z, x:occ.x, y:occ.y,
+    colorscale:scale, zmin:0, zmax:1, showscale:false, xgap:2, ygap:2,
+    customdata:occ.z.map(r=>r.map(v=>v>0?'has a number':'never had one')),
+    hovertemplate:'K %{x} · expiry %{y}<br>%{customdata}<extra></extra>'}],
+    base({height:360, margin:{l:76,r:20,t:60,b:70},
+      title:{text:`${field} coverage · ${Math.round(occ.filled*100)}% of the listed grid`,
+        font:{size:15,color:T.text,family:T.font},x:0,xanchor:'left',y:.97,yanchor:'top'},
+      xaxis:ax('Strike ($)',{tickangle:-45,showgrid:false,
+        tickmode:'array',
+        tickvals:occ.x.filter((_,i)=>i%step===0),
+        type:'category'}),
+      yaxis:ax('Expiry',{showgrid:false,type:'category'}),
+      annotations:[cap('Lit = a number exists. Dark = no quote that day.')]}), CFG);
+}
+
+function renderStock(){
+  const s = DATA.stock;
+  if(!s || !s.x) return;
+  Plotly.react('p-stock', [{type:'candlestick', x:s.x, open:s.o, high:s.h, low:s.l, close:s.c,
+    name:M.underlying, showlegend:false,
+    increasing:{line:{color:T.up,width:1},fillcolor:T.up},
+    decreasing:{line:{color:T.down,width:1},fillcolor:T.down}}],
+    base({height:340,
+      title:{text:`${M.underlying} · underlying`,font:{size:15,color:T.text,family:T.font},
+        x:0,xanchor:'left',y:.97,yanchor:'top'},
+      xaxis:Object.assign(ax(),{rangeslider:{visible:false}}),
+      yaxis:ax('Price ($)'),
+      annotations:[cap('Context only. The close here is TRDPRC_1 on the stock — a liquid print, unlike the options above.')]}), CFG);
+}
+
+function renderTable(){
+  const s = combo().stats;
+  document.getElementById('tbl').innerHTML =
+    `<tr><th>Measure</th><th>Value</th></tr>` +
+    [['Series listed in slice', s.n_series],
+     ['Mark but no trade', `${s.n_mark_only} (${pct(s.pct_mark_no_trade)})`],
+     ['Both fields present', s.n_both],
+     ['Trade but no mark', s.n_print_only],
+     ['Median |mark − trade|', money(s.median_abs_diff)],
+     ['Median relative gap', s.median_rel_diff_pct==null?'n/a':s.median_rel_diff_pct.toFixed(1)+'%'],
+     ['Widest disagreement', money(s.max_abs_diff)],
+    ].map(([k,v])=>`<tr><td>${k}</td><td>${v}</td></tr>`).join('');
+}
+
+/* ---------- the three sentences ---------- */
+function renderProse(){
+  const c = combo(), s = c.stats;
+  const spot = c.spot!=null ? `$${c.spot.toFixed(2)}` : 'the spot';
+  document.getElementById('a1').innerHTML =
+    `The cloud is dense in a narrow band around the money — within roughly a dollar
+     or two of ${spot} — and at the front of the expiry axis, where near-dated
+     contracts still attract flow. It thins fast in both directions: far out of the
+     money there is often a <span class="k-mark">mark</span> and nothing else, and
+     deep in the money there is frequently neither. On ${state.date} only
+     <b>${s.n_both}</b> of <b>${s.n_series}</b> listed series carried both a mark
+     and a trade; <b>${s.pct_txt}</b> had a mark with no trade behind it at all.`;
+  document.getElementById('a2').innerHTML =
+    `A $0.50 grid on a high-single-digit name means adjacent strikes are several
+     percent apart in moneyness, so the option value genuinely changes between
+     neighbours — and the surface is convex, so straight-line interpolation
+     systematically undershoots between two observed points. Worse, the cells you
+     are filling are empty <i>because nobody wanted to trade them</i>: the gaps are
+     where liquidity is absent, not where it happens to be unrecorded. Filling them
+     produces a smooth, confident-looking sheet whose most authoritative-looking
+     regions are precisely the ones with no evidence underneath, and reading a fill
+     price off it would mean quoting a number the market never made.`;
+  document.getElementById('a3').innerHTML =
+    `<span class="k-mark">${MARK}</span> is the mark: it is the closing NBBO
+     midpoint, it exists on far more series than trades do, and it is the field the
+     volatility surface gets fitted to next week. <span class="k-print">${PRINT}</span>
+     is evidence — and only evidence — that someone actually crossed the spread on
+     that contract that day. It is one print, not a mark, and it is missing on most
+     listed strikes, so treating it as the price would mean pricing off trades that
+     never happened.`;
+}
+
+/* ---------- controls ---------- */
+function renderAll(){
+  const c = combo();
+  renderTiles(); renderProse(); renderSurface(); renderCompare();
+  renderOcc('p-occ-mark',  c.occ_mark,  MARK,  T.markScale);
+  renderOcc('p-occ-print', c.occ_print, PRINT, T.printScale);
+  renderTable();
+}
+
+function paintCp(){
+  document.querySelectorAll('#seg-cp button').forEach(b=>{
+    const on = b.dataset.cp===state.cp;
+    b.setAttribute('aria-pressed',String(on));
+    b.disabled = !DATA.combos[state.date+'|'+b.dataset.cp];
+    b.style.opacity = b.disabled ? .35 : 1;
+  });
+}
+
+function wire(){
+  const sel = document.getElementById('sel-date');
+  DATA.dates.forEach(d=>{
+    const o=document.createElement('option'); o.value=d; o.textContent=d;
+    if(d===state.date) o.selected=true; sel.appendChild(o);
+  });
+  sel.addEventListener('change',e=>{
+    state.date=e.target.value;
+    if(!combo()){
+      const alt=DATA.rights.find(r=>DATA.combos[state.date+'|'+r]);
+      if(alt) state.cp=alt;
+    }
+    paintCp(); renderAll();
+  });
+
+  const seg=document.getElementById('seg-cp');
+  DATA.rights.forEach(r=>{
+    const btn=document.createElement('button');
+    btn.textContent = r==='C'?'Calls':'Puts';
+    btn.dataset.cp=r;
+    btn.addEventListener('click',()=>{
+      if(!DATA.combos[state.date+'|'+r]) return;
+      state.cp=r; paintCp(); renderAll();
+    });
+    seg.appendChild(btn);
+  });
+  paintCp();
+
+  document.querySelectorAll('.chip').forEach(ch=>{
+    ch.addEventListener('click',()=>{
+      const k=ch.dataset.k; state[k]=!state[k];
+      ch.setAttribute('aria-pressed',String(state[k]));
+      renderSurface();
+    });
+  });
+}
+
+renderChrome(); wire(); renderAll(); renderStock();
+</script>
+</body>
+</html>

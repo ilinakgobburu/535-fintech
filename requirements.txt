@@ -1,0 +1,12 @@
+# Core analysis + figures (needed to rebuild docs/index.html)
+pandas==2.2.3
+numpy==1.26.4
+scipy==1.13.1
+plotly==5.24.1
+
+# Optional: only needed to re-pull from LSEG (scripts/fetch_lseg.py).
+# Requires LSEG Workspace running locally for the desktop session.
+lseg-data==2.1.1
+
+# Optional: only needed for the Reflex app, not for the published site.
+reflex==0.9.8.post1

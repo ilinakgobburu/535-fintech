@@ -1,0 +1,31 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# --- Reflex ---
+.web/
+.states/
+assets/external/
+reflex.lock
+*.db
+
+# --- logs & scratch ---
+*.log
+.ipynb_checkpoints/
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- editors ---
+.idea/
+.vscode/
+
+# NOTE: option_pipeline_data.pkl is deliberately NOT ignored.
+# The assignment requires the app to load a cached LSEG pickle, and the
+# published site has to build without LSEG credentials, so the cache is
+# committed on purpose.
