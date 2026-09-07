@@ -29,3 +29,8 @@ Thumbs.db
 # The assignment requires the app to load a cached LSEG pickle, and the
 # published site has to build without LSEG credentials, so the cache is
 # committed on purpose.
+
+# Reflex scaffolding created inside the app folder
+trading_app/.web/
+trading_app/.states/
+trading_app/assets/external/

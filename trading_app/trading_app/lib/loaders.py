@@ -34,7 +34,7 @@ BID_FIELD = "BID"
 ASK_FIELD = "ASK"
 QUOTE_FIELDS = [BID_FIELD, ASK_FIELD]
 
-# Anything we recognise as a price field when sniffing a MultiIndex level.
+# Anything we recognize as a price field when sniffing a MultiIndex level.
 KNOWN_FIELDS = {
     "TRDPRC_1", "MID_PRICE", "SETTLE", "CLOSE",
     "BID", "ASK", "HIGH_1", "LOW_1", "OPEN_PRC",

@@ -311,18 +311,23 @@ def mark_vs_print_figure(sl: pd.DataFrame, ticker: str = "UUUU") -> go.Figure:
 
     fig.update_layout(
         **T.layout(
-            height=430,
+            height=460,
             title=dict(text=f"{ticker} · the mark is not the trade", x=0.0, xanchor="left"),
-            margin=dict(l=64, r=24, t=88, b=56),
+            margin=dict(l=64, r=24, t=96, b=92),
             bargap=0.45,
+            # legend right, caption below: at y=1.0/x=0.0 they landed on top
+            # of each other.
             legend=dict(
-                orientation="h", yanchor="bottom", y=1.0, x=0.0, xanchor="left",
+                orientation="h", yanchor="bottom", y=1.02, x=1.0, xanchor="right",
                 bgcolor="rgba(0,0,0,0)", font=dict(size=11, color=T.TEXT),
             ),
             annotations=[
-                T.caption(
-                    "Every point off the dashed line is a series where the mark "
-                    "and the only real trade of the day disagree."
+                dict(
+                    text="Every point off the dashed line is a series where the "
+                         "mark and the only real trade of the day disagree.",
+                    xref="paper", yref="paper", x=0.0, y=-0.24,
+                    xanchor="left", yanchor="top", showarrow=False,
+                    font=dict(size=10.5, color=T.TEXT_FAINT, family=T.FONT),
                 )
             ],
         )

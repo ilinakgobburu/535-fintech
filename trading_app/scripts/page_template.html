@@ -211,7 +211,7 @@
   <p class="lede" style="margin-bottom:6px">
     Rather than assert that filling holes is dangerous, measure it. Every cell
     that <i>is</i> observed gets hidden in turn, rebuilt by linear interpolation
-    from its neighbours, and compared against the truth.
+    from its neighbors, and compared against the truth.
   </p>
   <p class="notes" style="margin-top:10px">
     These errors are a <b>best case</b>. Each tested cell is an interior point
@@ -243,7 +243,7 @@
     cannot disagree about a number.</li>
   <li><b>Color is never the only encoding.</b> The mark draws as a circle, the
     trade as a diamond. The palette was checked against the plot surface with a
-    contrast and colour-vision validator rather than chosen by eye.</li>
+    contrast and color-vision validator rather than chosen by eye.</li>
   <li id="note-fields"></li>
 </ul>
 
@@ -538,7 +538,7 @@ function renderProse(){
     `the chord between two observed points sits above the true curve`;
   document.getElementById('a2').innerHTML =
     `A $0.50 grid on a name trading near ${spot} means adjacent strikes are several
-     percent apart in moneyness, so value genuinely changes between neighbours —
+     percent apart in moneyness, so value genuinely changes between neighbors —
      and because the price curve is convex, a straight line drawn between two
      observed points sits <i>above</i> the truth, so interpolation systematically
      <b>overshoots</b> (${biasTxt}). Worse, the cells being filled are empty
@@ -622,7 +622,7 @@ function renderSpread(){
   // Right: where inside the quote the print actually landed.
   const h = A.trade_hist;
   if(h){
-    Plotly.react('p-fill', [{type:'bar',x:h.centres,y:h.counts,
+    Plotly.react('p-fill', [{type:'bar',x:h.centers,y:h.counts,
       marker:{color:T.both,line:{width:2,color:T.panel}},
       hovertemplate:'%{y} prints landed here<extra></extra>',showlegend:false}],
       base({height:430, margin:{l:64,r:24,t:64,b:112}, bargap:.06,
@@ -690,7 +690,7 @@ function renderHoldout(){
     <div class="tile">
       <div class="label">Cells it could not guess at all</div>
       <div class="value">${h.n_unguessable}</div>
-      <div class="sub">of ${h.n_tested + h.n_unguessable} — outside their neighbours' hull</div>
+      <div class="sub">of ${h.n_tested + h.n_unguessable} — outside their neighbors' hull</div>
     </div>`;
 
   const all = h.truth.concat(h.guess);

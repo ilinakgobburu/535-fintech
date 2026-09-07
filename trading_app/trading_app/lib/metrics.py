@@ -111,7 +111,7 @@ def interpolate_grid(
     y = cloud["dte"].to_numpy(float)
     z = cloud[value_col].to_numpy(float)
     if np.ptp(x) == 0 or np.ptp(y) == 0:
-        return None  # collinear cloud, nothing to trianglulate
+        return None  # collinear cloud, nothing to triangulate
 
     xi = np.linspace(x.min(), x.max(), n_strike)
     yi = np.linspace(max(0.0, y.min()), y.max(), n_dte)
@@ -196,7 +196,7 @@ def spread_by_bucket(wide: pd.DataFrame, n_buckets: int = 7) -> dict | None:
     if not (hi > lo):
         return None
     edges = np.linspace(lo, hi, n_buckets + 1)
-    centres, traded, untraded, counts = [], [], [], []
+    centers, traded, untraded, counts = [], [], [], []
     for i in range(n_buckets):
         a, b = edges[i], edges[i + 1]
         sel = q[(q["moneyness"] >= a) & (q["moneyness"] <= b if i == n_buckets - 1
@@ -205,13 +205,13 @@ def spread_by_bucket(wide: pd.DataFrame, n_buckets: int = 7) -> dict | None:
             continue
         t = sel[sel["has_print"]]["spread_pct"]
         u = sel[~sel["has_print"]]["spread_pct"]
-        centres.append(float((a + b) / 2))
+        centers.append(float((a + b) / 2))
         traded.append(float(t.median()) if len(t) else None)
         untraded.append(float(u.median()) if len(u) else None)
         counts.append(int(len(sel)))
-    if not centres:
+    if not centers:
         return None
-    return {"moneyness": centres, "traded": traded,
+    return {"moneyness": centers, "traded": traded,
             "untraded": untraded, "counts": counts}
 
 
@@ -239,7 +239,7 @@ def trade_position_histogram(wide: pd.DataFrame, n_bins: int = 12) -> dict | Non
     at_edges = float(((inside <= 0.1) | (inside >= 0.9)).mean() * 100) if len(inside) else None
     near_mid = float(((inside > 0.4) & (inside < 0.6)).mean() * 100) if len(inside) else None
     return {
-        "centres": [float((edges[i] + edges[i + 1]) / 2) for i in range(n_bins)],
+        "centers": [float((edges[i] + edges[i + 1]) / 2) for i in range(n_bins)],
         "counts": [int(c) for c in counts],
         "n": int(len(v)),
         "median": float(v.median()),
@@ -257,7 +257,7 @@ def interpolation_holdout(
     Quantify the danger the assignment warns about, instead of asserting it.
 
     Take the cells we DO observe, hide each one in turn, rebuild the linear
-    interpolant from its neighbours, and compare the guess to the truth. Errors
+    interpolant from its neighbors, and compare the guess to the truth. Errors
     here are a BEST case: these are interior cells surrounded by real data. The
     holes we would actually want to fill are in the wings, with less support,
     so the true error is worse than this.
@@ -285,7 +285,7 @@ def interpolation_holdout(
         except Exception:
             continue
         if g is None or not np.isfinite(g[0]):
-            continue  # outside the hull of its neighbours -- cannot be guessed
+            continue  # outside the hull of its neighbors -- cannot be guessed
         truth.append(float(z[i]))
         guess.append(float(g[0]))
 
