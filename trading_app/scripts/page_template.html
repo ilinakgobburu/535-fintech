@@ -24,7 +24,7 @@
     background:var(--base); color:var(--text); font-family:var(--font);
     font-size:14px; line-height:1.55; -webkit-font-smoothing:antialiased;
   }
-  .wrap{max-width:1240px;margin:0 auto;padding:0 24px 80px}
+  .wrap{max-width:760px;margin:0 auto;padding:0 24px 80px}
 
   nav{
     position:sticky;top:0;z-index:50;margin:0 -24px 0;padding:11px 24px;
@@ -64,7 +64,7 @@
   }
   h1{font-size:30px;line-height:1.15;margin:0 0 10px;font-weight:700;letter-spacing:-.02em}
   h1 .accent{color:var(--mark)}
-  .lede{color:var(--muted);max-width:74ch;margin:0 auto;font-size:15px}
+  .lede{color:var(--muted);max-width:85ch;margin:0;font-size:15px}
 
   .prov{
     display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:16px;
@@ -128,10 +128,9 @@
 
   .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px;margin-bottom:18px}
   .plot{width:100%}
-  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
-  @media(max-width:900px){.grid2{grid-template-columns:1fr}}
+  .grid2{display:grid;grid-template-columns:1fr;gap:18px}
 
-  .reading{max-width:76ch;margin-left:auto;margin-right:auto}
+  .reading{max-width:85ch}
   .qa{margin:0 0 22px;padding-left:15px;border-left:2px solid var(--line)}
   .qa .q{color:var(--muted);font-size:13px;margin:0 0 6px;font-style:italic}
   .qa .a{margin:0;color:var(--text)}
@@ -143,7 +142,7 @@
   .k-print{color:var(--print);font-weight:600}
   .k-both{color:var(--both);font-weight:600}
 
-  .notes{color:var(--muted);font-size:13px;max-width:76ch;margin-left:auto;margin-right:auto}
+  .notes{color:var(--muted);font-size:13px;max-width:85ch}
   .notes li{margin-bottom:9px}
   footer{margin-top:52px;padding-top:20px;border-top:1px solid var(--line);color:var(--faint);font-size:12px}
   table.tbl{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:12px;margin-top:10px}
@@ -169,7 +168,6 @@
   <a href="#sec-holdout">Interpolation error</a>
   <a href="#sec-space">Wrong space</a>
   <a href="#sec-parity">The forward</a>
-  <a href="#sec-ricbug">The put wing</a>
   <a class="ticker-link" id="nav-sibling" href="#" hidden></a>
 </nav>
 
@@ -189,28 +187,6 @@
 
 <h2 id="sec-numbers">The two numbers</h2>
 <div class="tiles" id="tiles"></div>
-
-<h2 id="sec-ricbug">The put wing was never missing. I was asking for it wrong.</h2>
-<div class="reading">
-  <p class="lede" style="margin-bottom:6px">
-    An earlier build of this page reported that this pull contained no puts at
-    all, and called it an unexplained hole in the data. It was not a hole in the
-    data. It was a bug in the identifier, and the scheme the assignment
-    documents is what caused it.
-  </p>
-  <p class="notes" style="margin-top:10px">
-    The published scheme says the expired-contract suffix
-    <code>^{M}{YY}</code> &ldquo;repeats the month letter.&rdquo; That is true
-    for calls and wrong for puts. LSEG keys the suffix off the expiry month's
-    <b>call</b> letter for <i>both</i> rights, so the August put carries body
-    letter <code>T</code> and suffix <code>^H26</code>. Generating the
-    documented form asks for contracts that do not resolve — and the parser
-    validated against the same wrong rule, so the puts would have been discarded
-    even if they had arrived. Two independent places, one shared assumption.
-  </p>
-</div>
-<div class="card" style="padding:16px 18px;margin-top:14px"><table class="tbl" id="ricbug-tbl"></table></div>
-<p class="notes" id="ricbug-note"></p>
 
 <h2 id="sec-slice">Pick a slice</h2>
 <div class="controls">
@@ -384,7 +360,8 @@
     no volatility. Fitting it across the strikes where both rights are quoted
     returns the slope <code>&minus;D</code> and the intercept <code>D&thinsp;F</code>,
     so the market's own forward and its own rate fall out of the option prices.
-    This is only possible because the put wing came back.
+    It needs a call and a put on the same strike, which is the one thing a
+    single-sided chain cannot give you.
   </p>
   <p class="notes" style="margin-top:10px">
     It also repairs a caveat this page used to carry. The intrinsic-value floor
@@ -520,16 +497,15 @@ function renderChrome(){
   const pn = document.getElementById('note-puts');
   const rights = (DATA.rights||[]);
   if(pn && rights.length === 1 && rights[0] === 'C'){
-    pn.innerHTML = `<b>The missing put wing — an unexplained hole in this pull.</b>
-      <code>fetch_lseg.py</code> requests both rights, and the RIC builder is correct
-      per Appendix A: the August put <code>UUUUT212601500.U^T26</code> round-trips to
-      21-Aug-2026 / put / $15.00. But LSEG returns no data for any put on this name,
-      while the identical call strike <code>UUUUH212601500.U^H26</code> returns 131
-      cells from the same request. So this is LSEG coverage for expired ${M.underlying}
-      puts, not a construction error. The assignment asks for "puts or calls," so
-      calls-only is compliant — but a 50% absence in my own pull is exactly the kind
-      of hole this assignment is about, and it belongs on the page rather than in
-      silence.`;
+    pn.innerHTML = `<b>This build has no puts, and the cause is known.</b>
+      The expired-contract suffix does <i>not</i> repeat the body's month letter
+      for puts, as Appendix A states — LSEG keys it off the expiry month's
+      <b>call</b> letter for both rights. The August put is
+      <code>UUUUT212601200.U^H26</code>, not <code>UUUUT212601200.U^T26</code>;
+      probed side by side, the documented form returns nothing and the corrected
+      form returns 39 observations. A cache built before that fix is calls-only.
+      Re-run <code>scripts/fetch_lseg.py</code> to pull the put wing, or
+      <code>scripts/probe_ric_suffix.py</code> to reproduce the finding.`;
   } else if(pn){ pn.remove(); }
 
   document.getElementById('footer').innerHTML =
@@ -1145,8 +1121,8 @@ function renderArb(){
      larger of immediate exercise, <code>max(S&minus;K,&nbsp;0)</code>, and the
      European bound off the parity-fitted forward, <code>D(F&minus;K)</code>.
      Earlier versions of this page compared against spot alone and flagged the
-     row as approximate; the put wing made a parity fit possible, so the carry
-     is now measured rather than assumed. The butterfly and monotonicity tests
+     row as approximate; a two-sided chain makes a parity fit possible, so the
+     carry is now measured rather than assumed. The butterfly and monotonicity tests
      never needed either.`;
 }
 
@@ -1453,39 +1429,6 @@ function wirePlayback(){
   paintPosition();
 }
 
-/* ---------- the RIC-convention bug that hid the put wing ---------- */
-function renderRicBug(){
-  const pr = DATA.meta.ric_probe;
-  const tb = document.getElementById('ricbug-tbl');
-  if(!pr){ tb.closest('.card').style.display='none'; return; }
-  tb.innerHTML =
-    `<tr><th>Expiry</th><th>Strike</th><th>Documented form <code>^{put}</code></th>`+
-    `<th>Actual LSEG form <code>^{call}</code></th></tr>` +
-    pr.rows.map(r=>`<tr><td>${r.expiry}</td><td>$${r.strike.toFixed(2)}</td>`+
-      `<td style="color:var(--print)">${r.doc} obs</td>`+
-      `<td style="color:var(--mark)"><b>${r.act} obs</b></td></tr>`).join('');
-  const probedOn = pr.underlying || 'UUUU';
-  document.getElementById('ricbug-note').innerHTML =
-    `${pr.rows.length} expiry/strike pairs probed directly against LSEG on
-     <b>${probedOn}</b>. The documented identifier returned data on
-     <b>none</b> of them; the corrected identifier returned data on
-     ${pr.rows.filter(r=>r.act>0).length} of ${pr.rows.length}.
-     ${probedOn===M.underlying?'':`The same one-letter fix was applied to
-     ${M.underlying}, whose puts were missing for the identical reason.`}
-     On this page it recovered <b>${(M.n_puts||0).toLocaleString()} put series</b>
-     previously reported as absent from the market, roughly doubling the panel
-     to ${(M.n_series_total||0).toLocaleString()} series.
-     <br><br>
-     <b>The lesson is not that the handout has a typo.</b> It is that "no data
-     came back" and "I asked the wrong question" are indistinguishable from
-     inside the pipeline. A synthetic universe is <i>designed</i> to generate
-     identifiers that never existed, so an empty response is the expected case
-     and cannot be treated as a signal. The only defence is an independent
-     check — here, a known-good call and its parity twin — and that check now
-     lives in <code>tests/test_ric.py</code> so the wing cannot silently vanish
-     again.`;
-}
-
 /* ---------- price space vs vol space ---------- */
 function renderSpace(){
   const s = DATA.aggregate.space;
@@ -1673,7 +1616,7 @@ function wireScrollSpy(){
   });
 }
 
-renderChrome(); wire(); renderAll(); renderStock(); renderSpread(); renderCompare2(); renderArb(); renderHole(); renderRuledOut(); renderRicBug(); renderSpace();
+renderChrome(); wire(); renderAll(); renderStock(); renderSpread(); renderCompare2(); renderArb(); renderHole(); renderRuledOut(); renderSpace();
 renderParity(); wirePlayback(); wireScrollSpy();
 </script>
 </body>

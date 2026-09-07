@@ -40,7 +40,6 @@ from trading_app.lib.vol import (  # noqa: E402
 )
 
 DEFAULT_CACHE = ROOT / "trading_app" / "data" / "option_pipeline_data.pkl"
-RIC_PROBE = ROOT / "trading_app" / "data" / "ric_probe.json"
 DEFAULT_OUT = ROOT.parent / "docs" / "index.html"
 MIN_SERIES = 12          # do not offer a date too thin to say anything about
 # Sheet resolution. These are decorative surfaces drawn under a point cloud,
@@ -323,8 +322,6 @@ def build_payload(cache: Path) -> dict:
             "date_max": str(wide["date"].max().date()),
             "n_expiries": int(wide["expiry"].nunique()),
         "strike_step": float(infer_strike_step(wide)),
-            "ric_probe": (json.loads(RIC_PROBE.read_text())
-                          if RIC_PROBE.exists() else None),
             "n_calls": int(wide[wide["cp"] == "C"]["ric"].nunique()),
             "n_puts": int(wide[wide["cp"] == "P"]["ric"].nunique()),
             "strike_min": float(wide["strike"].min()),
