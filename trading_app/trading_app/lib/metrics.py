@@ -40,13 +40,21 @@ def sparsity_stats(wide: pd.DataFrame) -> dict:
     if wide is None or wide.empty:
         return dict(EMPTY_STATS)
 
-    n = len(wide)
-    both = wide["has_mark"] & wide["has_print"]
-    mark_only = wide["has_mark"] & ~wide["has_print"]
-    print_only = wide["has_print"] & ~wide["has_mark"]
+    # The denominator is series carrying at least one of the TWO fields the
+    # assignment is about. BID/ASK are pulled as supporting evidence, and a row
+    # holding only an ask (ASK is quoted on more series than MID_PRICE) must not
+    # quietly enlarge the denominator and dilute the reported percentage.
+    listed = wide[wide["has_mark"] | wide["has_print"]]
+    if listed.empty:
+        return dict(EMPTY_STATS)
 
-    diffs = wide.loc[both, "abs_diff"].dropna()
-    rels = wide.loc[both, "rel_diff"].dropna()
+    n = len(listed)
+    both = listed["has_mark"] & listed["has_print"]
+    mark_only = listed["has_mark"] & ~listed["has_print"]
+    print_only = listed["has_print"] & ~listed["has_mark"]
+
+    diffs = listed.loc[both, "abs_diff"].dropna()
+    rels = listed.loc[both, "rel_diff"].dropna()
 
     return {
         "n_series": int(n),
@@ -57,7 +65,7 @@ def sparsity_stats(wide: pd.DataFrame) -> dict:
         "median_abs_diff": float(diffs.median()) if len(diffs) else None,
         "median_rel_diff_pct": float(100.0 * rels.median()) if len(rels) else None,
         "max_abs_diff": float(diffs.max()) if len(diffs) else None,
-        "n_dates": int(wide["date"].nunique()),
+        "n_dates": int(listed["date"].nunique()),
     }
 
 
@@ -87,6 +95,7 @@ def interpolate_grid(
     n_strike: int = 44,
     n_dte: int = 32,
     max_fill_gap: float | None = None,
+    x_col: str = "strike",
 ) -> dict | None:
     """
     Linearly interpolate a sparse cloud onto a regular (strike, dte) grid.
@@ -98,16 +107,18 @@ def interpolate_grid(
         observations, so the sheet stops at the edge of the data instead of
         extrapolating into the wings.
       * `max_fill_gap` additionally blanks grid nodes that sit further than
-        that distance (in strike units) from any real observation, so a wide
-        interior hole reads as a hole rather than a smooth ramp.
+        that distance (in `x_col`'s own units) from any real observation, so a
+        wide interior hole reads as a hole rather than a smooth ramp. Note the
+        units change with the axis: ~$1.25 in strike space is ~0.10 in
+        moneyness on a $13 name, so callers must pass the matching value.
 
     Returns None when there is too little to interpolate at all.
     """
-    cloud = points.dropna(subset=["strike", "dte", value_col])
+    cloud = points.dropna(subset=[x_col, "dte", value_col])
     if len(cloud) < 8:
         return None
 
-    x = cloud["strike"].to_numpy(float)
+    x = cloud[x_col].to_numpy(float)
     y = cloud["dte"].to_numpy(float)
     z = cloud[value_col].to_numpy(float)
     if np.ptp(x) == 0 or np.ptp(y) == 0:

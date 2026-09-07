@@ -23,7 +23,38 @@
     background:var(--base); color:var(--text); font-family:var(--font);
     font-size:14px; line-height:1.55; -webkit-font-smoothing:antialiased;
   }
-  .wrap{max-width:1240px;margin:0 auto;padding:36px 24px 80px}
+  .wrap{max-width:1240px;margin:0 auto;padding:0 24px 80px}
+
+  nav{
+    position:sticky;top:0;z-index:50;margin:0 -24px 0;padding:11px 24px;
+    background:rgba(11,16,32,.86);backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--line);
+    display:flex;gap:6px;align-items:center;flex-wrap:wrap
+  }
+  nav .brand{font-weight:700;font-size:13px;margin-right:10px;letter-spacing:-.01em}
+  nav .brand span{color:var(--mark)}
+  nav a{
+    color:var(--muted);text-decoration:none;font-size:12px;padding:5px 10px;
+    border-radius:6px;white-space:nowrap
+  }
+  nav a:hover{color:var(--text);background:var(--panel-hi)}
+  nav a.on{color:var(--text);background:var(--panel-hi)}
+  nav .ticker-link{margin-left:auto;border:1px solid var(--line)}
+  header{padding-top:34px}
+  h2{scroll-margin-top:64px}
+
+  .playbar{display:flex;align-items:center;gap:9px}
+  .iconbtn{
+    background:var(--panel-hi);color:var(--text);border:1px solid var(--line);
+    border-radius:7px;width:34px;height:32px;cursor:pointer;font-size:13px;
+    display:inline-flex;align-items:center;justify-content:center;padding:0
+  }
+  .iconbtn:hover{border-color:var(--both)}
+  .iconbtn[aria-pressed="true"]{background:var(--both);color:#0B1020;border-color:var(--both)}
+  .iconbtn:disabled{opacity:.35;cursor:default}
+  .hint{font-size:10.5px;color:var(--faint);margin-left:2px}
+  .progress{height:3px;background:var(--line-soft);border-radius:2px;overflow:hidden;margin-top:10px}
+  .progress i{display:block;height:100%;background:var(--both);width:0;transition:width .12s linear}
 
   header{border-bottom:1px solid var(--line);padding-bottom:22px;margin-bottom:26px}
   .eyebrow{
@@ -124,6 +155,17 @@
 <body>
 <div class="wrap">
 
+<nav>
+  <div class="brand">Option Surface <span>Lab</span></div>
+  <a href="#sec-numbers">The two numbers</a>
+  <a href="#sec-slice">3D surface</a>
+  <a href="#sec-reading">Reading it</a>
+  <a href="#sec-compare">Mark vs trade</a>
+  <a href="#sec-coverage">Coverage</a>
+  <a href="#sec-fill">Fill uncertainty</a>
+  <a href="#sec-holdout">Interpolation error</a>
+</nav>
+
 <header>
   <div class="eyebrow">MEng FinTech · Algorithmic Trading II · Assignment 1.1</div>
   <h1>Option Surface Lab <span class="accent">·</span> <span id="h-ticker">—</span></h1>
@@ -138,18 +180,31 @@
   <div class="banner hidden" id="banner"></div>
 </header>
 
-<h2>The two numbers</h2>
+<h2 id="sec-numbers">The two numbers</h2>
 <div class="tiles" id="tiles"></div>
 
-<h2>Pick a slice</h2>
+<h2 id="sec-slice">Pick a slice</h2>
 <div class="controls">
   <div class="ctl">
     <label for="sel-date">As-of date</label>
     <select id="sel-date"></select>
+    <div class="playbar">
+      <button class="iconbtn" id="btn-prev" title="Previous session (←)" aria-label="Previous session">&#9664;</button>
+      <button class="iconbtn" id="btn-play" title="Play through every session" aria-label="Play" aria-pressed="false">&#9654;</button>
+      <button class="iconbtn" id="btn-next" title="Next session (→)" aria-label="Next session">&#9654;&#9654;</button>
+      <span class="hint" id="date-pos"></span>
+    </div>
   </div>
   <div class="ctl">
     <label for="seg-cp">Right</label>
     <div class="seg" id="seg-cp" role="group" aria-label="Option right"></div>
+  </div>
+  <div class="ctl">
+    <label for="seg-axis">X axis</label>
+    <div class="seg" id="seg-axis" role="group" aria-label="X axis">
+      <button data-axis="strike" aria-pressed="true">Strike&nbsp;$</button>
+      <button data-axis="mny" aria-pressed="false">K&nbsp;/&nbsp;S</button>
+    </div>
   </div>
   <div class="toggles" id="toggles">
     <button class="chip" data-k="mark"  aria-pressed="true"><span class="dot"></span><span id="lbl-mark">MID_PRICE</span></button>
@@ -158,9 +213,10 @@
   </div>
 </div>
 
+<div class="progress"><i id="prog"></i></div>
 <div class="card"><div id="p-surface" class="plot"></div></div>
 
-<h2>Reading the plot</h2>
+<h2 id="sec-reading">Reading the plot</h2>
 <div class="reading">
   <div class="qa">
     <p class="q">Where is the cloud of price data dense, and where is it empty?</p>
@@ -176,10 +232,10 @@
   </div>
 </div>
 
-<h2>The mark is not the trade</h2>
+<h2 id="sec-compare">The mark is not the trade</h2>
 <div class="card"><div id="p-compare" class="plot"></div></div>
 
-<h2>Where the data actually stops</h2>
+<h2 id="sec-coverage">Where the data actually stops</h2>
 <div class="grid2">
   <div class="card"><div id="p-occ-mark" class="plot"></div></div>
   <div class="card"><div id="p-occ-print" class="plot"></div></div>
@@ -189,7 +245,7 @@
   <table class="tbl" id="tbl"></table>
 </details>
 
-<h2>So what would you actually get filled at?</h2>
+<h2 id="sec-fill">So what would you actually get filled at?</h2>
 <div class="reading">
   <p class="lede" style="margin-bottom:6px">
     The assignment poses this and answers "you do not know." That is right — but
@@ -206,7 +262,7 @@
 </div>
 <p class="notes" id="spread-note"></p>
 
-<h2>How wrong is the interpolated sheet, really?</h2>
+<h2 id="sec-holdout">How wrong is the interpolated sheet, really?</h2>
 <div class="reading">
   <p class="lede" style="margin-bottom:6px">
     Rather than assert that filling holes is dangerous, measure it. Every cell
@@ -257,7 +313,7 @@ const T = DATA.theme, M = DATA.meta;
 const MARK = M.mark_field, PRINT = M.print_field;
 const state = {
   date: DATA.default.date, cp: DATA.default.cp,
-  mark: true, print: true, sheet: true,
+  mark: true, print: true, sheet: true, axis: 'strike',
 };
 
 const base = (over={}) => Object.assign({
@@ -356,32 +412,42 @@ function renderTiles(){
 /* ---------- figures ---------- */
 function renderSurface(){
   const c = combo(), traces = [];
-  if(state.sheet && state.mark && c.sheet){
-    traces.push({type:'surface', x:c.sheet.x, y:c.sheet.y, z:c.sheet.z,
+  const mny = state.axis === 'mny';
+  // Same observations, different horizontal ruler. Moneyness (K/S) makes two
+  // dates comparable even though the underlying moved between them.
+  const xOf = s => mny ? s.mny : s.k;
+  const sheet = mny ? c.sheet_mny : c.sheet;
+  const axisTitle = mny ? 'Moneyness  K / S' : 'Strike ($)';
+  const xFmt = mny ? '%{x:.3f}' : '%{x:.2f}';
+  const xLbl = mny ? 'K/S' : 'K';
+  if(state.sheet && state.mark && sheet){
+    traces.push({type:'surface', x:sheet.x, y:sheet.y, z:sheet.z,
       name:'Interpolated sheet', colorscale:T.interpScale, opacity:T.interpOpacity,
       showscale:false, hoverinfo:'skip', showlegend:true,
       contours:{x:{show:false},y:{show:false},z:{show:false}}});
   }
   if(state.mark && c.mark.k.length){
     traces.push({type:'scatter3d', mode:'markers', name:MARK+' (mark)',
-      x:c.mark.k, y:c.mark.d, z:c.mark.v, customdata:c.mark.ric,
+      x:xOf(c.mark), y:c.mark.d, z:c.mark.v, customdata:c.mark.ric,
       marker:{size:4,color:T.mark,opacity:.9,symbol:'circle',line:{width:0}},
-      hovertemplate:`<b>${MARK}</b> $%{z:.3f}<br>K %{x:.2f} · DTE %{y}<br>%{customdata}<extra></extra>`});
+      hovertemplate:`<b>${MARK}</b> $%{z:.3f}<br>${xLbl} ${xFmt} · DTE %{y}<br>%{customdata}<extra></extra>`});
   }
   if(state.print && c.print.k.length){
     traces.push({type:'scatter3d', mode:'markers', name:PRINT+' (traded)',
-      x:c.print.k, y:c.print.d, z:c.print.v, customdata:c.print.ric,
+      x:xOf(c.print), y:c.print.d, z:c.print.v, customdata:c.print.ric,
       marker:{size:6,color:T.print,opacity:1,symbol:'diamond',line:{width:.5,color:T.base}},
-      hovertemplate:`<b>${PRINT}</b> $%{z:.3f}<br>K %{x:.2f} · DTE %{y}<br>%{customdata}<extra></extra>`});
+      hovertemplate:`<b>${PRINT}</b> $%{z:.3f}<br>${xLbl} ${xFmt} · DTE %{y}<br>%{customdata}<extra></extra>`});
   }
   if(c.spot!=null){
     const all = c.mark.v.concat(c.print.v).filter(v=>v!=null);
     const zhi = all.length?Math.max.apply(null,all):1;
     const ds  = c.mark.d.concat(c.print.d).filter(v=>v!=null);
+    const atm = mny ? 1.0 : c.spot;
     if(ds.length){
       const ylo=Math.min.apply(null,ds), yhi=Math.max.apply(null,ds);
-      if(yhi>ylo) traces.push({type:'surface', name:`K = S ($${c.spot.toFixed(2)})`,
-        x:[[c.spot,c.spot],[c.spot,c.spot]], y:[[ylo,yhi],[ylo,yhi]], z:[[0,0],[zhi,zhi]],
+      if(yhi>ylo) traces.push({type:'surface',
+        name: mny ? 'K = S (1.00)' : `K = S ($${c.spot.toFixed(2)})`,
+        x:[[atm,atm],[atm,atm]], y:[[ylo,yhi],[ylo,yhi]], z:[[0,0],[zhi,zhi]],
         colorscale:[[0,T.faint],[1,T.faint]], opacity:.13, showscale:false,
         hoverinfo:'skip', showlegend:true});
     }
@@ -392,13 +458,13 @@ function renderSurface(){
     title:{text:`${M.underlying} ${label} · ${state.date}`+
       (c.spot!=null?`  ·  spot $${c.spot.toFixed(2)}`:''),
       font:{size:15,color:T.text,family:T.font},x:0,xanchor:'left',y:.97,yanchor:'top'},
-    scene:{xaxis:sceneAx('Strike ($)'), yaxis:sceneAx('Days to expiry',{autorange:'reversed'}),
+    scene:{xaxis:sceneAx(axisTitle), yaxis:sceneAx('Days to expiry',{autorange:'reversed'}),
       zaxis:sceneAx('Option price ($)'), bgcolor:T.base, aspectmode:'manual',
       aspectratio:{x:1.2,y:1,z:.68}, camera:{eye:{x:1.6,y:-1.5,z:.82},center:{x:0,y:0,z:-.06}}},
     legend:{orientation:'h',yanchor:'bottom',y:1,x:1,xanchor:'right',
       bgcolor:'rgba(11,16,32,.78)',bordercolor:T.line,borderwidth:1,
       font:{size:11,color:T.text},itemsizing:'constant'},
-    annotations:[cap('Circles are the mark. Diamonds are actual trades. The violet sheet is interpolated — an assumption, not a market.')],
+    annotations:[cap('Circles are the mark. Diamonds are actual trades. The violet sheet is interpolated — an assumption, not a market.' + (mny ? ' Axis rebased to K/S.' : ''))],
   }), CFG);
 }
 
@@ -752,12 +818,13 @@ function wire(){
     if(d===state.date) o.selected=true; sel.appendChild(o);
   });
   sel.addEventListener('change',e=>{
+    stopPlay();
     state.date=e.target.value;
     if(!combo()){
       const alt=DATA.rights.find(r=>DATA.combos[state.date+'|'+r]);
       if(alt) state.cp=alt;
     }
-    paintCp(); renderAll();
+    paintCp(); renderAll(); paintPosition();
   });
 
   const seg=document.getElementById('seg-cp');
@@ -773,6 +840,15 @@ function wire(){
   });
   paintCp();
 
+  document.querySelectorAll('#seg-axis button').forEach(b=>{
+    b.addEventListener('click',()=>{
+      state.axis = b.dataset.axis;
+      document.querySelectorAll('#seg-axis button').forEach(o=>
+        o.setAttribute('aria-pressed', String(o.dataset.axis===state.axis)));
+      renderSurface();
+    });
+  });
+
   document.querySelectorAll('.chip').forEach(ch=>{
     ch.addEventListener('click',()=>{
       const k=ch.dataset.k; state[k]=!state[k];
@@ -782,7 +858,101 @@ function wire(){
   });
 }
 
-renderChrome(); wire(); renderAll(); renderStock(); renderSpread();
+
+/* ---------- stepping through sessions ---------- */
+let timer = null;
+
+function dateIndex(){ return DATA.dates.indexOf(state.date); }
+
+function gotoIndex(i, wrap=false){
+  const n = DATA.dates.length;
+  if(i < 0) i = wrap ? n - 1 : 0;
+  if(i >= n) i = wrap ? 0 : n - 1;
+  const d = DATA.dates[i];
+  if(d === state.date) return;
+  state.date = d;
+  document.getElementById('sel-date').value = d;
+  if(!combo()){
+    const alt = DATA.rights.find(r => DATA.combos[state.date+'|'+r]);
+    if(alt) state.cp = alt;
+  }
+  paintCp(); renderAll(); paintPosition();
+}
+
+function paintPosition(){
+  const i = dateIndex(), n = DATA.dates.length;
+  document.getElementById('date-pos').textContent = `${i+1} / ${n}`;
+  document.getElementById('prog').style.width = (100*(i+1)/n).toFixed(1)+'%';
+  document.getElementById('btn-prev').disabled = (i <= 0) && !timer;
+  document.getElementById('btn-next').disabled = (i >= n-1) && !timer;
+}
+
+function stopPlay(){
+  if(timer){ clearInterval(timer); timer = null; }
+  const b = document.getElementById('btn-play');
+  b.setAttribute('aria-pressed','false');
+  b.innerHTML = '&#9654;';
+  b.title = 'Play through every session';
+  paintPosition();
+}
+
+function togglePlay(){
+  if(timer){ stopPlay(); return; }
+  const b = document.getElementById('btn-play');
+  b.setAttribute('aria-pressed','true');
+  b.innerHTML = '&#10074;&#10074;';
+  b.title = 'Pause';
+  // Rebuilding four figures per tick is the real cost; 900ms keeps it readable
+  // and stays ahead of the render.
+  timer = setInterval(() => {
+    const i = dateIndex();
+    if(i >= DATA.dates.length - 1){ gotoIndex(0, true); }
+    else { gotoIndex(i + 1); }
+  }, 900);
+  paintPosition();
+}
+
+function wirePlayback(){
+  document.getElementById('btn-prev').addEventListener('click', () => {
+    stopPlay(); gotoIndex(dateIndex() - 1);
+  });
+  document.getElementById('btn-next').addEventListener('click', () => {
+    stopPlay(); gotoIndex(dateIndex() + 1);
+  });
+  document.getElementById('btn-play').addEventListener('click', togglePlay);
+
+  document.addEventListener('keydown', e => {
+    const tag = (e.target.tagName || '').toLowerCase();
+    if(tag === 'input' || tag === 'select' || tag === 'textarea') return;
+    if(e.key === 'ArrowLeft'){ stopPlay(); gotoIndex(dateIndex()-1); e.preventDefault(); }
+    else if(e.key === 'ArrowRight'){ stopPlay(); gotoIndex(dateIndex()+1); e.preventDefault(); }
+    else if(e.key === ' '){ togglePlay(); e.preventDefault(); }
+    else if(e.key === 'Escape'){ stopPlay(); }
+  });
+  paintPosition();
+}
+
+/* ---------- highlight the section you are looking at ---------- */
+function wireScrollSpy(){
+  const links = Array.from(document.querySelectorAll('nav a'));
+  const map = new Map(links.map(a => [a.getAttribute('href').slice(1), a]));
+  const obs = new IntersectionObserver(entries => {
+    entries.forEach(en => {
+      const a = map.get(en.target.id);
+      if(!a) return;
+      if(en.isIntersecting){
+        links.forEach(l => l.classList.remove('on'));
+        a.classList.add('on');
+      }
+    });
+  }, {rootMargin: '-58px 0px -72% 0px', threshold: 0});
+  map.forEach((_, id) => {
+    const el = document.getElementById(id);
+    if(el) obs.observe(el);
+  });
+}
+
+renderChrome(); wire(); renderAll(); renderStock(); renderSpread(); wirePlayback(); wireScrollSpy();
 </script>
 </body>
 </html>

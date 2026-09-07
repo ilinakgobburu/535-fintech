@@ -78,6 +78,10 @@ def build_combo(sl: pd.DataFrame) -> dict:
 
     sheet = interpolate_grid(sl, MARK_FIELD, n_strike=SHEET_NX, n_dte=SHEET_NY,
                              max_fill_gap=1.25)
+    # Same sheet in moneyness space. The gap threshold is in the axis's own
+    # units: $1.25 of strike is roughly 0.10 of K/S on a $13 name.
+    sheet_mny = interpolate_grid(sl, MARK_FIELD, n_strike=SHEET_NX, n_dte=SHEET_NY,
+                                 max_fill_gap=0.10, x_col="moneyness")
 
     return {
         "spot": spot_val,
@@ -96,10 +100,12 @@ def build_combo(sl: pd.DataFrame) -> dict:
         "mark": {
             "k": _clean(m["strike"]), "d": _clean(m["dte"]),
             "v": _clean(m[MARK_FIELD]), "ric": _clean(m["ric"]),
+            "mny": _clean(m["moneyness"]),
         },
         "print": {
             "k": _clean(p["strike"]), "d": _clean(p["dte"]),
             "v": _clean(p[PRINT_FIELD]), "ric": _clean(p["ric"]),
+            "mny": _clean(p["moneyness"]),
         },
         "both": {
             "x": _clean(both[PRINT_FIELD]), "y": _clean(both[MARK_FIELD]),
@@ -109,6 +115,10 @@ def build_combo(sl: pd.DataFrame) -> dict:
         "sheet": None if sheet is None else {
             "x": _clean(sheet["x"]), "y": _clean(sheet["y"]),
             "z": [_clean(row) for row in sheet["z"]],
+        },
+        "sheet_mny": None if sheet_mny is None else {
+            "x": _clean(sheet_mny["x"]), "y": _clean(sheet_mny["y"]),
+            "z": [_clean(row) for row in sheet_mny["z"]],
         },
         "occ_mark": _occ_payload(sl, MARK_FIELD),
         "occ_print": _occ_payload(sl, PRINT_FIELD),
