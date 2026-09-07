@@ -34,8 +34,12 @@ from trading_app.lib.metrics import (  # noqa: E402
     sparsity_stats, spread_by_bucket, spread_stats, trade_position_histogram,
     vertical_spread_example,
 )
+from trading_app.lib.vol import (  # noqa: E402
+    attach_iv, implied_forward, iv_coverage, parity_audit, space_holdout_pooled,
+)
 
 DEFAULT_CACHE = ROOT / "trading_app" / "data" / "option_pipeline_data.pkl"
+RIC_PROBE = ROOT / "trading_app" / "data" / "ric_probe.json"
 DEFAULT_OUT = ROOT.parent / "docs" / "index.html"
 MIN_SERIES = 12          # do not offer a date too thin to say anything about
 SHEET_NX, SHEET_NY = 28, 20
@@ -88,6 +92,11 @@ def build_combo(sl: pd.DataFrame) -> dict:
                                  max_fill_gap=1.25)
     sheet_ask = interpolate_grid(sl, "ASK", n_strike=SHEET_NX, n_dte=SHEET_NY,
                                  max_fill_gap=1.25)
+    # The same cloud in the space the surface is actually smooth in.
+    iv_pts = sl.dropna(subset=["iv"]) if "iv" in sl.columns else sl.iloc[0:0]
+    sheet_iv = (interpolate_grid(iv_pts, "iv", n_strike=SHEET_NX, n_dte=SHEET_NY,
+                                 max_fill_gap=1.25)
+                if len(iv_pts) >= 8 else None)
 
     return {
         "spot": spot_val,
@@ -134,6 +143,15 @@ def build_combo(sl: pd.DataFrame) -> dict:
             "x": _clean(sheet_ask["x"]), "y": _clean(sheet_ask["y"]),
             "z": [_clean(row) for row in sheet_ask["z"]],
         },
+        "iv": {
+            "k": _clean(iv_pts["strike"]), "d": _clean(iv_pts["dte"]),
+            "v": _clean(iv_pts["iv"]), "ric": _clean(iv_pts["ric"]),
+            "mny": _clean(iv_pts["moneyness"]),
+        } if len(iv_pts) else None,
+        "sheet_iv": None if sheet_iv is None else {
+            "x": _clean(sheet_iv["x"]), "y": _clean(sheet_iv["y"]),
+            "z": [_clean(row) for row in sheet_iv["z"]],
+        },
         "occ_mark": _occ_payload(sl, MARK_FIELD),
         "occ_print": _occ_payload(sl, PRINT_FIELD),
         "holdout": interpolation_holdout(sl, MARK_FIELD),
@@ -176,6 +194,12 @@ def build_payload(cache: Path) -> dict:
     if wide.empty:
         raise SystemExit("Cache produced no option rows — nothing to build.")
 
+    # Put-call parity gives the forward and the discount factor with no rate
+    # assumed; implied vols are then inverted off that forward. Both are
+    # computed once, here, so every panel sees the same numbers.
+    fwd = implied_forward(wide)
+    wide = attach_iv(wide, fwd)
+
     counts = wide.groupby("date")["ric"].nunique()
     dates = [d for d, n in counts.items() if n >= MIN_SERIES]
     if not dates:
@@ -212,10 +236,24 @@ def build_payload(cache: Path) -> dict:
         "spread_bucket": spread_by_bucket(wide),
         "trade_hist": trade_position_histogram(wide),
         "n_dates": int(wide["date"].nunique()),
-        "audit": arbitrage_audit(wide),
-        "print_prob": print_probability(wide),
+        "audit": arbitrage_audit(wide, cp="C"),
+        "audit_put": arbitrage_audit(wide, cp="P"),
+        "print_prob": print_probability(wide, cp="C"),
+        "print_prob_put": print_probability(wide, cp="P"),
         "quote_quality": quote_quality(wide),
-        "spread_example": vertical_spread_example(wide),
+        "spread_example": vertical_spread_example(wide, cp="C"),
+        "spread_example_put": vertical_spread_example(wide, cp="P"),
+        "parity": parity_audit(wide, fwd),
+        "iv_cov": iv_coverage(wide),
+        "space": space_holdout_pooled(wide),
+        "forward": None if fwd.empty else {
+            "date": [str(pd.Timestamp(d).date()) for d in fwd["date"]],
+            "expiry": [str(pd.Timestamp(e).date()) for e in fwd["expiry"]],
+            "dte": _clean(fwd["dte"]), "F": _clean(fwd["F"]),
+            "D": _clean(fwd["D"]), "spot": _clean(fwd["spot"]),
+            "basis": _clean(fwd["basis"]), "resid": _clean(fwd["resid_med"]),
+            "n_pairs": _clean(fwd["n_pairs"]),
+        },
     }
     return {
         "aggregate": aggregate,
@@ -235,6 +273,10 @@ def build_payload(cache: Path) -> dict:
             "date_min": str(wide["date"].min().date()),
             "date_max": str(wide["date"].max().date()),
             "n_expiries": int(wide["expiry"].nunique()),
+            "ric_probe": (json.loads(RIC_PROBE.read_text())
+                          if RIC_PROBE.exists() else None),
+            "n_calls": int(wide[wide["cp"] == "C"]["ric"].nunique()),
+            "n_puts": int(wide[wide["cp"] == "P"]["ric"].nunique()),
             "strike_min": float(wide["strike"].min()),
             "strike_max": float(wide["strike"].max()),
             "overall_pct_mark_no_trade": overall["pct_mark_no_trade"],

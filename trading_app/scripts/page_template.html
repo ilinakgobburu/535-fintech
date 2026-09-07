@@ -7,7 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"
+        onerror="window.__plotlyFailed=1"></script>
 <style>
   :root{
     --base:#0B1020; --panel:#141A2E; --panel-hi:#1B2340;
@@ -166,6 +167,9 @@
   <a href="#sec-coverage">Coverage</a>
   <a href="#sec-fill">Fill uncertainty</a>
   <a href="#sec-holdout">Interpolation error</a>
+  <a href="#sec-space">Wrong space</a>
+  <a href="#sec-parity">The forward</a>
+  <a href="#sec-ricbug">The put wing</a>
   <a class="ticker-link" id="nav-sibling" href="#" hidden></a>
 </nav>
 
@@ -185,6 +189,28 @@
 
 <h2 id="sec-numbers">The two numbers</h2>
 <div class="tiles" id="tiles"></div>
+
+<h2 id="sec-ricbug">The put wing was never missing. I was asking for it wrong.</h2>
+<div class="reading">
+  <p class="lede" style="margin-bottom:6px">
+    An earlier build of this page reported that this pull contained no puts at
+    all, and called it an unexplained hole in the data. It was not a hole in the
+    data. It was a bug in the identifier, and the scheme the assignment
+    documents is what caused it.
+  </p>
+  <p class="notes" style="margin-top:10px">
+    The published scheme says the expired-contract suffix
+    <code>^{M}{YY}</code> &ldquo;repeats the month letter.&rdquo; That is true
+    for calls and wrong for puts. LSEG keys the suffix off the expiry month's
+    <b>call</b> letter for <i>both</i> rights, so the August put carries body
+    letter <code>T</code> and suffix <code>^H26</code>. Generating the
+    documented form asks for contracts that do not resolve — and the parser
+    validated against the same wrong rule, so the puts would have been discarded
+    even if they had arrived. Two independent places, one shared assumption.
+  </p>
+</div>
+<div class="card" style="padding:16px 18px;margin-top:14px"><table class="tbl" id="ricbug-tbl"></table></div>
+<p class="notes" id="ricbug-note"></p>
 
 <h2 id="sec-slice">Pick a slice</h2>
 <div class="controls">
@@ -207,6 +233,13 @@
     <div class="seg" id="seg-axis" role="group" aria-label="X axis">
       <button data-axis="strike" aria-pressed="true">Strike&nbsp;$</button>
       <button data-axis="mny" aria-pressed="false">K&nbsp;/&nbsp;S</button>
+    </div>
+  </div>
+  <div class="ctl">
+    <label>Height</label>
+    <div class="seg" id="seg-z" role="group" aria-label="Z axis">
+      <button data-z="price" aria-pressed="true">Price&nbsp;$</button>
+      <button data-z="iv" aria-pressed="false">Implied&nbsp;vol</button>
     </div>
   </div>
   <div class="toggles" id="toggles">
@@ -320,6 +353,50 @@
 <div class="card" style="margin-top:18px"><div id="p-holdout" class="plot"></div></div>
 <p class="notes" id="holdout-note"></p>
 
+<h2 id="sec-space">You are interpolating in the wrong space.</h2>
+<div class="reading">
+  <p class="lede" style="margin-bottom:6px">
+    The section above measures the error from interpolating <b>price</b> and
+    attributes its positive bias to convexity: price curves upward in strike,
+    so a straight chord between two observed strikes sits above the truth. If
+    that diagnosis is right, it names its own fix. Convexity belongs to the
+    price, not to the contract. Implied volatility is far flatter in strike,
+    which is why surfaces are quoted in vol and not in dollars.
+  </p>
+  <p class="notes" style="margin-top:10px">
+    So the identical test runs twice. Same cells, same triangulation, same
+    axis rescaling — the only thing that changes is the quantity the straight
+    line is drawn through. In vol space the guess is converted back to dollars
+    through Black-76 at that cell's own strike, maturity and forward, so both
+    errors are measured in dollars and remain comparable.
+  </p>
+</div>
+<div class="tiles" id="tiles-space"></div>
+<div class="card" style="margin-top:18px"><div id="p-space" class="plot"></div></div>
+<p class="notes" id="space-note"></p>
+
+<h2 id="sec-parity">The forward, backed out of the options themselves</h2>
+<div class="reading">
+  <p class="lede" style="margin-bottom:6px">
+    Inverting Black-Scholes needs a forward and a discount factor, and neither
+    is assumed anywhere on this page. Put-call parity,
+    <code>C &minus; P = D&thinsp;(F &minus; K)</code>, is an identity — no model,
+    no volatility. Fitting it across the strikes where both rights are quoted
+    returns the slope <code>&minus;D</code> and the intercept <code>D&thinsp;F</code>,
+    so the market's own forward and its own rate fall out of the option prices.
+    This is only possible because the put wing came back.
+  </p>
+  <p class="notes" style="margin-top:10px">
+    It also repairs a caveat this page used to carry. The intrinsic-value floor
+    in the arbitrage audit compared against <b>spot</b>, with no carry or
+    dividend adjustment, and admitted it was an approximation. It now has a
+    fitted forward to compare against instead.
+  </p>
+</div>
+<div class="tiles" id="tiles-parity"></div>
+<div class="card" style="margin-top:18px"><div id="p-parity" class="plot"></div></div>
+<p class="notes" id="parity-note"></p>
+
 <h2 id="sec-compare2">Does this generalize, or is it a UUUU quirk?</h2>
 <div class="reading" id="compare-intro"></div>
 <div class="card" style="padding:16px 18px"><table class="tbl" id="compare-tbl"></table></div>
@@ -360,6 +437,16 @@
 <script>
 const DATA = /*__PAYLOAD__*/null;
 
+if(window.__plotlyFailed || typeof Plotly === 'undefined'){
+  const b = document.getElementById('banner');
+  b.classList.remove('hidden');
+  b.innerHTML = `<b>Charts could not load.</b> The Plotly library is served from
+    <code>cdn.plot.ly</code> and that request did not complete — usually a
+    blocked or offline network. Every number on this page is precomputed in
+    Python and embedded in the HTML, so the statistics and the written analysis
+    below are unaffected; only the figures are missing. Reload with network
+    access to see them.`;
+}
 const T = DATA.theme, M = DATA.meta;
 const MARK = M.mark_field, PRINT = M.print_field;
 const state = {
@@ -479,6 +566,7 @@ function renderTiles(){
 function renderSurface(){
   const c = combo(), traces = [];
   const mny = state.axis === 'mny';
+  if(state.z === 'iv'){ return renderSurfaceIV(c, mny); }
   // Same observations, different horizontal ruler. Moneyness (K/S) makes two
   // dates comparable even though the underlying moved between them.
   const xOf = s => mny ? s.mny : s.k;
@@ -543,6 +631,53 @@ function renderSurface(){
       bgcolor:'rgba(11,16,32,.78)',bordercolor:T.line,borderwidth:1,
       font:{size:11,color:T.text},itemsizing:'constant'},
     annotations:[cap('Circles are the mark. Diamonds are actual trades. The violet sheet is interpolated — an assumption, not a market.' + (mny ? ' Axis rebased to K/S.' : ''))],
+  }), CFG);
+}
+
+/* The surface in the space it is actually smooth in. Only the mark carries an
+   implied vol: a trade print has no bid/ask context to invert, and a mark that
+   no positive vol can reproduce is left out rather than clamped. */
+function renderSurfaceIV(c, mny){
+  const traces = [];
+  const xOf = s => mny ? s.mny : s.k;
+  const axisTitle = mny ? 'Moneyness  K / S' : 'Strike ($)';
+  const xFmt = mny ? '%{x:.3f}' : '%{x:.2f}', xLbl = mny ? 'K/S' : 'K';
+  if(!c.iv || !c.iv.k.length){
+    Plotly.react('p-surface', [], base({height:640,
+      scene:{xaxis:sceneAx(axisTitle),yaxis:sceneAx('Days to expiry'),
+             zaxis:sceneAx('Implied vol'),bgcolor:T.base},
+      annotations:[{text:'No invertible marks on this slice — nothing to show in vol space.',
+        xref:'paper',yref:'paper',x:.5,y:.5,xanchor:'center',showarrow:false,
+        font:{size:12.5,color:T.muted,family:T.font}}]}), CFG);
+    return;
+  }
+  if(state.sheet && c.sheet_iv && !mny){
+    traces.push({type:'surface', x:c.sheet_iv.x, y:c.sheet_iv.y, z:c.sheet_iv.z,
+      name:'Interpolated vol sheet', colorscale:T.interpScale,
+      opacity:T.interpOpacity, showscale:false, hoverinfo:'skip', showlegend:true,
+      contours:{x:{show:false},y:{show:false},z:{show:false}}});
+  }
+  traces.push({type:'scatter3d', mode:'markers', name:'Implied vol of the mark',
+    x:xOf(c.iv), y:c.iv.d, z:c.iv.v, customdata:c.iv.ric,
+    marker:{size:4,color:T.mark,opacity:.9,symbol:'circle',line:{width:0}},
+    hovertemplate:`<b>IV</b> %{z:.1%}<br>${xLbl} ${xFmt} · DTE %{y}<br>%{customdata}<extra></extra>`});
+
+  const label = state.cp==='C'?'Calls':'Puts';
+  Plotly.react('p-surface', traces, base({
+    height:640, margin:{l:8,r:8,t:64,b:8},
+    title:{text:`${M.underlying} ${label} · implied volatility · ${state.date}`,
+      font:{size:15,color:T.text,family:T.font},x:0,xanchor:'left',y:.97,yanchor:'top'},
+    scene:{xaxis:sceneAx(axisTitle),
+      yaxis:sceneAx('Days to expiry',{autorange:'reversed'}),
+      zaxis:sceneAx('Implied volatility', {tickformat:'.0%'}),
+      bgcolor:T.base, aspectmode:'manual', aspectratio:{x:1.2,y:1,z:.68},
+      camera:{eye:{x:1.6,y:-1.5,z:.82},center:{x:0,y:0,z:-.06}}},
+    legend:{orientation:'h',yanchor:'bottom',y:1,x:1,xanchor:'right',
+      bgcolor:'rgba(11,16,32,.78)',bordercolor:T.line,borderwidth:1,
+      font:{size:11,color:T.text},itemsizing:'constant'},
+    annotations:[cap('Inverted off the parity-implied forward — no rate or dividend assumed. '+
+      'Flatter in strike than the price surface, which is why interpolating here is less wrong.'+
+      (mny?' Sheet hidden on the K/S axis.':''))],
   }), CFG);
 }
 
@@ -947,9 +1082,13 @@ function renderArb(){
      of the time, so the chord-above-the-curve argument is running on a surface
      that is locally the wrong shape to begin with.
      <br><br>
-     <b>Caveat.</b> The intrinsic test uses spot without a carry or dividend
-     adjustment, and these are American options, so treat that row as approximate.
-     The butterfly and monotonicity tests need no such assumption.`;
+     <b>On the intrinsic row.</b> These are American options, so the floor is the
+     larger of immediate exercise, <code>max(S&minus;K,&nbsp;0)</code>, and the
+     European bound off the parity-fitted forward, <code>D(F&minus;K)</code>.
+     Earlier versions of this page compared against spot alone and flagged the
+     row as approximate; the put wing made a parity fit possible, so the carry
+     is now measured rather than assumed. The butterfly and monotonicity tests
+     never needed either.`;
 }
 
 /* ---------- the shape of the hole ---------- */
@@ -1227,6 +1366,15 @@ function togglePlay(){
 }
 
 function wirePlayback(){
+  document.querySelectorAll('#seg-z button').forEach(b=>{
+    b.addEventListener('click',()=>{
+      state.z = b.dataset.z;
+      document.querySelectorAll('#seg-z button').forEach(o=>
+        o.setAttribute('aria-pressed', String(o.dataset.z===state.z)));
+      document.getElementById('toggles').style.opacity = state.z==='iv' ? .4 : 1;
+      renderSurface();
+    });
+  });
   document.getElementById('btn-prev').addEventListener('click', () => {
     stopPlay(); gotoIndex(dateIndex() - 1);
   });
@@ -1244,6 +1392,206 @@ function wirePlayback(){
     else if(e.key === 'Escape'){ stopPlay(); }
   });
   paintPosition();
+}
+
+/* ---------- the RIC-convention bug that hid the put wing ---------- */
+function renderRicBug(){
+  const pr = DATA.meta.ric_probe;
+  const tb = document.getElementById('ricbug-tbl');
+  if(!pr){ tb.closest('.card').style.display='none'; return; }
+  tb.innerHTML =
+    `<tr><th>Expiry</th><th>Strike</th><th>Documented form <code>^{put}</code></th>`+
+    `<th>Actual LSEG form <code>^{call}</code></th></tr>` +
+    pr.rows.map(r=>`<tr><td>${r.expiry}</td><td>$${r.strike.toFixed(2)}</td>`+
+      `<td style="color:var(--print)">${r.doc} obs</td>`+
+      `<td style="color:var(--mark)"><b>${r.act} obs</b></td></tr>`).join('');
+  const probedOn = pr.underlying || 'UUUU';
+  document.getElementById('ricbug-note').innerHTML =
+    `${pr.rows.length} expiry/strike pairs probed directly against LSEG on
+     <b>${probedOn}</b>. The documented identifier returned data on
+     <b>none</b> of them; the corrected identifier returned data on
+     ${pr.rows.filter(r=>r.act>0).length} of ${pr.rows.length}.
+     ${probedOn===M.underlying?'':`The same one-letter fix was applied to
+     ${M.underlying}, whose puts were missing for the identical reason.`}
+     On this page it recovered <b>${(M.n_puts||0).toLocaleString()} put series</b>
+     previously reported as absent from the market, roughly doubling the panel
+     to ${(M.n_series_total||0).toLocaleString()} series.
+     <br><br>
+     <b>The lesson is not that the handout has a typo.</b> It is that "no data
+     came back" and "I asked the wrong question" are indistinguishable from
+     inside the pipeline. A synthetic universe is <i>designed</i> to generate
+     identifiers that never existed, so an empty response is the expected case
+     and cannot be treated as a signal. The only defence is an independent
+     check — here, a known-good call and its parity twin — and that check now
+     lives in <code>tests/test_ric.py</code> so the wing cannot silently vanish
+     again.`;
+}
+
+/* ---------- price space vs vol space ---------- */
+function renderSpace(){
+  const s = DATA.aggregate.space;
+  const tiles = document.getElementById('tiles-space');
+  if(!s){ tiles.innerHTML=''; return; }
+  const d = (v)=> (v>=0?'+':'')+'$'+Math.abs(v).toFixed(4);
+  tiles.innerHTML = `
+    <div class="tile hero2">
+      <div class="label">Median miss interpolating <b>price</b></div>
+      <div class="value">${money(s.price.median_abs_err)}</div>
+      <div class="sub">bias ${d(s.price.bias)} — a systematic overshoot</div>
+    </div>
+    <div class="tile hero">
+      <div class="label">Median miss interpolating <b>implied vol</b></div>
+      <div class="value">${money(s.vol.median_abs_err)}</div>
+      <div class="sub">bias ${d(s.vol.bias)} — the overshoot is gone</div>
+    </div>
+    <div class="tile">
+      <div class="label">Bias removed</div>
+      <div class="value">${(100*(1-Math.abs(s.vol.bias)/Math.abs(s.price.bias))).toFixed(0)}%</div>
+      <div class="sub">the part of the error that does not average out</div>
+    </div>
+    <div class="tile">
+      <div class="label">Cells where vol space won</div>
+      <div class="value">${s.win_rate.toFixed(0)}%</div>
+      <div class="sub">${s.n_tested.toLocaleString()} cells over ${s.n_slices} slices</div>
+    </div>`;
+
+  const x = s.rows.map(r=>r.truth);
+  const all = x.concat(s.rows.map(r=>r.px)).concat(s.rows.map(r=>r.vx));
+  const lo = Math.min.apply(null,all), hi = Math.max.apply(null,all);
+  const pad = hi>lo ? (hi-lo)*.06 : .05;
+  Plotly.react('p-space', [
+    {type:'scatter',mode:'lines',name:'perfect',hoverinfo:'skip',
+     x:[lo-pad,hi+pad],y:[lo-pad,hi+pad],line:{color:T.faint,dash:'dash',width:1}},
+    {type:'scatter',mode:'markers',name:'interpolated price',
+     x:x,y:s.rows.map(r=>r.px),
+     marker:{size:7,color:T.print,opacity:.55,line:{width:1,color:T.panel}},
+     hovertemplate:'true $%{x:.3f}<br>price-space guess $%{y:.3f}<extra></extra>'},
+    {type:'scatter',mode:'markers',name:'interpolated vol, repriced',
+     x:x,y:s.rows.map(r=>r.vx),symbol:'diamond',
+     marker:{size:7,color:T.mark,opacity:.75,symbol:'diamond',line:{width:1,color:T.panel}},
+     hovertemplate:'true $%{x:.3f}<br>vol-space guess $%{y:.3f}<extra></extra>'},
+  ], base({height:440, margin:{l:70,r:24,t:64,b:112},
+      title:{text:'The same hidden cells, guessed two ways',
+        font:{size:15,color:T.text,family:T.font},x:0,xanchor:'left',y:.97,yanchor:'top'},
+      xaxis:ax('True MID_PRICE ($)',{range:[lo-pad,hi+pad]}),
+      yaxis:ax('Guess ($)',{range:[lo-pad,hi+pad]}),
+      legend:{orientation:'h',yanchor:'bottom',y:1.0,x:1,xanchor:'right',
+        bgcolor:'rgba(11,16,32,.78)',bordercolor:T.line,borderwidth:1,
+        font:{size:11,color:T.text}},
+      annotations:[{text:'The amber cloud sits above the line; the green one straddles it. That gap is the convexity bias.',
+        xref:'paper',yref:'paper',x:0,y:-0.26,xanchor:'left',yanchor:'top',
+        showarrow:false,font:{size:10.5,color:T.faint,family:T.font}}],
+  }), CFG);
+
+  const imp = s.improvement_pct;
+  document.getElementById('space-note').innerHTML =
+    `<b>Read the two numbers in the right order.</b> The median error improves
+     only modestly, from ${money(s.price.median_abs_err)} to
+     ${money(s.vol.median_abs_err)} — about ${imp.toFixed(0)}%. That is the
+     honest headline, and it is smaller than the framing "interpolate in vol
+     space" usually promises. The <b>bias</b> is where the change is dramatic:
+     ${d(s.price.bias)} collapses to ${d(s.vol.bias)}.
+     <br><br>
+     That asymmetry is the result, not a disappointment. Random error does not
+     care what space you work in — it comes from the holes being wide, and vol
+     space cannot invent support that is not there. Systematic error does care,
+     because it comes from drawing a straight line through a curve that bends.
+     Interpolating vol removes the part of the error caused by the geometry
+     being wrong, and leaves the part caused by the data being sparse. The first
+     was a modelling choice I controlled; the second is the assignment's actual
+     subject and no change of variable will fix it.
+     <br><br>
+     <b>Same caveat as the section above, doubled.</b> These are interior cells
+     ringed by real observations, and vol space is being scored on its home
+     ground: a cell needs a mark to have an implied vol at all, so the
+     ${(100-(DATA.aggregate.iv_cov?DATA.aggregate.iv_cov.pct:0)).toFixed(0)}% of
+     marks that admit no implied vol — the ones the arbitrage audit already
+     flags as unexecutable — are silently excluded from this comparison rather
+     than counted as failures.`;
+}
+
+/* ---------- the parity-implied forward ---------- */
+function renderParity(){
+  const pa = DATA.aggregate.parity, f = DATA.aggregate.forward,
+        cov = DATA.aggregate.iv_cov;
+  const tiles = document.getElementById('tiles-parity');
+  if(!pa || !pa.n_pairs){ tiles.innerHTML=''; return; }
+  tiles.innerHTML = `
+    <div class="tile hero2">
+      <div class="label">Median parity residual at the mid</div>
+      <div class="value">${money(pa.resid_med)}</div>
+      <div class="sub">an identity should give zero · p90 ${money(pa.resid_p90)}</div>
+    </div>
+    <div class="tile hero">
+      <div class="label">Survive paying the spread on all four legs</div>
+      <div class="value">${pa.n_exec_viol}</div>
+      <div class="sub">of ${pa.n_pairs.toLocaleString()} conversions tested</div>
+    </div>
+    <div class="tile">
+      <div class="label">Fitted forward minus spot</div>
+      <div class="value">${(pa.median_basis>=0?'+':'')}$${Math.abs(pa.median_basis).toFixed(3)}</div>
+      <div class="sub">discount factor ${pa.median_D.toFixed(5)} · ${pa.n_fits} fits</div>
+    </div>
+    <div class="tile">
+      <div class="label">Holes fillable with no model at all</div>
+      <div class="value">${pa.recover_pct.toFixed(0)}%</div>
+      <div class="sub">${pa.recoverable.toLocaleString()} of ${pa.holes.toLocaleString()} one-sided cells</div>
+    </div>`;
+
+  if(f){
+    Plotly.react('p-parity', [
+      {type:'scatter',mode:'markers',name:'fitted forward F',
+       x:f.spot,y:f.F,
+       marker:{size:7,color:T.mark,opacity:.7,line:{width:1,color:T.panel}},
+       hovertemplate:'spot $%{x:.2f}<br>fitted forward $%{y:.2f}<extra></extra>'},
+      {type:'scatter',mode:'lines',name:'F = S',hoverinfo:'skip',
+       x:[Math.min.apply(null,f.spot),Math.max.apply(null,f.spot)],
+       y:[Math.min.apply(null,f.spot),Math.max.apply(null,f.spot)],
+       line:{color:T.faint,dash:'dash',width:1}},
+    ], base({height:400, margin:{l:70,r:24,t:64,b:104},
+        title:{text:'The forward the option market implies, against spot',
+          font:{size:15,color:T.text,family:T.font},x:0,xanchor:'left',y:.97,yanchor:'top'},
+        xaxis:ax('Underlying close ($)'), yaxis:ax('Parity-implied forward ($)'),
+        legend:{orientation:'h',yanchor:'bottom',y:1.0,x:1,xanchor:'right',
+          bgcolor:'rgba(11,16,32,.78)',bordercolor:T.line,borderwidth:1,
+          font:{size:11,color:T.text}},
+        annotations:[{text:'Nothing here assumes a rate or a dividend — F and D are the slope and intercept of a line through the option prices.',
+          xref:'paper',yref:'paper',x:0,y:-0.24,xanchor:'left',yanchor:'top',
+          showarrow:false,font:{size:10.5,color:T.faint,family:T.font}}],
+    }), CFG);
+  }
+
+  document.getElementById('parity-note').innerHTML =
+    `<b>The forward checks out; the mid still does not.</b> The fitted forward
+     sits ${(pa.median_basis>=0?'+':'')}$${Math.abs(pa.median_basis).toFixed(3)}
+     from spot with a discount factor of ${pa.median_D.toFixed(5)} — which is
+     what a non-dividend payer over a few weeks at near-zero carry should look
+     like, and is a genuine validation, because nothing forced that result. The
+     regression was free to return anything.
+     <br><br>
+     Against that clean forward, the median parity residual is still
+     ${money(pa.resid_med)}. Parity is an <i>identity</i>: the call mid and the
+     put mid on the same strike cannot both be prices and disagree by that much.
+     This is a third independent measurement of the same finding the butterfly
+     test and the fill-location histogram already made, and it is the cleanest
+     of the three, because it needs no volatility, no interpolation and no
+     assumption about the rate. And it too dissolves at executable prices —
+     only ${pa.n_exec_viol} of ${pa.n_pairs.toLocaleString()} conversions
+     survive paying the spread on all four legs.
+     <br><br>
+     <b>The practical payoff.</b> ${pa.recoverable.toLocaleString()} cells where
+     one right is quoted and the other is not can be filled <i>exactly</i> by
+     parity — no surface, no vol, no interpolation, no error bar. That is
+     ${pa.recover_pct.toFixed(0)}% of the one-sided holes on this panel. Before
+     interpolating anything, it is worth asking how many of the gaps were never
+     gaps in the first place.
+     ${cov&&cov.pct!=null?`<br><br><b>Implied vol coverage.</b> ${cov.pct.toFixed(1)}%
+     of marks (${cov.n_iv.toLocaleString()} of ${cov.n_marks.toLocaleString()})
+     invert to a positive implied vol; the median is
+     ${(100*cov.median_iv).toFixed(0)}%. The remainder are marks that no
+     volatility can reproduce — below intrinsic or above the forward — and they
+     are returned as blanks rather than clamped to a boundary, because clamping
+     would launder an impossible quote into a plausible surface point.`:''}`;
 }
 
 /* ---------- highlight the section you are looking at ---------- */
@@ -1266,7 +1614,8 @@ function wireScrollSpy(){
   });
 }
 
-renderChrome(); wire(); renderAll(); renderStock(); renderSpread(); renderCompare2(); renderArb(); renderHole(); renderRuledOut(); wirePlayback(); wireScrollSpy();
+renderChrome(); wire(); renderAll(); renderStock(); renderSpread(); renderCompare2(); renderArb(); renderHole(); renderRuledOut(); renderRicBug(); renderSpace();
+renderParity(); wirePlayback(); wireScrollSpy();
 </script>
 </body>
 </html>

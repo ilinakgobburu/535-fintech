@@ -61,12 +61,36 @@ def load_payload(path: str | Path) -> dict:
 
 
 def _resolve_levels(cols: pd.MultiIndex) -> tuple[int, int]:
-    """Work out which MultiIndex level holds the field name and which the RIC."""
+    """
+    Work out which MultiIndex level holds the field name and which the RIC.
+
+    Decided by counting how many labels on each level actually PARSE as option
+    RICs, not by asking whether a level contains a known field name. The
+    latter is what this function used to do, and it is fragile in exactly the
+    way that matters: LSEG occasionally hands back a frame whose column is
+    labelled with the field rather than the RIC, and a single stray "BID"
+    label on the RIC level was enough to make this function swap the two.
+    Every RIC then failed to parse and the whole panel silently became zero
+    rows -- no error, no warning, just an empty app.
+
+    Counting parses cannot be fooled by one bad label, because the real RIC
+    level wins by hundreds of votes.
+    """
+    scores = [
+        sum(parse_option_ric(v) is not None
+            for v in pd.unique(cols.get_level_values(i)))
+        for i in range(cols.nlevels)
+    ]
+    if max(scores) > 0:
+        ric_lvl = int(np.argmax(scores))
+        return (1 if ric_lvl == 0 else 0), ric_lvl
+
+    # No level parses as RICs at all: fall back to the name-based sniff.
     for i in range(cols.nlevels):
         vals = {str(v).upper() for v in cols.get_level_values(i)}
         if vals & KNOWN_FIELDS:
             return i, (1 if i == 0 else 0)
-    # Fall back to the LSEG default ordering, (RIC, field).
+    # Last resort: the LSEG default ordering, (RIC, field).
     return (cols.nlevels - 1), 0
 
 

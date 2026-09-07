@@ -343,14 +343,78 @@ def occupancy_matrix(wide: pd.DataFrame, field: str) -> pd.DataFrame | None:
 # Structural checks: things an option surface must obey regardless of model
 # --------------------------------------------------------------------------
 
-def arbitrage_audit(wide: pd.DataFrame, strike_step: float = 0.50) -> dict:
+def infer_strike_step(wide: pd.DataFrame, default: float = 0.50) -> float:
+    """
+    The listed strike increment, read off the data instead of assumed.
+
+    Both the butterfly test and the vertical-spread example compare only
+    STRICTLY CONSECUTIVE strikes, so they need to know the grid. Hardcoding
+    $0.50 is right for UUUU and silently wrong for anything else: on a name
+    listed in $1.00 increments no pair is ever one step apart, every test is
+    skipped, and the audit reports zero comparisons rather than an error. That
+    is what happened to the CCJ control page.
+
+    The modal gap between adjacent listed strikes is the grid.
+    """
+    if wide is None or wide.empty or "strike" not in wide.columns:
+        return default
+    gaps = []
+    for _, g in wide.groupby(["date", "expiry"]):
+        k = np.sort(g["strike"].dropna().unique())
+        if len(k) > 1:
+            gaps.append(np.diff(k))
+    if not gaps:
+        return default
+    allg = np.concatenate(gaps)
+    allg = allg[allg > 1e-9]
+    if not len(allg):
+        return default
+    vals, counts = np.unique(np.round(allg, 4), return_counts=True)
+    return float(vals[np.argmax(counts)])
+
+
+def _intrinsic_floor(df: pd.DataFrame, is_put: bool) -> pd.Series:
+    """
+    Model-free lower bound for an AMERICAN option.
+
+    Two bounds apply and the option is worth at least both:
+
+      immediate exercise   max(S - K, 0)          calls
+                           max(K - S, 0)          puts
+      the European bound   D * (F - K)            calls
+        off the fitted     D * (K - F)            puts
+        forward
+
+    Using spot alone -- which is what this test did before the put wing came
+    back and made a parity fit possible -- ignores the second and quietly
+    assumes zero carry. Where no forward was fitted, F falls back to spot and
+    D to 1, and the second term collapses into the first, so the check never
+    gets weaker than it was.
+    """
+    spot_side = (df["strike"] - df["spot"]) if is_put else (df["spot"] - df["strike"])
+    floor = np.maximum(spot_side, 0.0)
+    if "F" in df.columns and "D" in df.columns:
+        F = df["F"].fillna(df["spot"])
+        D = df["D"].fillna(1.0)
+        fwd_side = D * ((df["strike"] - F) if is_put else (F - df["strike"]))
+        floor = np.maximum(floor, fwd_side.fillna(0.0))
+    return floor
+
+
+def arbitrage_audit(wide: pd.DataFrame, strike_step: float | None = None,
+                    cp: str = "C") -> dict:
     """
     Test the surface against two rules that hold for ANY arbitrage-free market,
     with no model and no volatility assumption:
 
       monotonicity  a call struck higher cannot cost more:  C(K) >= C(K+h)
+                    the sign FLIPS for puts: P(K) <= P(K+h). A put struck
+                    higher is worth more, so the same test run on puts with
+                    the call inequality would report every well-behaved
+                    strike as a violation.
       convexity     a butterfly cannot cost negative money:
-                    C(K-h) - 2C(K) + C(K+h) >= 0
+                    V(K-h) - 2V(K) + V(K+h) >= 0
+                    this one does NOT flip -- both rights are convex in K.
 
     Each is checked twice.
 
@@ -370,14 +434,22 @@ def arbitrage_audit(wide: pd.DataFrame, strike_step: float = 0.50) -> dict:
         "n_bfly": 0, "bfly_mid": 0, "bfly_exec": 0, "worst_bfly": None,
         "n_mono": 0, "mono_mid": 0, "mono_exec": 0, "worst_mono": None,
         "n_intr": 0, "intr_mid": 0, "intr_ask": 0, "worst_intr": None,
-        "examples": [],
+        "examples": [], "cp": cp, "strike_step": float(strike_step or 0.50),
     }
     if wide is None or wide.empty:
         return out
 
-    calls = wide[wide["cp"] == "C"]
+    calls = wide[wide["cp"] == cp]
     if calls.empty:
         return out
+    # Inferred from THIS right's own strikes. A cache whose two rights were
+    # pulled on different grids -- which is easy to do by accident across two
+    # fetches -- would otherwise have the denser right's step imposed on the
+    # sparser one, and the sparser one would silently test nothing.
+    if strike_step is None:
+        strike_step = infer_strike_step(calls)
+    out["strike_step"] = float(strike_step)
+    is_put = (cp == "P")
 
     worst_bf, worst_mn = 0.0, 0.0
     for (_, _), g in calls.groupby(["date", "expiry"]):
@@ -393,11 +465,18 @@ def arbitrage_audit(wide: pd.DataFrame, strike_step: float = 0.50) -> dict:
                 continue
             if np.isfinite(M[i]) and np.isfinite(M[i + 1]):
                 out["n_mono"] += 1
-                gap = M[i + 1] - M[i]
+                # calls must fall in K, puts must rise in K
+                gap = (M[i] - M[i + 1]) if is_put else (M[i + 1] - M[i])
                 if gap > 1e-12:
                     out["mono_mid"] += 1
                     worst_mn = max(worst_mn, gap)
-                if np.isfinite(A[i]) and np.isfinite(B[i + 1]) and B[i + 1] - A[i] > 1e-12:
+                if is_put:
+                    # sell the high strike at the bid, buy the low at the ask
+                    if (np.isfinite(A[i + 1]) and np.isfinite(B[i])
+                            and B[i] - A[i + 1] > 1e-12):
+                        out["mono_exec"] += 1
+                elif (np.isfinite(A[i]) and np.isfinite(B[i + 1])
+                        and B[i + 1] - A[i] > 1e-12):
                     out["mono_exec"] += 1
 
         for i in range(len(K) - 2):
@@ -428,11 +507,11 @@ def arbitrage_audit(wide: pd.DataFrame, strike_step: float = 0.50) -> dict:
     out["worst_bfly"] = float(worst_bf) if worst_bf < 0 else None
     out["worst_mono"] = float(worst_mn) if worst_mn > 0 else None
 
-    # Intrinsic floor. Spot-based, so no carry or dividend adjustment -- this is
-    # an approximation and the page says so.
+    # Intrinsic floor, against the larger of immediate exercise and the
+    # parity-fitted forward bound. See _intrinsic_floor.
     q = calls.dropna(subset=[MARK_FIELD, "spot"])
     if len(q):
-        intrinsic = np.maximum(q["spot"] - q["strike"], 0.0)
+        intrinsic = _intrinsic_floor(q, is_put)
         below = q[MARK_FIELD] < intrinsic - 1e-12
         out["n_intr"] = int(len(q))
         out["intr_mid"] = int(below.sum())
@@ -440,7 +519,7 @@ def arbitrage_audit(wide: pd.DataFrame, strike_step: float = 0.50) -> dict:
             out["worst_intr"] = float((intrinsic - q[MARK_FIELD])[below].max())
         qa = q.dropna(subset=["ASK"]) if "ASK" in q else q.iloc[0:0]
         if len(qa):
-            out["intr_ask"] = int((qa["ASK"] < np.maximum(qa["spot"] - qa["strike"], 0.0)
+            out["intr_ask"] = int((qa["ASK"] < _intrinsic_floor(qa, is_put)
                                    - 1e-12).sum())
     return out
 
@@ -451,7 +530,7 @@ DTE_BINS = [-1, 5, 10, 20, 40, np.inf]
 DTE_LABELS = ["0-5d", "6-10d", "11-20d", "21-40d", "40d+"]
 
 
-def print_probability(wide: pd.DataFrame) -> dict | None:
+def print_probability(wide: pd.DataFrame, cp: str = "C") -> dict | None:
     """
     P(a trade printed) over moneyness x days-to-expiry.
 
@@ -463,7 +542,7 @@ def print_probability(wide: pd.DataFrame) -> dict | None:
     """
     if wide is None or wide.empty or "moneyness" not in wide.columns:
         return None
-    w = wide[wide["cp"] == "C"].dropna(subset=["moneyness", "dte"]).copy()
+    w = wide[wide["cp"] == cp].dropna(subset=["moneyness", "dte"]).copy()
     if len(w) < 50:
         return None
     w["mb"] = pd.cut(w["moneyness"], MONEYNESS_BINS, labels=MONEYNESS_LABELS)
@@ -526,7 +605,8 @@ def quote_quality(wide: pd.DataFrame) -> dict:
     return out
 
 
-def vertical_spread_example(wide: pd.DataFrame, strike_step: float = 0.50) -> dict | None:
+def vertical_spread_example(wide: pd.DataFrame, strike_step: float | None = None,
+                            cp: str = "C") -> dict | None:
     """
     One real vertical spread, priced at the mark and at prices you could trade.
 
@@ -539,24 +619,31 @@ def vertical_spread_example(wide: pd.DataFrame, strike_step: float = 0.50) -> di
     """
     if wide is None or wide.empty or "BID" not in wide.columns:
         return None
-
     rows = []
-    for (d, e), g in wide[wide["cp"] == "C"].groupby(["date", "expiry"]):
+    side = wide[wide["cp"] == cp]
+    if strike_step is None:
+        strike_step = infer_strike_step(side)
+    for (d, e), g in side.groupby(["date", "expiry"]):
         g = g.sort_values("strike").dropna(subset=[MARK_FIELD, "BID", "ASK"])
         K = g["strike"].to_numpy(float)
         for i in range(len(K) - 1):
             if abs(K[i + 1] - K[i] - strike_step) > 1e-9:
                 continue
             lo, hi = g.iloc[i], g.iloc[i + 1]
-            mid_val = float(lo[MARK_FIELD] - hi[MARK_FIELD])
+            # a call vertical is a debit low-minus-high; a put vertical reverses
+            mid_val = float(hi[MARK_FIELD] - lo[MARK_FIELD]) if cp == "P" \
+                else float(lo[MARK_FIELD] - hi[MARK_FIELD])
             if not (0.05 <= mid_val <= strike_step):
                 continue  # a vertical cannot be worth more than its width
-            exec_val = float(lo["ASK"] - hi["BID"])   # buy low strike, sell high
+            exec_val = (float(hi["ASK"] - lo["BID"]) if cp == "P"
+                        else float(lo["ASK"] - hi["BID"]))  # pay ask, receive bid
             rows.append({
                 "date": str(pd.Timestamp(d).date()),
                 "expiry": str(pd.Timestamp(e).date()),
                 "dte": int(lo["dte"]),
-                "k_long": float(lo["strike"]), "k_short": float(hi["strike"]),
+                "cp": cp,
+                "k_long": float(hi["strike"]) if cp == "P" else float(lo["strike"]),
+                "k_short": float(lo["strike"]) if cp == "P" else float(hi["strike"]),
                 "ric_long": str(lo["ric"]), "ric_short": str(hi["ric"]),
                 "mid_value": mid_val,
                 "exec_value": exec_val,

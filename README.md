@@ -2,7 +2,7 @@
 
 MEng FinTech · Algorithmic Trading II. One app, grown one homework at a time.
 
-**Published site:** _(GitHub Pages URL goes here once the repo is up)_
+**Published site:** <https://ilinakgobburu.github.io/535-fintech/>
 
 ---
 
@@ -21,17 +21,33 @@ Assignment text: [`options_surface_lab/README.md`](options_surface_lab/README.md
 trading_app/
   trading_app/
     theme.py            graphical identity — palette, Plotly layout helpers
-    lib/ric.py          OPRA RIC parse + build
+    lib/ric.py          OPRA RIC parse + build (see "the put wing" below)
     lib/loaders.py      LSEG pickle -> tidy long table -> wide (mark | print)
     lib/metrics.py      the two required statistics, interpolation, occupancy
+    lib/vol.py          put-call parity, the implied forward, Black-76 and the
+                        price-space vs vol-space comparison
     lib/plots.py        Plotly figures
     pages/              future homeworks land here
-    data/               the cached LSEG pickle
-  scripts/fetch_lseg.py     re-pull from LSEG and write the pickle
-  scripts/build_static.py   build the published page
+    data/               the cached LSEG pickles + the RIC-suffix probe
+  scripts/fetch_lseg.py       re-pull from LSEG and write the pickle
+  scripts/probe_ric_suffix.py reproduce the put-suffix finding against LSEG
+  scripts/build_static.py     build the published page
   scripts/page_template.html
+  tests/                      pytest — RIC round-trips, pricing math, loader shapes
 docs/index.html         <- what GitHub Pages serves
+docs/ccj.html           <- the control name
 ```
+
+### Tests
+
+```bash
+cd trading_app
+python3 -m pytest tests -q      # 108 tests, no LSEG session needed
+```
+
+Every bug these pin produced **zero rows and no error message**. That is the
+failure mode worth testing here: an exception is visible, an empty panel looks
+like a quiet day.
 
 ### Rebuild the site
 
@@ -53,6 +69,89 @@ reflex run
 The Reflex page is the interactive twin of the published one. Both call the same
 `lib/` modules, so a number shown in one cannot drift from the other. Pages
 serves the static build; Reflex is for local exploration and the live demo.
+
+---
+
+## The put wing was never missing
+
+The first version of this project reported that the pull contained no puts and
+called it an unexplained hole. It was not a hole in the data. The scheme in the
+assignment says the expired-contract suffix `^{M}{YY}` "repeats the month
+letter." **That is true for calls and wrong for puts.** LSEG keys the suffix off
+the expiry month's *call* letter for both rights:
+
+```
+UUUUT212601200.U^H26   21-Aug-2026 PUT @ $12.00   39 observations   <- resolves
+UUUUT212601200.U^T26   the documented form         no data          <- does not
+```
+
+Probed directly against LSEG on six expiry/strike pairs: the documented form
+returned data on none, the corrected form on five
+(`scripts/probe_ric_suffix.py`). The same assumption was wired into two places —
+the RIC *generator* asked for contracts that do not exist, and `parse_option_ric`
+*validated* against the same wrong rule, so the puts would have been discarded
+even if they had arrived. Fixing one letter recovered **230 put series and
+~20,000 observations**, roughly doubling the panel and making everything in the
+next section possible.
+
+The lesson is not that the handout has a typo. It is that "no data came back"
+and "I asked the wrong question" are indistinguishable from inside a synthetic
+universe, where empty responses are the *expected* case and cannot be treated as
+a signal. The only defense is an independent check, and that check now lives in
+`tests/test_ric.py`.
+
+Appendix A has a second, harmless error: the worked example `UUUUA1502601250.U^A26`
+carries ten digits in the body where the scheme on the same page specifies nine
+(`DD`+`YY`+`SSSSS`). The self-consistent identifier is `UUUUA152601250.U^A26`.
+
+## The forward, and the right space to interpolate in
+
+With both rights in hand, put-call parity `C − P = D(F − K)` is an identity — no
+model, no volatility. Fitting it across strikes returns the slope `−D` and the
+intercept `D·F`, so **the forward and the rate come out of the option prices
+themselves**; nothing on the site assumes a risk-free rate or a dividend. The fit
+lands at spot `+$0.020` with `D = 1.00075`, which is what a non-dividend payer
+over a few weeks should look like — a real validation, since the regression was
+free to return anything.
+
+Two things follow.
+
+**Parity is a third, cleanest measure of the mid failing to be a price.** The
+median residual is **$0.042** on an identity that should give zero, and only
+**16 of 4,147** conversions survive paying the spread on all four legs. Same
+verdict as the butterfly test and the fill-location histogram, reached without
+volatility, interpolation, or a rate assumption.
+
+**88.3% of one-sided holes never needed guessing.** Where one right is quoted and
+the other is not, parity reconstructs the missing mark *exactly* — 1,709 of 1,936
+cells. Worth asking, before interpolating anything, how many gaps were not gaps.
+
+**And the interpolation bias has a fix.** The holdout section measures a
+`+$0.015` bias from interpolating price and blames convexity. If that diagnosis
+is right it names its own remedy: convexity belongs to the price, not the
+contract, and implied vol is far flatter in strike. Running the identical test in
+vol space — same cells, same triangulation, converted back to dollars through
+Black-76 — gives:
+
+| | median miss | bias |
+|---|---|---|
+| interpolating **price** | $0.0300 | **+$0.0150** |
+| interpolating **implied vol** | $0.0247 | **+$0.0020** |
+
+Read those in the right order. The median improves only ~18%, which is less than
+the usual framing promises. The **bias falls by 87%**, and that asymmetry is the
+result rather than a disappointment: random error comes from the holes being
+wide and no change of variable can invent support that is not there, while
+systematic error comes from drawing a straight line through a curve that bends.
+Interpolating vol fixes the geometry and leaves the sparsity — which is the
+assignment's actual subject.
+
+The CCJ control replicates the part that matters. Its bias falls `+$0.0200` →
+`+$0.0027`, an 86% collapse against UUUU's 87% — but its median only improves
+8.8%, against UUUU's 17.7%. So the *systematic* gain is stable across names
+while the *typical* gain is not, which is the same story told twice: changing
+the space reliably removes the error that comes from geometry, and does
+nothing dependable about the error that comes from sparsity.
 
 ---
 

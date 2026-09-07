@@ -18,8 +18,13 @@ Three things this does differently from the starter, each for a concrete reason:
    existed. We band each expiry to the underlying's range over that contract's
    own life, plus a buffer, which cuts the candidate count substantially.
 
-3. BOTH RIGHTS.
-   Calls and puts. The previous cache had calls only.
+3. BOTH RIGHTS, WITH THE SUFFIX BUG FIXED.
+   The published RIC scheme says the ^ suffix repeats the body's month letter.
+   That is true for calls and wrong for puts -- LSEG keys the suffix off the
+   expiry month's CALL letter for both rights. Generating ^{put letter} asks
+   for contracts that do not resolve, which is why the first pull came back
+   calls-only. See trading_app/lib/ric.py. --rights and --merge let you pull
+   just the wing that was missed and fold it into an existing cache.
 
     python scripts/fetch_lseg.py --dry-run     # count candidates, no session
     python scripts/fetch_lseg.py               # real pull
@@ -59,6 +64,7 @@ def candidate_rics(
     end: dt.date,
     strike_step: float,
     band: float,
+    rights: tuple[str, ...] = ("C", "P"),
 ) -> tuple[list[str], dict]:
     """
     Build the candidate universe, banding strikes per expiry.
@@ -91,7 +97,7 @@ def candidate_rics(
 
         made = []
         for k in strikes:
-            for cp in ("C", "P"):
+            for cp in rights:
                 made.append(build_option_ric(root, expiry, float(k), cp))
         per_expiry[str(expiry)] = len(made)
         rics.extend(made)
@@ -159,6 +165,11 @@ def main() -> int:
     ap.add_argument("--pause", type=float, default=0.0)
     ap.add_argument("--fields", nargs="+", default=OPTION_FIELDS)
     ap.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    ap.add_argument("--rights", nargs="+", default=["C", "P"], choices=["C", "P"],
+                    help="which rights to generate; use 'P' to backfill a calls-only cache")
+    ap.add_argument("--merge", type=Path, default=None,
+                    help="existing pickle to fold this pull into, instead of "
+                         "writing a fresh one (keeps its stock frame and window)")
     ap.add_argument("--dry-run", action="store_true",
                     help="build the candidate list and stop; no LSEG session")
     args = ap.parse_args()
@@ -173,13 +184,25 @@ def main() -> int:
         days = pd.bdate_range(start_date, end_date)
         fake = pd.DataFrame({"LOW_1": 7.0, "HIGH_1": 20.0}, index=days)
         rics, per_expiry = candidate_rics(
-            fake, args.root, start_date, end_date, args.strike_step, args.band)
+            fake, args.root, start_date, end_date, args.strike_step, args.band,
+            tuple(args.rights))
         print(f"candidates: {len(rics)} across {len(per_expiry)} expiries")
         print(f"  ~{-(-len(rics)//args.batch_size)} batches per field "
               f"x {len(args.fields)} fields")
         print("  (dry run uses an assumed $7-$20 range; the real pull bands to "
               "the actual underlying)")
         return 0
+
+    merge_payload = None
+    if args.merge:
+        with args.merge.open("rb") as fh:
+            merge_payload = pickle.load(fh)
+        win = merge_payload.get("window")
+        if win:
+            start_str, end_str = win
+            start_date = dt.date.fromisoformat(start_str)
+            end_date = dt.date.fromisoformat(end_str)
+            print(f"merging into {args.merge} — reusing its window {start_str} -> {end_str}")
 
     try:
         import lseg.data as ld
@@ -193,9 +216,13 @@ def main() -> int:
         print(f"open_session failed: {exc}")
         return 2
 
-    print("fetching underlying...")
-    df_stock = ld.get_history(universe=[args.stock], fields=STOCK_FIELDS,
-                              start=start_str, end=end_str, interval="daily")
+    if merge_payload is not None:
+        df_stock = merge_payload["stock"]
+        print(f"reusing cached underlying ({len(df_stock)} sessions)")
+    else:
+        print("fetching underlying...")
+        df_stock = ld.get_history(universe=[args.stock], fields=STOCK_FIELDS,
+                                  start=start_str, end=end_str, interval="daily")
     if df_stock is None or df_stock.empty:
         print("no underlying history -- check the RIC and your entitlements")
         ld.close_session()
@@ -204,8 +231,10 @@ def main() -> int:
           f"${float(df_stock['LOW_1'].min()):.2f} - ${float(df_stock['HIGH_1'].max()):.2f}")
 
     rics, per_expiry = candidate_rics(
-        df_stock, args.root, start_date, end_date, args.strike_step, args.band)
-    print(f"candidate universe: {len(rics)} RICs across {len(per_expiry)} expiries")
+        df_stock, args.root, start_date, end_date, args.strike_step, args.band,
+        tuple(args.rights))
+    print(f"candidate universe: {len(rics)} RICs ({'+'.join(args.rights)}) "
+          f"across {len(per_expiry)} expiries")
 
     by_field: dict[str, pd.DataFrame] = {}
     for field in args.fields:
@@ -233,6 +262,17 @@ def main() -> int:
         pieces.append(f)
     df_options = pd.concat(pieces, axis=1).sort_index(axis=1)
     df_options.columns.names = ["RIC", "Field"]
+
+    if merge_payload is not None:
+        prior = merge_payload["options"]
+        before = prior.columns.get_level_values(0).nunique()
+        df_options = pd.concat([prior, df_options], axis=1).sort_index(axis=1)
+        df_options = df_options.loc[:, ~df_options.columns.duplicated()]
+        df_options.columns.names = ["RIC", "Field"]
+        after = df_options.columns.get_level_values(0).nunique()
+        print(f"merged: {before} existing series + new -> {after} total")
+        args.fields = sorted(set(merge_payload.get("fields_requested", [])) |
+                             set(args.fields))
 
     payload = {
         "stock": df_stock,

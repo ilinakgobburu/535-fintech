@@ -9,9 +9,22 @@ OPRA-style RIC parsing and construction.
     YY      two-digit year                      26
     SSSSS   strike x 100, zero-padded to 5      $12.50 -> 01250
     .U      exchange / venue qualifier
-    ^{M}{YY} expired-contract suffix, repeats month letter and year
+    ^{M}{YY} expired-contract suffix -- see the correction below
 
     UUUUA1502601250.U^A26  =  UUUU 15-Jan-2026 call struck at $12.50
+
+CORRECTION TO THE PUBLISHED SCHEME. The assignment states that the expired
+suffix "repeats the month letter". That is true for calls and WRONG for puts.
+LSEG keys the ^ suffix off the expiry month's CALL letter for both rights, so
+an August put carries body letter T and suffix ^H26, not ^T26:
+
+    UUUUT212601200.U^H26   UUUU 21-Aug-2026 PUT  struck at $12.00   (39 obs)
+    UUUUT212601200.U^T26   the documented form                      (no data)
+
+Probed against LSEG across six expiry/strike pairs: the ^CALL form returned
+data on five, the ^PUT form on none. Generating the documented form is why the
+first pull came back calls-only, and validating against it is why the parser
+would have discarded the puts even if they had arrived.
 """
 
 from __future__ import annotations
@@ -42,6 +55,17 @@ RIC_RE = re.compile(
 )
 
 
+def expired_suffix_code(month: int) -> str:
+    """
+    The letter LSEG puts after the ^ on an expired option RIC.
+
+    It is the expiry month's CALL letter for calls AND puts. The assignment
+    says the suffix repeats the body's own month letter, which silently
+    produces put RICs that do not resolve.
+    """
+    return MONTH_TO_CODE["C"][month]
+
+
 def parse_option_ric(ric: str) -> dict | None:
     """
     Explode one RIC into {underlying, expiry, put/call, strike}.
@@ -69,10 +93,17 @@ def parse_option_ric(ric: str) -> dict | None:
         # e.g. a generated "Feb 30" candidate
         return None
 
-    # If the expired suffix disagrees with the body, the RIC is malformed.
+    # Validate the expired suffix. The correct LSEG form is the expiry month's
+    # CALL letter regardless of right; the form the assignment documents (the
+    # body letter repeated) is accepted too, so caches built against the old
+    # convention still parse instead of silently vanishing.
     sfx = m.group("sfx_code")
-    if sfx and sfx.upper() != code:
-        return None
+    suffix_code = None
+    if sfx:
+        sfx = sfx.upper()
+        suffix_code = sfx
+        if sfx not in (expired_suffix_code(month), code):
+            return None
 
     return {
         "ric": text,
@@ -83,6 +114,7 @@ def parse_option_ric(ric: str) -> dict | None:
         "month_code": code,
         "venue": (m.group("venue") or "").upper() or None,
         "expired": bool(sfx),
+        "suffix_code": suffix_code,
     }
 
 
@@ -106,5 +138,8 @@ def build_option_ric(
     )
     ric = f"{body}.{venue}"
     if expired:
-        ric = f"{ric}^{code}{expiry.strftime('%y')}"
+        # The suffix keys off the expiry month's CALL letter for BOTH rights.
+        # See the module docstring: the published scheme is wrong here, and
+        # emitting ^{put letter} returns no data at all.
+        ric = f"{ric}^{expired_suffix_code(expiry.month)}{expiry.strftime('%y')}"
     return ric

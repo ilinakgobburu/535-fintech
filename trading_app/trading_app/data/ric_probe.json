@@ -1,0 +1,60 @@
+{
+  "_comment": "Direct LSEG probe of the expired-option suffix convention. Each row requests MID_PRICE for the SAME put contract under two identifiers: the form the assignment documents (suffix repeats the body's put month letter) and the form LSEG actually uses (suffix is the expiry month's CALL letter). Reproduce with scripts/probe_ric_suffix.py while LSEG Workspace is running.",
+  "probed_at": "2026-09-07",
+  "field": "MID_PRICE",
+  "window": [
+    "2026-06-15",
+    "2026-08-28"
+  ],
+  "rows": [
+    {
+      "expiry": "2026-07-17",
+      "strike": 12.0,
+      "doc_ric": "UUUUS172601200.U^S26",
+      "doc": 0,
+      "act_ric": "UUUUS172601200.U^G26",
+      "act": 22
+    },
+    {
+      "expiry": "2026-07-17",
+      "strike": 14.0,
+      "doc_ric": "UUUUS172601400.U^S26",
+      "doc": 0,
+      "act_ric": "UUUUS172601400.U^G26",
+      "act": 22
+    },
+    {
+      "expiry": "2026-07-31",
+      "strike": 13.0,
+      "doc_ric": "UUUUS312601300.U^S26",
+      "doc": 0,
+      "act_ric": "UUUUS312601300.U^G26",
+      "act": 32
+    },
+    {
+      "expiry": "2026-08-21",
+      "strike": 11.0,
+      "doc_ric": "UUUUT212601100.U^T26",
+      "doc": 0,
+      "act_ric": "UUUUT212601100.U^H26",
+      "act": 37
+    },
+    {
+      "expiry": "2026-08-21",
+      "strike": 13.0,
+      "doc_ric": "UUUUT212601300.U^T26",
+      "doc": 0,
+      "act_ric": "UUUUT212601300.U^H26",
+      "act": 43
+    },
+    {
+      "expiry": "2026-06-26",
+      "strike": 12.0,
+      "doc_ric": "UUUUR262601200.U^R26",
+      "doc": 0,
+      "act_ric": "UUUUR262601200.U^F26",
+      "act": 0
+    }
+  ],
+  "underlying": "UUUU"
+}
