@@ -17,12 +17,24 @@
     --mark:#199e70; --print:#c98500; --both:#9085e9;
     --font:'Inter',ui-sans-serif,system-ui,-apple-system,sans-serif;
     --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+
+    /* Type scale. Six steps, no ad-hoc sizes. Body sits at 15px because this
+       page is read, not skimmed -- a TA works through several thousand words
+       of analysis and 13px prose makes that needlessly tiring. */
+    --fs-xs:12px;     /* captions, chart ticks, fine print   */
+    --fs-sm:13px;     /* controls, table cells, provenance   */
+    --fs-base:15px;   /* body prose                          */
+    --fs-lede:16px;   /* section-opening paragraphs          */
+    --fs-h2:24px;     /* section headings                    */
+    --fs-h1:30px;
+    --fs-value:26px;  /* the big number on a stat tile       */
+    --fs-sub:20px;    /* sub-headings inside a card          */
   }
   *{box-sizing:border-box}
   html,body{margin:0;padding:0}
   body{
     background:var(--base); color:var(--text); font-family:var(--font);
-    font-size:14px; line-height:1.55; -webkit-font-smoothing:antialiased;
+    font-size:var(--fs-base); line-height:1.65; -webkit-font-smoothing:antialiased;
   }
   .wrap{max-width:1160px;margin:0 auto;padding:0 28px 96px}
 
@@ -32,10 +44,10 @@
     border-bottom:1px solid var(--line);
     display:flex;gap:6px;align-items:center;flex-wrap:wrap
   }
-  nav .brand{font-weight:700;font-size:13px;margin-right:10px;letter-spacing:-.01em}
+  nav .brand{font-weight:700;font-size:var(--fs-base);margin-right:10px;letter-spacing:-.01em}
   nav .brand span{color:var(--mark)}
   nav a{
-    color:var(--muted);text-decoration:none;font-size:11.5px;padding:5px 8px;
+    color:var(--muted);text-decoration:none;font-size:var(--fs-sm);padding:5px 8px;
     border-radius:6px;white-space:nowrap
   }
   nav a:hover{color:var(--text);background:var(--panel-hi)}
@@ -47,40 +59,40 @@
   .playbar{display:flex;align-items:center;gap:9px}
   .iconbtn{
     background:var(--panel-hi);color:var(--text);border:1px solid var(--line);
-    border-radius:7px;width:34px;height:32px;cursor:pointer;font-size:13px;
+    border-radius:7px;width:34px;height:32px;cursor:pointer;font-size:var(--fs-base);
     display:inline-flex;align-items:center;justify-content:center;padding:0
   }
   .iconbtn:hover{border-color:var(--both)}
   .iconbtn[aria-pressed="true"]{background:var(--both);color:#0B1020;border-color:var(--both)}
   .iconbtn:disabled{opacity:.35;cursor:default}
-  .hint{font-size:10.5px;color:var(--faint);margin-left:2px}
+  .hint{font-size:var(--fs-xs);color:var(--faint);margin-left:2px}
   .progress{height:3px;background:var(--line-soft);border-radius:2px;overflow:hidden;margin-top:10px}
   .progress i{display:block;height:100%;background:var(--both);width:0;transition:width .12s linear}
 
   header{border-bottom:1px solid var(--line);padding-bottom:22px;margin-bottom:26px}
   .eyebrow{
-    font-size:11px;letter-spacing:.16em;text-transform:uppercase;
+    font-size:var(--fs-xs);letter-spacing:.16em;text-transform:uppercase;
     color:var(--faint);font-weight:600;margin-bottom:8px
   }
-  h1{font-size:30px;line-height:1.15;margin:0 0 10px;font-weight:700;letter-spacing:-.02em}
+  h1{font-size:var(--fs-h1);line-height:1.15;margin:0 0 10px;font-weight:700;letter-spacing:-.02em}
   h1 .accent{color:var(--mark)}
-  .lede{color:var(--muted);max-width:none;margin:0;font-size:15.5px;line-height:1.62}
-  header .lede{font-size:18px;line-height:1.55;max-width:92ch}
+  .lede{color:var(--muted);max-width:none;margin:0;font-size:var(--fs-lede);line-height:1.62}
+  header .lede{font-size:var(--fs-sub);line-height:1.55;max-width:92ch}
 
   .prov{
     display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:16px;
-    font-family:var(--mono);font-size:11.5px;color:var(--faint)
+    font-family:var(--mono);font-size:var(--fs-sm);color:var(--faint)
   }
   .prov b{color:var(--muted);font-weight:500}
 
   .banner{
-    margin:18px 0 0;padding:12px 16px;border-radius:8px;font-size:13px;
+    margin:18px 0 0;padding:12px 16px;border-radius:8px;font-size:var(--fs-base);
     border:1px solid #6b4a12;background:rgba(201,133,0,.10);color:#f0c76e
   }
   .banner.hidden{display:none}
 
   h2{
-    font-size:23px;line-height:1.25;letter-spacing:-.018em;color:var(--text);
+    font-size:var(--fs-h2);line-height:1.25;letter-spacing:-.018em;color:var(--text);
     font-weight:650;margin:64px 0 18px;padding-top:26px;
     border-top:1px solid var(--line)
   }
@@ -92,9 +104,9 @@
   .tile{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px}
   .tile.hero{border-color:var(--mark);background:linear-gradient(180deg,rgba(25,158,112,.10),var(--panel))}
   .tile.hero2{border-color:var(--both);background:linear-gradient(180deg,rgba(144,133,233,.10),var(--panel))}
-  .tile .label{font-size:11px;color:var(--muted);letter-spacing:.04em;margin-bottom:7px}
-  .tile .value{font-size:27px;font-weight:700;font-family:var(--mono);letter-spacing:-.02em;line-height:1.1}
-  .tile .sub{font-size:11.5px;color:var(--faint);margin-top:6px}
+  .tile .label{font-size:var(--fs-xs);color:var(--muted);letter-spacing:.04em;margin-bottom:7px}
+  .tile .value{font-size:var(--fs-value);font-weight:700;font-family:var(--mono);letter-spacing:-.02em;line-height:1.1}
+  .tile .sub{font-size:var(--fs-sm);color:var(--faint);margin-top:6px}
   .tile.hero .value{color:var(--mark)} .tile.hero2 .value{color:var(--both)}
 
   .controls{
@@ -103,16 +115,16 @@
     padding:14px 18px;margin:20px 0 14px
   }
   .ctl{display:flex;align-items:center;gap:9px}
-  .ctl label{font-size:11px;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;font-weight:500}
+  .ctl label{font-size:var(--fs-xs);color:var(--muted);letter-spacing:.05em;text-transform:uppercase;font-weight:500}
   select{
     background:var(--panel-hi);color:var(--text);border:1px solid var(--line);
-    border-radius:7px;padding:7px 11px;font-family:var(--mono);font-size:12.5px;cursor:pointer
+    border-radius:7px;padding:7px 11px;font-family:var(--mono);font-size:var(--fs-sm);cursor:pointer
   }
   select:focus-visible,button:focus-visible{outline:2px solid var(--both);outline-offset:2px}
   .seg{display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
   .seg button{
     background:var(--panel-hi);color:var(--muted);border:0;padding:7px 15px;
-    font-family:var(--font);font-size:12.5px;font-weight:500;cursor:pointer
+    font-family:var(--font);font-size:var(--fs-sm);font-weight:500;cursor:pointer
   }
   .seg button+button{border-left:1px solid var(--line)}
   .seg button[aria-pressed="true"]{background:var(--both);color:#0B1020;font-weight:600}
@@ -120,7 +132,7 @@
   .chip{
     display:inline-flex;align-items:center;gap:7px;background:var(--panel-hi);
     border:1px solid var(--line);border-radius:20px;padding:6px 13px;
-    font-size:12px;cursor:pointer;color:var(--muted);font-family:var(--font)
+    font-size:var(--fs-sm);cursor:pointer;color:var(--muted);font-family:var(--font)
   }
   .chip[aria-pressed="true"]{color:var(--text);border-color:currentColor}
   .chip .dot{width:9px;height:9px;border-radius:50%;background:currentColor;flex:none}
@@ -145,8 +157,8 @@
     .reading,.wrap > p.notes,.wrap > ul.notes{columns:1}
   }
   .qa{margin:0 0 22px;padding-left:15px;border-left:2px solid var(--line)}
-  .qa .q{color:var(--muted);font-size:13px;margin:0 0 6px;font-style:italic}
-  .qa .a{margin:0;color:var(--text)}
+  .qa .q{color:var(--muted);font-size:var(--fs-base);margin:0 0 8px;font-style:italic}
+  .qa .a{margin:0;color:var(--text);font-size:var(--fs-base);line-height:1.7}
   code{
     font-family:var(--mono);font-size:.9em;background:var(--panel-hi);
     padding:1.5px 5px;border-radius:4px;border:1px solid var(--line)
@@ -155,15 +167,15 @@
   .k-print{color:var(--print);font-weight:600}
   .k-both{color:var(--both);font-weight:600}
 
-  .notes{color:var(--muted);font-size:13.5px;line-height:1.62;max-width:none}
+  .notes{color:var(--muted);font-size:var(--fs-base);line-height:1.62;max-width:none}
   .notes li{margin-bottom:9px}
-  footer{margin-top:52px;padding-top:20px;border-top:1px solid var(--line);color:var(--faint);font-size:12px}
-  table.tbl{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:12px;margin-top:10px}
-  table.tbl th,table.tbl td{border:1px solid var(--line);padding:6px 10px;text-align:right}
+  footer{margin-top:52px;padding-top:20px;border-top:1px solid var(--line);color:var(--faint);font-size:var(--fs-sm)}
+  table.tbl{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:var(--fs-sm);margin-top:10px}
+  table.tbl th,table.tbl td{border:1px solid var(--line);padding:8px 11px;text-align:right}
   table.tbl th{color:var(--muted);font-weight:500;text-align:left;background:var(--panel-hi)}
   table.tbl td:first-child{text-align:left;color:var(--muted)}
   details{margin-top:12px}
-  summary{cursor:pointer;color:var(--muted);font-size:12.5px;padding:6px 0}
+  summary{cursor:pointer;color:var(--muted);font-size:var(--fs-sm);padding:6px 0}
 </style>
 </head>
 <body>
@@ -446,7 +458,7 @@ const state = {
 
 const base = (over={}) => Object.assign({
   paper_bgcolor:T.base, plot_bgcolor:T.panel,
-  font:{color:T.text,family:T.font,size:12},
+  font:{color:T.text,family:T.font,size:12.5},
   margin:{l:56,r:24,t:60,b:48},
   hoverlabel:{bgcolor:T.panelHi,bordercolor:T.line,font:{family:T.mono,size:11,color:T.text}},
   legend:{bgcolor:'rgba(11,16,32,.78)',bordercolor:T.line,borderwidth:1,
@@ -455,17 +467,17 @@ const base = (over={}) => Object.assign({
 }, over);
 const ax = (title,over={}) => Object.assign({
   gridcolor:T.lineSoft, zeroline:false, linecolor:T.line,
-  tickfont:{size:10,color:T.muted,family:T.font},
+  tickfont:{size:11,color:T.muted,family:T.font},
   title:title?{text:title,font:{size:11,color:T.muted,family:T.font}}:undefined,
 }, over);
 const sceneAx = (title,over={}) => Object.assign({
   title:{text:title,font:{size:11,color:T.muted,family:T.font}},
   backgroundcolor:T.panel, gridcolor:T.line, showbackground:true, zeroline:false,
-  tickfont:{size:9,color:T.muted,family:T.font},
+  tickfont:{size:11,color:T.muted,family:T.font},
 }, over);
 const cap = t => ({text:t,xref:'paper',yref:'paper',x:0,y:1,xanchor:'left',
                    yanchor:'bottom',showarrow:false,align:'left',
-                   font:{size:10.5,color:T.faint,family:T.font}});
+                   font:{size:11,color:T.faint,family:T.font}});
 const CFG = {displayModeBar:false, responsive:true};
 const combo = () => DATA.combos[state.date+'|'+state.cp];
 // RICs are interned in DATA.rics; slices carry indices into it.
@@ -693,7 +705,7 @@ function renderCompare(){
   traces.push({type:'bar',xaxis:'x2',yaxis:'y2',showlegend:false,
     x:['Mark only<br>(no trade)','Both','Trade only<br>(no mark)'],y:counts,
     text:counts,textposition:'outside',cliponaxis:false,
-    textfont:{color:T.text,size:12,family:T.font},
+    textfont:{color:T.text,size:12.5,family:T.font},
     marker:{color:[T.mark,T.both,T.print],line:{width:2,color:T.panel}},
     hovertemplate:'%{x}<br><b>%{y}</b> series<extra></extra>'});
 
@@ -711,19 +723,19 @@ function renderCompare(){
     annotations:[
       {text:'Every point off the dashed line is a series where the mark and the day’s only real trade disagree.',
        xref:'paper',yref:'paper',x:0,y:-0.22,xanchor:'left',yanchor:'top',
-       showarrow:false,font:{size:10.5,color:T.faint,family:T.font}},
+       showarrow:false,font:{size:11,color:T.faint,family:T.font}},
       {text:'Where both exist, they disagree',xref:'paper',yref:'paper',x:0,y:1.04,
        xanchor:'left',yanchor:'bottom',showarrow:false,
-       font:{size:12,color:T.text,family:T.font}},
+       font:{size:12.5,color:T.text,family:T.font}},
       {text:'Which series carry which field',xref:'paper',yref:'paper',x:.68,y:1.04,
        xanchor:'left',yanchor:'bottom',showarrow:false,
-       font:{size:12,color:T.text,family:T.font}},
+       font:{size:12.5,color:T.text,family:T.font}},
     ],
   });
   if(!b.x.length){
     lay.annotations.push({text:'No series carries both fields on this date.',
       xref:'paper',yref:'paper',x:.27,y:.5,xanchor:'center',showarrow:false,
-      font:{size:12,color:T.muted,family:T.font}});
+      font:{size:12.5,color:T.muted,family:T.font}});
   }
   Plotly.react('p-compare', traces, lay, CFG);
 }
@@ -930,7 +942,7 @@ function renderSpread(){
         font:{size:11,color:T.text}},
       annotations:[{text:'Conditioned on moneyness, quotes on contracts that never traded are consistently wider.',
         xref:'paper',yref:'paper',x:0,y:-0.26,xanchor:'left',yanchor:'top',
-        showarrow:false,font:{size:10.5,color:T.faint,family:T.font}}],
+        showarrow:false,font:{size:11,color:T.faint,family:T.font}}],
     }), CFG);
   }
 
@@ -950,10 +962,10 @@ function renderSpread(){
           line:{color:T.faint,dash:'dash',width:1}}],
         annotations:[
           {text:'the mid',x:.5,y:1,yref:'paper',yanchor:'bottom',
-           showarrow:false,font:{size:10,color:T.faint,family:T.font}},
+           showarrow:false,font:{size:11,color:T.faint,family:T.font}},
           {text:`Only ${h.pct_near_mid.toFixed(0)}% of prints landed near the mid — using it as your fill price is wrong most of the time.`,
            xref:'paper',yref:'paper',x:0,y:-0.26,xanchor:'left',yanchor:'top',
-           showarrow:false,font:{size:10.5,color:T.faint,family:T.font}}],
+           showarrow:false,font:{size:11,color:T.faint,family:T.font}}],
       }), CFG);
   }
 
@@ -999,7 +1011,7 @@ function renderHoldout(){
   const tiles = document.getElementById('tiles-holdout');
   if(!h){
     tiles.innerHTML = `<div class="tile"><div class="label">Holdout test</div>
-      <div class="value" style="font-size:19px">not enough points</div>
+      <div class="value" style="font-size:var(--fs-sub)">not enough points</div>
       <div class="sub">this slice has too few observations to test</div></div>`;
     Plotly.react('p-holdout', [], base({height:380,
       xaxis:{visible:false},yaxis:{visible:false},
@@ -1052,7 +1064,7 @@ function renderHoldout(){
         font:{size:11,color:T.text}},
       annotations:[{text:'Points above the dashed line are cells where interpolation invented a price higher than the real one.',
         xref:'paper',yref:'paper',x:0,y:-0.26,xanchor:'left',yanchor:'top',
-        showarrow:false,font:{size:10.5,color:T.faint,family:T.font}}],
+        showarrow:false,font:{size:11,color:T.faint,family:T.font}}],
   }), CFG);
 
   const gap = combo().stats.median_abs_diff;
@@ -1113,7 +1125,7 @@ function renderArb(){
   if(ex){
     document.getElementById('arb-example').innerHTML = `
       <div class="card" style="padding:16px 18px;margin-top:14px">
-        <div style="font-size:12px;color:var(--muted);margin-bottom:8px">
+        <div style="font-size:var(--fs-sm);color:var(--muted);margin-bottom:8px">
           The worst single case, in full
         </div>
         <table class="tbl">
@@ -1193,7 +1205,7 @@ function renderHole(){
     colorscale:[[0,T.panel],[.5,'#4A45A0'],[1,T.mark]],
     zmin:0, zmax:100, xgap:3, ygap:3,
     colorbar:{title:{text:'P(print) %',font:{size:11,color:T.muted}},
-      tickfont:{size:10,color:T.muted}, outlinewidth:0, thickness:12},
+      tickfont:{size:11,color:T.muted}, outlinewidth:0, thickness:12},
     customdata:h.n,
     hovertemplate:'%{y} · %{x}<br><b>%{z:.0f}%</b> printed<br>%{customdata} series<extra></extra>',
   }], base({height:420, margin:{l:96,r:20,t:64,b:70},
@@ -1555,7 +1567,7 @@ function renderSpace(){
         font:{size:11,color:T.text}},
       annotations:[{text:'Above the dashed line the guess was too high. The solid lines are each method\'s median error: amber sits well above zero, green sits almost on it.',
         xref:'paper',yref:'paper',x:0,y:-0.26,xanchor:'left',yanchor:'top',
-        showarrow:false,font:{size:10.5,color:T.faint,family:T.font}}],
+        showarrow:false,font:{size:11,color:T.faint,family:T.font}}],
   }), CFG);
 
   const imp = s.improvement_pct;
@@ -1632,7 +1644,7 @@ function renderParity(){
           font:{size:11,color:T.text}},
         annotations:[{text:'Nothing here assumes a rate or a dividend — F and D are the slope and intercept of a line through the option prices.',
           xref:'paper',yref:'paper',x:0,y:-0.24,xanchor:'left',yanchor:'top',
-          showarrow:false,font:{size:10.5,color:T.faint,family:T.font}}],
+          showarrow:false,font:{size:11,color:T.faint,family:T.font}}],
     }), CFG);
   }
 

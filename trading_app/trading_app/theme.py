@@ -78,7 +78,7 @@ def layout(**overrides) -> dict:
     base = dict(
         paper_bgcolor=BASE,
         plot_bgcolor=PANEL,
-        font=dict(color=TEXT, family=FONT, size=12),
+        font=dict(color=TEXT, family=FONT, size=12.5),
         title=dict(
             font=dict(size=15, color=TEXT, family=FONT),
             x=0.0,
@@ -109,7 +109,7 @@ def axis(title: str | None = None, **overrides) -> dict:
         gridcolor=LINE_SOFT,
         zeroline=False,
         linecolor=LINE,
-        tickfont=dict(size=10, color=TEXT_MUTED, family=FONT),
+        tickfont=dict(size=11, color=TEXT_MUTED, family=FONT),
     )
     if title:
         a["title"] = dict(text=title, font=dict(size=11, color=TEXT_MUTED, family=FONT))
@@ -124,7 +124,7 @@ def scene_axis(title: str, **overrides) -> dict:
         gridcolor=LINE,
         showbackground=True,
         zeroline=False,
-        tickfont=dict(size=9, color=TEXT_MUTED, family=FONT),
+        tickfont=dict(size=11, color=TEXT_MUTED, family=FONT),
     )
     a.update(overrides)
     return a
@@ -141,5 +141,5 @@ def caption(text: str) -> dict:
         xanchor="left",
         yanchor="bottom",
         showarrow=False,
-        font=dict(size=10.5, color=TEXT_FAINT, family=FONT),
+        font=dict(size=11, color=TEXT_FAINT, family=FONT),
     )
