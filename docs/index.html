@@ -42,7 +42,7 @@
   nav a.on{color:var(--text);background:var(--panel-hi)}
   nav .ticker-link{margin-left:auto;border:1px solid var(--line)}
   header{padding-top:34px}
-  h2{scroll-margin-top:64px}
+  h2{scroll-margin-top:78px}
 
   .playbar{display:flex;align-items:center;gap:9px}
   .iconbtn{
@@ -64,7 +64,8 @@
   }
   h1{font-size:30px;line-height:1.15;margin:0 0 10px;font-weight:700;letter-spacing:-.02em}
   h1 .accent{color:var(--mark)}
-  .lede{color:var(--muted);max-width:74ch;margin:0;font-size:15.5px;line-height:1.62}
+  .lede{color:var(--muted);max-width:none;margin:0;font-size:15.5px;line-height:1.62}
+  header .lede{font-size:18px;line-height:1.55;max-width:92ch}
 
   .prov{
     display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:16px;
@@ -83,7 +84,9 @@
     font-weight:650;margin:64px 0 18px;padding-top:26px;
     border-top:1px solid var(--line)
   }
-  h2:first-of-type{margin-top:40px}
+  /* the header already closes with a rule; a second one right under it reads
+     as a mistake rather than as a section break */
+  h2:first-of-type{margin-top:34px;border-top:none;padding-top:0}
 
   .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(238px,1fr));gap:14px;margin:22px 0 6px}
   .tile{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px}
@@ -133,7 +136,14 @@
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
   @media(max-width:900px){.grid2{grid-template-columns:1fr}}
 
-  .reading{max-width:78ch}
+  .reading{max-width:none;columns:2;column-gap:52px}
+  .reading > *:first-child{margin-top:0}
+  .wrap > p.notes, .wrap > ul.notes{columns:2;column-gap:52px}
+  .wrap > ul.notes{padding-left:20px}
+  .notes li{break-inside:avoid}
+  @media(max-width:1000px){
+    .reading,.wrap > p.notes,.wrap > ul.notes{columns:1}
+  }
   .qa{margin:0 0 22px;padding-left:15px;border-left:2px solid var(--line)}
   .qa .q{color:var(--muted);font-size:13px;margin:0 0 6px;font-style:italic}
   .qa .a{margin:0;color:var(--text)}
@@ -145,7 +155,7 @@
   .k-print{color:var(--print);font-weight:600}
   .k-both{color:var(--both);font-weight:600}
 
-  .notes{color:var(--muted);font-size:13.5px;line-height:1.62;max-width:78ch}
+  .notes{color:var(--muted);font-size:13.5px;line-height:1.62;max-width:none}
   .notes li{margin-bottom:9px}
   footer{margin-top:52px;padding-top:20px;border-top:1px solid var(--line);color:var(--faint);font-size:12px}
   table.tbl{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:12px;margin-top:10px}
