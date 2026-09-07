@@ -24,10 +24,10 @@
     background:var(--base); color:var(--text); font-family:var(--font);
     font-size:14px; line-height:1.55; -webkit-font-smoothing:antialiased;
   }
-  .wrap{max-width:760px;margin:0 auto;padding:0 24px 80px}
+  .wrap{max-width:1160px;margin:0 auto;padding:0 28px 96px}
 
   nav{
-    position:sticky;top:0;z-index:50;margin:0 -24px 0;padding:11px 24px;
+    position:sticky;top:0;z-index:50;margin:0 -28px 0;padding:11px 28px;
     background:rgba(11,16,32,.86);backdrop-filter:blur(10px);
     border-bottom:1px solid var(--line);
     display:flex;gap:6px;align-items:center;flex-wrap:wrap
@@ -35,7 +35,7 @@
   nav .brand{font-weight:700;font-size:13px;margin-right:10px;letter-spacing:-.01em}
   nav .brand span{color:var(--mark)}
   nav a{
-    color:var(--muted);text-decoration:none;font-size:12px;padding:5px 10px;
+    color:var(--muted);text-decoration:none;font-size:11.5px;padding:5px 8px;
     border-radius:6px;white-space:nowrap
   }
   nav a:hover{color:var(--text);background:var(--panel-hi)}
@@ -64,7 +64,7 @@
   }
   h1{font-size:30px;line-height:1.15;margin:0 0 10px;font-weight:700;letter-spacing:-.02em}
   h1 .accent{color:var(--mark)}
-  .lede{color:var(--muted);max-width:85ch;margin:0;font-size:15px}
+  .lede{color:var(--muted);max-width:74ch;margin:0;font-size:15.5px;line-height:1.62}
 
   .prov{
     display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:16px;
@@ -79,11 +79,13 @@
   .banner.hidden{display:none}
 
   h2{
-    font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);
-    font-weight:600;margin:44px 0 14px;padding-bottom:8px;border-bottom:1px solid var(--line-soft)
+    font-size:23px;line-height:1.25;letter-spacing:-.018em;color:var(--text);
+    font-weight:650;margin:64px 0 18px;padding-top:26px;
+    border-top:1px solid var(--line)
   }
+  h2:first-of-type{margin-top:40px}
 
-  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin:22px 0 6px}
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(238px,1fr));gap:14px;margin:22px 0 6px}
   .tile{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px}
   .tile.hero{border-color:var(--mark);background:linear-gradient(180deg,rgba(25,158,112,.10),var(--panel))}
   .tile.hero2{border-color:var(--both);background:linear-gradient(180deg,rgba(144,133,233,.10),var(--panel))}
@@ -128,9 +130,10 @@
 
   .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px;margin-bottom:18px}
   .plot{width:100%}
-  .grid2{display:grid;grid-template-columns:1fr;gap:18px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media(max-width:900px){.grid2{grid-template-columns:1fr}}
 
-  .reading{max-width:85ch}
+  .reading{max-width:78ch}
   .qa{margin:0 0 22px;padding-left:15px;border-left:2px solid var(--line)}
   .qa .q{color:var(--muted);font-size:13px;margin:0 0 6px;font-style:italic}
   .qa .a{margin:0;color:var(--text)}
@@ -142,7 +145,7 @@
   .k-print{color:var(--print);font-weight:600}
   .k-both{color:var(--both);font-weight:600}
 
-  .notes{color:var(--muted);font-size:13px;max-width:85ch}
+  .notes{color:var(--muted);font-size:13.5px;line-height:1.62;max-width:78ch}
   .notes li{margin-bottom:9px}
   footer{margin-top:52px;padding-top:20px;border-top:1px solid var(--line);color:var(--faint);font-size:12px}
   table.tbl{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:12px;margin-top:10px}
@@ -158,16 +161,16 @@
 
 <nav>
   <div class="brand">Option Surface <span>Lab</span></div>
-  <a href="#sec-numbers">The two numbers</a>
+  <a href="#sec-numbers">Two numbers</a>
   <a href="#sec-slice">3D surface</a>
-  <a href="#sec-arb">Arbitrage audit</a>
+  <a href="#sec-arb">Arbitrage</a>
   <a href="#sec-reading">Reading it</a>
   <a href="#sec-compare">Mark vs trade</a>
   <a href="#sec-coverage">Coverage</a>
-  <a href="#sec-fill">Fill uncertainty</a>
-  <a href="#sec-holdout">Interpolation error</a>
+  <a href="#sec-fill">Fill</a>
+  <a href="#sec-holdout">Interpolation</a>
   <a href="#sec-space">Wrong space</a>
-  <a href="#sec-parity">The forward</a>
+  <a href="#sec-parity">Forward</a>
   <a class="ticker-link" id="nav-sibling" href="#" hidden></a>
 </nav>
 
@@ -450,8 +453,9 @@ const sceneAx = (title,over={}) => Object.assign({
   backgroundcolor:T.panel, gridcolor:T.line, showbackground:true, zeroline:false,
   tickfont:{size:9,color:T.muted,family:T.font},
 }, over);
-const cap = t => ({text:t,xref:'paper',yref:'paper',x:0,y:1,xanchor:'left',yanchor:'bottom',
-                   showarrow:false,font:{size:10.5,color:T.faint,family:T.font}});
+const cap = t => ({text:t,xref:'paper',yref:'paper',x:0,y:1,xanchor:'left',
+                   yanchor:'bottom',showarrow:false,align:'left',
+                   font:{size:10.5,color:T.faint,family:T.font}});
 const CFG = {displayModeBar:false, responsive:true};
 const combo = () => DATA.combos[state.date+'|'+state.cp];
 // RICs are interned in DATA.rics; slices carry indices into it.
@@ -608,7 +612,7 @@ function renderSurface(){
     legend:{orientation:'h',yanchor:'bottom',y:1,x:1,xanchor:'right',
       bgcolor:'rgba(11,16,32,.78)',bordercolor:T.line,borderwidth:1,
       font:{size:11,color:T.text},itemsizing:'constant'},
-    annotations:[cap('Circles are the mark. Diamonds are actual trades. The violet sheet is interpolated — an assumption, not a market.' + (mny ? ' Axis rebased to K/S.' : ''))],
+    annotations:[cap('Circles are the mark · diamonds are actual trades · the violet sheet is an assumption' + (mny ? ' · axis rebased to K/S' : ''))],
   }), CFG);
 }
 
@@ -653,9 +657,8 @@ function renderSurfaceIV(c, mny){
     legend:{orientation:'h',yanchor:'bottom',y:1,x:1,xanchor:'right',
       bgcolor:'rgba(11,16,32,.78)',bordercolor:T.line,borderwidth:1,
       font:{size:11,color:T.text},itemsizing:'constant'},
-    annotations:[cap('Inverted off the parity-implied forward — no rate or dividend assumed. '+
-      'Flatter in strike than the price surface, which is why interpolating here is less wrong.'+
-      (mny?' Sheet hidden on the K/S axis.':''))],
+    annotations:[cap('Inverted off the parity-implied forward — no rate or dividend assumed'+
+      (mny?' · sheet hidden on the K/S axis':''))],
   }), CFG);
 }
 
@@ -1457,30 +1460,45 @@ function renderSpace(){
       <div class="sub">${s.n_tested.toLocaleString()} cells over ${s.n_slices} slices</div>
     </div>`;
 
-  const x = s.rows.map(r=>r.truth);
-  const all = x.concat(s.rows.map(r=>r.px)).concat(s.rows.map(r=>r.vx));
-  const lo = Math.min.apply(null,all), hi = Math.max.apply(null,all);
-  const pad = hi>lo ? (hi-lo)*.06 : .05;
+  // Plotted as SIGNED ERROR, not as guess-against-truth. On a $0-10 price
+  // axis a $0.03 miss is a fraction of a pixel, so a guess-vs-truth scatter
+  // draws both methods as the same straight line and shows nothing. The
+  // quantity the section is about is the error itself, and the claim being
+  // made is about where each cloud sits relative to zero.
+  const x  = s.rows.map(r=>r.truth);
+  const ep = s.rows.map(r=>+(r.px - r.truth).toFixed(4));
+  const ev = s.rows.map(r=>+(r.vx - r.truth).toFixed(4));
+  const spread = ep.concat(ev).map(Math.abs).sort((a,b)=>a-b);
+  const lim = (spread[Math.floor(spread.length*0.97)] || 0.1) * 1.15;
+  const xhi = Math.max.apply(null, x) * 1.02;
   Plotly.react('p-space', [
-    {type:'scatter',mode:'lines',name:'perfect',hoverinfo:'skip',
-     x:[lo-pad,hi+pad],y:[lo-pad,hi+pad],line:{color:T.faint,dash:'dash',width:1}},
+    {type:'scatter',mode:'lines',name:'exact',hoverinfo:'skip',
+     x:[0,xhi],y:[0,0],line:{color:T.faint,dash:'dash',width:1}},
     {type:'scatter',mode:'markers',name:'interpolated price',
-     x:x,y:s.rows.map(r=>r.px),
-     marker:{size:7,color:T.print,opacity:.55,line:{width:1,color:T.panel}},
-     hovertemplate:'true $%{x:.3f}<br>price-space guess $%{y:.3f}<extra></extra>'},
+     x:x,y:ep,
+     marker:{size:6,color:T.print,opacity:.5,line:{width:0}},
+     hovertemplate:'true $%{x:.3f}<br>price-space error $%{y:.4f}<extra></extra>'},
     {type:'scatter',mode:'markers',name:'interpolated vol, repriced',
-     x:x,y:s.rows.map(r=>r.vx),symbol:'diamond',
-     marker:{size:7,color:T.mark,opacity:.75,symbol:'diamond',line:{width:1,color:T.panel}},
-     hovertemplate:'true $%{x:.3f}<br>vol-space guess $%{y:.3f}<extra></extra>'},
-  ], base({height:440, margin:{l:70,r:24,t:64,b:112},
-      title:{text:'The same hidden cells, guessed two ways',
+     x:x,y:ev,symbol:'diamond',
+     marker:{size:6,color:T.mark,opacity:.62,symbol:'diamond',line:{width:0}},
+     hovertemplate:'true $%{x:.3f}<br>vol-space error $%{y:.4f}<extra></extra>'},
+    // The bias is the whole claim of this section, and at $0.015 inside a
+    // cloud spanning +/-$0.10 no eye can read it off the scatter. Draw it.
+    {type:'scatter',mode:'lines',name:'median error, price',
+     x:[0,xhi],y:[s.price.bias,s.price.bias],hoverinfo:'skip',
+     line:{color:T.print,width:2}},
+    {type:'scatter',mode:'lines',name:'median error, vol',
+     x:[0,xhi],y:[s.vol.bias,s.vol.bias],hoverinfo:'skip',
+     line:{color:T.mark,width:2}},
+  ], base({height:440, margin:{l:76,r:24,t:64,b:104},
+      title:{text:'Error on the same hidden cells, guessed two ways',
         font:{size:15,color:T.text,family:T.font},x:0,xanchor:'left',y:.97,yanchor:'top'},
-      xaxis:ax('True MID_PRICE ($)',{range:[lo-pad,hi+pad]}),
-      yaxis:ax('Guess ($)',{range:[lo-pad,hi+pad]}),
+      xaxis:ax('True MID_PRICE ($)',{range:[0,xhi]}),
+      yaxis:ax('Guess − truth ($)',{range:[-lim,lim],zeroline:false}),
       legend:{orientation:'h',yanchor:'bottom',y:1.0,x:1,xanchor:'right',
         bgcolor:'rgba(11,16,32,.78)',bordercolor:T.line,borderwidth:1,
         font:{size:11,color:T.text}},
-      annotations:[{text:'The amber cloud sits above the line; the green one straddles it. That gap is the convexity bias.',
+      annotations:[{text:'Above the dashed line the guess was too high. The solid lines are each method\'s median error: amber sits well above zero, green sits almost on it.',
         xref:'paper',yref:'paper',x:0,y:-0.26,xanchor:'left',yanchor:'top',
         showarrow:false,font:{size:10.5,color:T.faint,family:T.font}}],
   }), CFG);
