@@ -793,39 +793,84 @@ function renderTable(){
 function renderProse(){
   const c = combo(), s = c.stats;
   const spot = c.spot!=null ? `$${c.spot.toFixed(2)}` : 'the spot';
+
+  // The shape of the hole, pooled over every session. print_prob is computed
+  // on calls, so it is described as such rather than silently attributed to
+  // whichever right happens to be selected.
+  const pp = DATA.aggregate.print_prob;
+  const mg = lbl => {
+    const r = pp && (pp.marginal||[]).find(x => x.label === lbl);
+    return r && r.pct != null ? Math.round(r.pct)+'%' : null;
+  };
+  const itmRow  = pp && pp.z && pp.z[0];
+  const itmFar  = itmRow && itmRow[itmRow.length-1] != null
+    ? Math.round(itmRow[itmRow.length-1])+'%' : null;
+  const shape = (mg('ATM') && mg('deep OTM') && mg('deep ITM'))
+    ? `Away from that band it does not simply thin, it thins <b>asymmetrically</b>.
+       Pooled over every session, <b>${mg('ATM')}</b> of at-the-money calls print,
+       against <b>${mg('deep OTM')}</b> deep out of the money and only
+       <b>${mg('deep ITM')}</b> deep in the money${itmFar?`, and that last figure
+       falls to <b>${itmFar}</b> once there are more than forty days left`:''}.
+       The two wings are empty for opposite reasons: deep in the money the
+       contract is expensive and behaves like the stock, so there is little
+       reason to pay up for it, while deep out of the money it is nearly
+       worthless. The hole is not noise with a gap in it — it has a shape, and
+       a shape is something you could model.`
+    : `It thins fast in both directions: far out of the money there is often a
+       <span class="k-mark">mark</span> and nothing else, and deep in the money
+       there is frequently neither.`;
+
   document.getElementById('a1').innerHTML =
     `The cloud is dense in a narrow band around the money — within roughly a dollar
      or two of ${spot} — and at the front of the expiry axis, where near-dated
-     contracts still attract flow. It thins fast in both directions: far out of the
-     money there is often a <span class="k-mark">mark</span> and nothing else, and
-     deep in the money there is frequently neither. On ${state.date} only
+     contracts still attract flow. ${shape} On ${state.date} only
      <b>${s.n_both}</b> of <b>${s.n_series}</b> listed series carried both a mark
      and a trade; <b>${s.pct_txt}</b> had a mark with no trade behind it at all.`;
+
   const h = c.holdout;
   const biasTxt = h ? `measured on this date, that bias is
      ${h.bias>=0?'+':''}${money(h.bias)} and the median miss on a cell we
      actually know is ${money(h.median_abs_err)}` :
     `the chord between two observed points sits above the true curve`;
+  // Audit the right currently on screen, so the figure quoted here matches the
+  // surface the reader is looking at.
+  const au = state.cp === 'P' ? DATA.aggregate.audit_put : DATA.aggregate.audit;
+  const stepPct = c.spot ? (100*M.strike_step/c.spot) : null;
+  const stepTxt = stepPct
+    ? `about <b>${stepPct.toFixed(stepPct<2?1:0)}%</b> apart in moneyness`
+    : 'meaningfully apart in moneyness';
+  const bflyTxt = (au && au.n_bfly)
+    ? `<b>${(100*au.bfly_mid/au.n_bfly).toFixed(0)}%</b>` : null;
+
   document.getElementById('a2').innerHTML =
-    `A $${M.strike_step.toFixed(2)} grid on a name trading near ${spot} means adjacent strikes are several
-     percent apart in moneyness, so value genuinely changes between neighbors —
-     and because the price curve is convex, a straight line drawn between two
-     observed points sits <i>above</i> the truth, so interpolation systematically
-     <b>overshoots</b> (${biasTxt}). Worse, the cells being filled are empty
-     <i>because nobody wanted to trade them</i>: the gaps mark absent liquidity,
-     not merely unrecorded liquidity. Filling them yields a smooth,
-     confident-looking sheet whose most authoritative regions are exactly the ones
-     with no evidence underneath — and reading a fill price off it means quoting a
-     number the market never made, in the contracts where it would least likely
-     have traded with you.`;
+    `A $${M.strike_step.toFixed(2)} grid on a name trading near ${spot} puts adjacent
+     strikes ${stepTxt}, so value genuinely changes between neighbors. Theory says the true value curve is convex in strike, so a
+     straight line drawn between two observed points sits <i>above</i> it and
+     interpolation systematically <b>overshoots</b> (${biasTxt}).
+     ${bflyTxt ? `But the sheet is not being drawn through the true curve — it is
+     being drawn through the <span class="k-mark">mark</span>, and the arbitrage
+     audit finds the mid violates convexity on ${bflyTxt} of the butterflies it can
+     test. On those, the chord is not shaving a corner off a well-shaped curve; it
+     is anchored on three points that are locally the wrong shape to begin with,
+     and the overshoot is the smaller of the two problems.` : ''}
+     Worse, the cells being filled are empty <i>because nobody wanted to trade
+     them</i>: the gaps mark absent liquidity, not merely unrecorded liquidity.
+     Filling them yields a smooth, confident-looking sheet whose most authoritative
+     regions are exactly the ones with no evidence underneath — and reading a fill
+     price off it means quoting a number the market never made, in the contracts
+     where it would least likely have traded with you.`;
+
   document.getElementById('a3').innerHTML =
     `<span class="k-mark">${MARK}</span> is the mark: it is the closing NBBO
-     midpoint, it exists on far more series than trades do, and it is the field the
-     volatility surface gets fitted to next week. <span class="k-print">${PRINT}</span>
-     is evidence — and only evidence — that someone actually crossed the spread on
-     that contract that day. It is one print, not a mark, and it is missing on most
-     listed strikes, so treating it as the price would mean pricing off trades that
-     never happened.`;
+     midpoint, it exists on far more series than trades do, and it is the field
+     every derived quantity on this page is built from — the implied-vol surface,
+     the parity-fitted forward, the interpolated sheet.
+     <span class="k-print">${PRINT}</span> is evidence — and only evidence — that
+     someone actually crossed the spread on that contract that day. It is one
+     print, not a mark, and it is missing on most listed strikes, so treating it as
+     the price would mean pricing off trades that never happened. Everything below
+     is an argument about how far the mark can be trusted even where it does
+     exist; it is still the only field that exists often enough to build on.`;
 }
 
 /* ---------- spread: the error bar on the mark ---------- */
