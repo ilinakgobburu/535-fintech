@@ -264,7 +264,7 @@
   <p class="notes" style="margin-top:10px">
     Both are tested twice: once on <code>MID_PRICE</code>, and once on prices you
     could actually transact at — buying the wings at the <b>ask</b> and selling
-    the body at the <b>bid</b>. Only strictly consecutive $0.50 strikes on the
+    the body at the <b>bid</b>. Only strictly consecutive <span id="step-audit">$0.50</span> strikes on the
     same expiry and date are compared, so a missing strike never manufactures a
     violation.
   </p>
@@ -397,7 +397,7 @@
 <div class="card" style="margin-top:18px"><div id="p-parity" class="plot"></div></div>
 <p class="notes" id="parity-note"></p>
 
-<h2 id="sec-compare2">Does this generalize, or is it a UUUU quirk?</h2>
+<h2 id="sec-compare2">Does this generalize, or is it one ticker’s quirk?</h2>
 <div class="reading" id="compare-intro"></div>
 <div class="card" style="padding:16px 18px"><table class="tbl" id="compare-tbl"></table></div>
 <p class="notes" id="compare-note"></p>
@@ -816,7 +816,7 @@ function renderProse(){
      actually know is ${money(h.median_abs_err)}` :
     `the chord between two observed points sits above the true curve`;
   document.getElementById('a2').innerHTML =
-    `A $0.50 grid on a name trading near ${spot} means adjacent strikes are several
+    `A $${M.strike_step.toFixed(2)} grid on a name trading near ${spot} means adjacent strikes are several
      percent apart in moneyness, so value genuinely changes between neighbors —
      and because the price curve is convex, a straight line drawn between two
      observed points sits <i>above</i> the truth, so interpolation systematically
@@ -886,7 +886,7 @@ function renderSpread(){
     ];
     Plotly.react('p-spread', traces, base({
       height:430, margin:{l:64,r:24,t:64,b:112},
-      title:{text:'The cost of not knowing, by moneyness',
+      title:{text:'The cost of not knowing, by moneyness · calls',
         font:{size:15,color:T.text,family:T.font},x:0,xanchor:'left',y:.97,yanchor:'top'},
       xaxis:ax('Moneyness  K / S'), yaxis:ax('Median spread (% of mark)'),
       legend:{orientation:'h',yanchor:'bottom',y:1.0,x:1,xanchor:'right',
@@ -921,6 +921,22 @@ function renderSpread(){
       }), CFG);
   }
 
+  // Puts are computed separately -- K/S is direction-reversed between rights, so
+  // pooling them cancels the effect out. Report the put result numerically
+  // rather than crowding four series onto one chart.
+  const bp = A.spread_bucket_put;
+  const widerCount = (bk) => {
+    if(!bk) return null;
+    let n=0, tot=0, worst=1;
+    for(let i=0;i<bk.moneyness.length;i++){
+      const tr=bk.traded[i], un=bk.untraded[i];
+      if(tr==null||un==null) continue;
+      tot++; if(un>tr){ n++; worst=Math.max(worst, un/tr); }
+    }
+    return {n, tot, worst};
+  };
+  const wc = widerCount(b), wp = widerCount(bp);
+
   document.getElementById('spread-note').innerHTML =
     `<b>A wrinkle worth reading carefully.</b> Pooled across everything, contracts
      that never traded show a <i>narrower</i> median spread
@@ -930,7 +946,15 @@ function renderSpread(){
      quotes are wider, sometimes twice as wide. The pooled number flips because
      untraded contracts cluster deep in the money, where the option costs enough
      that even a fat spread is small as a percentage. Condition on moneyness or
-     you will draw exactly the wrong conclusion.`;
+     you will draw exactly the wrong conclusion.
+     ${wc ? `<br><br><b>And condition on the right, too.</b> K/S means opposite
+     things for a call and a put, so pooling the two rights into one bucket set
+     mixes reversed economics and cancels the effect out — pooled, untraded is
+     wider in only 4 of 7 buckets at a maximum ratio of 1.25. Split by right it is
+     clean on both: untraded quotes are wider in ${wc.n} of ${wc.tot} call buckets
+     (up to ${wc.worst.toFixed(2)}×)${wp ? ` and ${wp.n} of ${wp.tot} put buckets
+     (up to ${wp.worst.toFixed(2)}×)` : ''}. The chart above is calls; puts show
+     the same shape.` : ''}`;
 }
 
 /* ---------- holdout: measuring the interpolation error ---------- */
@@ -1007,6 +1031,8 @@ function renderHoldout(){
 
 /* ---------- structural audit ---------- */
 function renderArb(){
+  const stepEl = document.getElementById('step-audit');
+  if(stepEl) stepEl.textContent = '$'+M.strike_step.toFixed(2);
   const a = DATA.aggregate.audit;
   if(!a || !a.n_bfly){ return; }
   const p1 = (k,n) => n ? (100*k/n).toFixed(1)+'%' : 'n/a';
@@ -1033,15 +1059,19 @@ function renderArb(){
       <div class="sub">worst ${money(a.worst_intr)} · never true of the ask</div>
     </div>`;
 
+  const ap = DATA.aggregate.audit_put;
+  const rowsFor = (x) => x ? [
+      ['Butterfly / convexity', `${x.bfly_mid.toLocaleString()} / ${x.n_bfly.toLocaleString()} = ${p1(x.bfly_mid,x.n_bfly)}`, `${x.bfly_exec}`],
+      ['Monotonic in strike',   `${x.mono_mid.toLocaleString()} / ${x.n_mono.toLocaleString()} = ${p1(x.mono_mid,x.n_mono)}`, `${x.mono_exec}`],
+      ['At or above intrinsic', `${x.intr_mid.toLocaleString()} / ${x.n_intr.toLocaleString()} = ${p1(x.intr_mid,x.n_intr)}`, `${x.intr_ask}`],
+    ] : [];
+  const sect = (label, x) => x && x.n_bfly
+    ? `<tr><td colspan="3" style="background:var(--panel-hi);color:var(--muted)">${label}</td></tr>`
+      + rowsFor(x).map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td></tr>`).join('')
+    : '';
   document.getElementById('arb-tbl').innerHTML =
-    `<tr><th>Structural rule</th><th>Violated at the mid</th><th>At executable prices</th></tr>` +
-    [['Butterfly / convexity', `${a.bfly_mid.toLocaleString()} / ${a.n_bfly.toLocaleString()} = ${p1(a.bfly_mid,a.n_bfly)}`,
-      `${a.bfly_exec} = ${p1(a.bfly_exec,a.n_bfly)}`],
-     ['Monotonic in strike', `${a.mono_mid.toLocaleString()} / ${a.n_mono.toLocaleString()} = ${p1(a.mono_mid,a.n_mono)}`,
-      `${a.mono_exec} = ${p1(a.mono_exec,a.n_mono)}`],
-     ['At or above intrinsic', `${a.intr_mid.toLocaleString()} / ${a.n_intr.toLocaleString()} = ${p1(a.intr_mid,a.n_intr)}`,
-      `${a.intr_ask} = ${p1(a.intr_ask,a.n_intr)}`],
-    ].map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td></tr>`).join('');
+    `<tr><th>Structural rule</th><th>Violated at the mid</th><th>At executable prices</th></tr>`
+    + sect('Calls', a) + sect('Puts', ap);
 
   const ex = (a.examples||[])[0];
   if(ex){
@@ -1067,14 +1097,25 @@ function renderArb(){
       </div>`;
   }
 
+  const par = DATA.aggregate.parity || {};
+  const nviol = par.n_exec_viol;
   document.getElementById('arb-note').innerHTML =
     `<b>This is the sharpest statement of the whole assignment.</b> Roughly a third
      of the mid surface is not a valid option price surface at all — it implies
-     butterflies you could buy for negative money. Yet at executable prices there
-     is not a single violation, of any of the three rules. The market is perfectly
-     arbitrage-free; <code>${MARK}</code> is not. The mid is not a price with a
-     little noise on it — it is a point estimate whose error bar is wide enough to
-     swallow arbitrage.
+     butterflies you could buy for negative money. Yet on these three rules, across
+     both rights, <b>every single violation disappears at executable prices</b>.
+     <code>${MARK}</code> is not a price with a little noise on it — it is a point
+     estimate whose error bar is wide enough to swallow arbitrage.
+     ${nviol==null ? '' : `<br><br>
+     <b>The claim needs one qualification, and it is worth making.</b> These three
+     rules each live inside a single right. Widen the net to put-call parity, which
+     spans both, and ${nviol} of ${(par.n_pairs||0).toLocaleString()} conversions
+     do survive paying the spread on all four legs — ${(100*nviol/(par.n_pairs||1)).toFixed(2)}%.
+     So the honest statement is not "the market is perfectly arbitrage-free." It is
+     that the mid violates structure constantly and wholesale while executable
+     prices violate it rarely and marginally, and the handful that survive are
+     four-legged trades on an American underlying where early exercise and
+     borrow costs are not in the test.`}
      <br><br>
      It also explains the holdout result further down. That measured a
      ${'+'}$0.015 interpolation bias and attributed it to convexity. Here is the
@@ -1240,9 +1281,9 @@ function renderCompare2(){
      small-cap problem you can outrun by picking a liquid underlying.
      <br><br>
      <b>Read this as suggestive, not controlled.</b> The two names differ in strike
-     spacing ($0.50 vs $2.50) and price level, so "one listed series" is not the
-     same unit on both sides. The direction is informative; the magnitudes are not
-     strictly comparable.`;
+     spacing (${rows.map(r=>'$'+r.strike_step.toFixed(2)).join(' vs ')}) and price
+     level, so "one listed series" is not the same unit on both sides. The
+     direction is informative; the magnitudes are not strictly comparable.`;
 }
 
 /* ---------- controls ---------- */
@@ -1567,7 +1608,7 @@ function renderParity(){
      from spot with a discount factor of ${pa.median_D.toFixed(5)} — which is
      what a non-dividend payer over a few weeks at near-zero carry should look
      like, and is a genuine validation, because nothing forced that result. The
-     regression was free to return anything.
+     forward is pinned tightly even though the discount factor is not.
      <br><br>
      Against that clean forward, the median parity residual is still
      ${money(pa.resid_med)}. Parity is an <i>identity</i>: the call mid and the

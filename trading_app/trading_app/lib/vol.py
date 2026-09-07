@@ -41,6 +41,7 @@ from scipy.interpolate import griddata
 from .loaders import MARK_FIELD, PRINT_FIELD
 
 DAYS_PER_YEAR = 365.0
+_RNG = np.random.default_rng(7)   # fixed seed: the sample is reproducible
 MIN_T = 1.0 / DAYS_PER_YEAR      # a zero-DTE contract has no implied vol
 VOL_LO, VOL_HI = 1e-3, 5.0       # inversion bracket: 0.1% to 500% annualised
 
@@ -336,7 +337,16 @@ def space_holdout_pooled(wide: pd.DataFrame) -> dict | None:
         n_slices += 1
         ep.extend(r["_err_price"])
         ev.extend(r["_err_vol"])
-        rows.extend(r["rows"][:6])          # a thin sample for the scatter
+        # A thin sample for the scatter. Taking the first six in sort order
+        # would draw only the front of the expiry axis -- the plotted cloud
+        # would span a fraction of the DTE range and show roughly double the
+        # true bias, so the picture would overstate the statistic beside it.
+        rr = r["rows"]
+        if len(rr) > 6:
+            idx = _RNG.choice(len(rr), size=6, replace=False)
+            rows.extend([rr[i] for i in sorted(idx)])
+        else:
+            rows.extend(rr)
     if len(ep) < 30:
         return None
 

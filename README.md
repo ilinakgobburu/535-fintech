@@ -108,11 +108,22 @@ carries ten digits in the body where the scheme on the same page specifies nine
 
 With both rights in hand, put-call parity `C − P = D(F − K)` is an identity — no
 model, no volatility. Fitting it across strikes returns the slope `−D` and the
-intercept `D·F`, so **the forward and the rate come out of the option prices
-themselves**; nothing on the site assumes a risk-free rate or a dividend. The fit
-lands at spot `+$0.020` with `D = 1.00075`, which is what a non-dividend payer
-over a few weeks should look like — a real validation, since the regression was
-free to return anything.
+intercept `D·F`, so **the forward comes out of the option prices themselves**;
+nothing on the site assumes a risk-free rate or a dividend.
+
+The forward is well identified: the fit lands at spot `+$0.020`, which is what a
+non-dividend payer over a few weeks should look like. **The discount factor is
+not.** At these horizons `D` is within a whisker of 1 by construction, so the
+slope carries almost no information about a rate: raw fits imply annualized rates
+from `−2567%` to `+394%` for `dte ≤ 15`. The code pins `D = 1.0` whenever the raw
+slope leaves `0.90 < D < 1.02`, which fires on **23 of 246 fits (9.3%)** — always
+on the high side; the 0.90 floor never binds on this data — and that pinning drags
+the median `D` from `1.00193` to `1.00075`. So `D = 1.00075` is not independent
+validation; it is partly the guard rail. (A `D` above 1 implies a slightly
+*negative* rate, which is itself a sign the slope is fitting noise.)
+
+The defensible claim is the sharper one: **parity pins the forward tightly and has
+no power to identify the discount factor at these maturities.**
 
 Two things follow.
 
@@ -163,16 +174,16 @@ panels go after the question the assignment poses and declines to answer —
 
 **The spread is the error bar on the mark.** `BID`/`ASK` were pulled alongside
 the required fields, so the mark's uncertainty is measurable: the median quote
-is **23.8% of the mark**. Conditioned on moneyness, quotes on contracts that
-never traded run consistently wider — up to 2× in the wings.
+is **20.3% of the mark**. Conditioned on moneyness, quotes on contracts that
+never traded run consistently wider — up to 2× in the wings (calls; 1.4× puts).
 
 > Read the aggregate carefully. Pooled across everything, untraded spreads look
-> *narrower* (22.2% vs 25.9%) — the opposite of the truth. Untraded contracts
+> *narrower* (19.4% vs 21.0%) — the opposite of the truth. Untraded contracts
 > cluster deep in the money, where the option is expensive enough that a fat
 > spread is small as a percentage. Condition on moneyness or you invert the
 > conclusion. The page says this out loud.
 
-**Where the print landed inside the quote.** Only **27.9%** of 2,927 prints
+**Where the print landed inside the quote.** Only **31.1%** of 6,014 prints
 landed near the mid, with a pile-up at the ask. The mid was not an achievable
 price for most of the trades that actually happened.
 

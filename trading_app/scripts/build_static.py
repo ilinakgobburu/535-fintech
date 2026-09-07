@@ -30,7 +30,8 @@ from trading_app.lib.loaders import (  # noqa: E402
 )
 from trading_app.lib.metrics import (  # noqa: E402
     arbitrage_audit, fmt_money, fmt_pct, interpolate_grid, interpolation_holdout,
-    occupancy_matrix, print_probability, quote_quality, slice_asof,
+    infer_strike_step, occupancy_matrix, print_probability, quote_quality,
+    slice_asof,
     sparsity_stats, spread_by_bucket, spread_stats, trade_position_histogram,
     vertical_spread_example,
 )
@@ -72,6 +73,19 @@ def _occ_payload(sl: pd.DataFrame, field: str) -> dict | None:
     }
 
 
+# The sheet's gap threshold is a distance in STRIKE DOLLARS. Hardcoding 1.25
+# tuned it to UUUU's ~$13.50-wide grid; on CCJ (~$55 wide) the same number
+# blanked 78% of the sheet and made a well-covered surface look 4x sparser than
+# its data. Express it as a fraction of the slice's own strike range instead:
+# 1.25/13.5 leaves UUUU unchanged and puts CCJ back at ~91% coverage.
+GAP_FRACTION = 1.25 / 13.5
+
+
+def _gap_for(sl: pd.DataFrame, col: str = "strike") -> float:
+    span = float(sl[col].max() - sl[col].min()) if len(sl) else 0.0
+    return span * GAP_FRACTION if span > 0 else None
+
+
 def build_combo(sl: pd.DataFrame) -> dict:
     stats = sparsity_stats(sl)
     spot = sl["spot"].dropna()
@@ -82,20 +96,20 @@ def build_combo(sl: pd.DataFrame) -> dict:
     both = sl.dropna(subset=[MARK_FIELD, PRINT_FIELD])
 
     sheet = interpolate_grid(sl, MARK_FIELD, n_strike=SHEET_NX, n_dte=SHEET_NY,
-                             max_fill_gap=1.25)
+                             max_fill_gap=_gap_for(sl))
     # Same sheet in moneyness space. The gap threshold is in the axis's own
     # units: $1.25 of strike is roughly 0.10 of K/S on a $13 name.
     sheet_mny = interpolate_grid(sl, MARK_FIELD, n_strike=SHEET_NX, n_dte=SHEET_NY,
-                                 max_fill_gap=0.10, x_col="moneyness")
+                                 max_fill_gap=_gap_for(sl, "moneyness"), x_col="moneyness")
     # Bid and ask sheets turn the "surface" into a slab with real thickness.
     sheet_bid = interpolate_grid(sl, "BID", n_strike=SHEET_NX, n_dte=SHEET_NY,
-                                 max_fill_gap=1.25)
+                                 max_fill_gap=_gap_for(sl))
     sheet_ask = interpolate_grid(sl, "ASK", n_strike=SHEET_NX, n_dte=SHEET_NY,
-                                 max_fill_gap=1.25)
+                                 max_fill_gap=_gap_for(sl))
     # The same cloud in the space the surface is actually smooth in.
     iv_pts = sl.dropna(subset=["iv"]) if "iv" in sl.columns else sl.iloc[0:0]
     sheet_iv = (interpolate_grid(iv_pts, "iv", n_strike=SHEET_NX, n_dte=SHEET_NY,
-                                 max_fill_gap=1.25)
+                                 max_fill_gap=_gap_for(sl))
                 if len(iv_pts) >= 8 else None)
 
     return {
@@ -176,6 +190,7 @@ def summarize_cache(label: str, path: Path, href: str | None) -> dict | None:
         "href": href,
         "underlying": frames["underlying"],
         "n_series": st["n_series"],
+        "strike_step": float(infer_strike_step(wide)),
         "n_dates": st["n_dates"],
         "pct_mark_no_trade": st["pct_mark_no_trade"],
         "median_abs_diff": st["median_abs_diff"],
@@ -233,16 +248,18 @@ def build_payload(cache: Path) -> dict:
     # a whole, not about one day.
     aggregate = {
         "spread": spread_stats(wide),
-        "spread_bucket": spread_by_bucket(wide),
+        # K/S means opposite things for calls and puts, so pooling the
+        # rights mixes reversed economics inside every bucket and destroys
+        # the effect. One bucket set per right.
+        "spread_bucket": spread_by_bucket(wide[wide["cp"] == "C"]),
+        "spread_bucket_put": spread_by_bucket(wide[wide["cp"] == "P"]),
         "trade_hist": trade_position_histogram(wide),
         "n_dates": int(wide["date"].nunique()),
         "audit": arbitrage_audit(wide, cp="C"),
         "audit_put": arbitrage_audit(wide, cp="P"),
         "print_prob": print_probability(wide, cp="C"),
-        "print_prob_put": print_probability(wide, cp="P"),
         "quote_quality": quote_quality(wide),
         "spread_example": vertical_spread_example(wide, cp="C"),
-        "spread_example_put": vertical_spread_example(wide, cp="P"),
         "parity": parity_audit(wide, fwd),
         "iv_cov": iv_coverage(wide),
         "space": space_holdout_pooled(wide),
@@ -273,6 +290,7 @@ def build_payload(cache: Path) -> dict:
             "date_min": str(wide["date"].min().date()),
             "date_max": str(wide["date"].max().date()),
             "n_expiries": int(wide["expiry"].nunique()),
+        "strike_step": float(infer_strike_step(wide)),
             "ric_probe": (json.loads(RIC_PROBE.read_text())
                           if RIC_PROBE.exists() else None),
             "n_calls": int(wide[wide["cp"] == "C"]["ric"].nunique()),

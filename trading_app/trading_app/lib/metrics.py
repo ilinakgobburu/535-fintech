@@ -543,17 +543,22 @@ def print_probability(wide: pd.DataFrame, cp: str = "C") -> dict | None:
     if wide is None or wide.empty or "moneyness" not in wide.columns:
         return None
     w = wide[wide["cp"] == cp].dropna(subset=["moneyness", "dte"]).copy()
+    # K/S < 1 is in the money for a CALL and out of the money for a PUT, so the
+    # same bucket edges carry opposite meanings. Reverse the labels for puts
+    # rather than reversing the edges, which keeps the bins identical.
+    labels = MONEYNESS_LABELS if cp == "C" else list(reversed(MONEYNESS_LABELS))
     if len(w) < 50:
         return None
-    w["mb"] = pd.cut(w["moneyness"], MONEYNESS_BINS, labels=MONEYNESS_LABELS)
+    w["mb"] = pd.cut(w["moneyness"], MONEYNESS_BINS, labels=labels)
     w["db"] = pd.cut(w["dte"], DTE_BINS, labels=DTE_LABELS)
 
     grid = w.pivot_table(index="mb", columns="db", values="has_print",
                          aggfunc="mean", observed=False) * 100
     counts = w.pivot_table(index="mb", columns="db", values="has_print",
                            aggfunc="size", observed=False)
-    grid = grid.reindex(MONEYNESS_LABELS).reindex(DTE_LABELS, axis=1)
-    counts = counts.reindex(MONEYNESS_LABELS).reindex(DTE_LABELS, axis=1)
+    order = MONEYNESS_LABELS  # display order is always ITM -> OTM
+    grid = grid.reindex(order).reindex(DTE_LABELS, axis=1)
+    counts = counts.reindex(order).reindex(DTE_LABELS, axis=1)
 
     marg = []
     for m in MONEYNESS_LABELS:
@@ -630,6 +635,10 @@ def vertical_spread_example(wide: pd.DataFrame, strike_step: float | None = None
             if abs(K[i + 1] - K[i] - strike_step) > 1e-9:
                 continue
             lo, hi = g.iloc[i], g.iloc[i + 1]
+            # A debit vertical buys the dearer strike. For calls that is the
+            # LOWER strike; for puts the HIGHER. Bind both legs once here so
+            # the strikes, the RICs and the quotes cannot disagree.
+            long_leg, short_leg = (hi, lo) if cp == "P" else (lo, hi)
             # a call vertical is a debit low-minus-high; a put vertical reverses
             mid_val = float(hi[MARK_FIELD] - lo[MARK_FIELD]) if cp == "P" \
                 else float(lo[MARK_FIELD] - hi[MARK_FIELD])
@@ -642,18 +651,21 @@ def vertical_spread_example(wide: pd.DataFrame, strike_step: float | None = None
                 "expiry": str(pd.Timestamp(e).date()),
                 "dte": int(lo["dte"]),
                 "cp": cp,
-                "k_long": float(hi["strike"]) if cp == "P" else float(lo["strike"]),
-                "k_short": float(lo["strike"]) if cp == "P" else float(hi["strike"]),
-                "ric_long": str(lo["ric"]), "ric_short": str(hi["ric"]),
+                "k_long": float(long_leg["strike"]),
+                "k_short": float(short_leg["strike"]),
+                "ric_long": str(long_leg["ric"]),
+                "ric_short": str(short_leg["ric"]),
                 "mid_value": mid_val,
                 "exec_value": exec_val,
                 "slippage": exec_val - mid_val,
                 "slippage_pct": 100.0 * (exec_val - mid_val) / mid_val,
                 "legs": {
-                    "long": {"mid": float(lo[MARK_FIELD]), "bid": float(lo["BID"]),
-                             "ask": float(lo["ASK"])},
-                    "short": {"mid": float(hi[MARK_FIELD]), "bid": float(hi["BID"]),
-                              "ask": float(hi["ASK"])},
+                    "long": {"mid": float(long_leg[MARK_FIELD]),
+                             "bid": float(long_leg["BID"]),
+                             "ask": float(long_leg["ASK"])},
+                    "short": {"mid": float(short_leg[MARK_FIELD]),
+                              "bid": float(short_leg["BID"]),
+                              "ask": float(short_leg["ASK"])},
                 },
             })
 
