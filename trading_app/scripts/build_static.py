@@ -43,17 +43,21 @@ DEFAULT_CACHE = ROOT / "trading_app" / "data" / "option_pipeline_data.pkl"
 RIC_PROBE = ROOT / "trading_app" / "data" / "ric_probe.json"
 DEFAULT_OUT = ROOT.parent / "docs" / "index.html"
 MIN_SERIES = 12          # do not offer a date too thin to say anything about
-SHEET_NX, SHEET_NY = 28, 20
+# Sheet resolution. These are decorative surfaces drawn under a point cloud,
+# not data anyone reads a number off, and they dominate the payload: five
+# sheets per slice were 52% of every combo. 20x14 halves that and is visually
+# indistinguishable at the size the sheet is rendered.
+SHEET_NX, SHEET_NY = 20, 14
 
 
-def _clean(arr) -> list:
+def _clean(arr, dp: int = 4) -> list:
     """numpy -> JSON, with NaN as null (JSON has no NaN)."""
     out = []
     for v in np.asarray(arr, dtype=object).ravel():
         if v is None or (isinstance(v, float) and not np.isfinite(v)):
             out.append(None)
         elif isinstance(v, (np.floating, float)):
-            out.append(round(float(v), 4))
+            out.append(round(float(v), dp))
         elif isinstance(v, (np.integer, int)):
             out.append(int(v))
         else:
@@ -86,7 +90,34 @@ def _gap_for(sl: pd.DataFrame, col: str = "strike") -> float:
     return span * GAP_FRACTION if span > 0 else None
 
 
-def build_combo(sl: pd.DataFrame) -> dict:
+class _RicTable:
+    """
+    Intern RIC strings once instead of repeating them in every slice.
+
+    A RIC is ~20 characters and the same contract appears in most of the 53
+    sessions, so the raw strings were 19% of the payload. The table is written
+    once at the top level and each slice stores integer indices into it.
+    """
+
+    def __init__(self):
+        self.index: dict[str, int] = {}
+
+    def ids(self, series) -> list:
+        out = []
+        for r in series:
+            r = str(r)
+            i = self.index.get(r)
+            if i is None:
+                i = len(self.index)
+                self.index[r] = i
+            out.append(i)
+        return out
+
+    def as_list(self) -> list:
+        return [r for r, _ in sorted(self.index.items(), key=lambda kv: kv[1])]
+
+
+def build_combo(sl: pd.DataFrame, rics: "_RicTable") -> dict:
     stats = sparsity_stats(sl)
     spot = sl["spot"].dropna()
     spot_val = round(float(spot.median()), 4) if len(spot) else None
@@ -128,43 +159,43 @@ def build_combo(sl: pd.DataFrame) -> dict:
         },
         "mark": {
             "k": _clean(m["strike"]), "d": _clean(m["dte"]),
-            "v": _clean(m[MARK_FIELD]), "ric": _clean(m["ric"]),
+            "v": _clean(m[MARK_FIELD]), "ric": rics.ids(m["ric"]),
             "mny": _clean(m["moneyness"]),
         },
         "print": {
             "k": _clean(p["strike"]), "d": _clean(p["dte"]),
-            "v": _clean(p[PRINT_FIELD]), "ric": _clean(p["ric"]),
+            "v": _clean(p[PRINT_FIELD]), "ric": rics.ids(p["ric"]),
             "mny": _clean(p["moneyness"]),
         },
         "both": {
             "x": _clean(both[PRINT_FIELD]), "y": _clean(both[MARK_FIELD]),
             "k": _clean(both["strike"]), "d": _clean(both["dte"]),
-            "gap": _clean(both["abs_diff"]), "ric": _clean(both["ric"]),
+            "gap": _clean(both["abs_diff"]), "ric": rics.ids(both["ric"]),
         },
         "sheet": None if sheet is None else {
-            "x": _clean(sheet["x"]), "y": _clean(sheet["y"]),
-            "z": [_clean(row) for row in sheet["z"]],
+            "x": _clean(sheet["x"], 3), "y": _clean(sheet["y"], 3),
+            "z": [_clean(row, 3) for row in sheet["z"]],
         },
         "sheet_mny": None if sheet_mny is None else {
-            "x": _clean(sheet_mny["x"]), "y": _clean(sheet_mny["y"]),
-            "z": [_clean(row) for row in sheet_mny["z"]],
+            "x": _clean(sheet_mny["x"], 3), "y": _clean(sheet_mny["y"], 3),
+            "z": [_clean(row, 3) for row in sheet_mny["z"]],
         },
         "sheet_bid": None if sheet_bid is None else {
-            "x": _clean(sheet_bid["x"]), "y": _clean(sheet_bid["y"]),
-            "z": [_clean(row) for row in sheet_bid["z"]],
+            "x": _clean(sheet_bid["x"], 3), "y": _clean(sheet_bid["y"], 3),
+            "z": [_clean(row, 3) for row in sheet_bid["z"]],
         },
         "sheet_ask": None if sheet_ask is None else {
-            "x": _clean(sheet_ask["x"]), "y": _clean(sheet_ask["y"]),
-            "z": [_clean(row) for row in sheet_ask["z"]],
+            "x": _clean(sheet_ask["x"], 3), "y": _clean(sheet_ask["y"], 3),
+            "z": [_clean(row, 3) for row in sheet_ask["z"]],
         },
         "iv": {
             "k": _clean(iv_pts["strike"]), "d": _clean(iv_pts["dte"]),
-            "v": _clean(iv_pts["iv"]), "ric": _clean(iv_pts["ric"]),
+            "v": _clean(iv_pts["iv"]), "ric": rics.ids(iv_pts["ric"]),
             "mny": _clean(iv_pts["moneyness"]),
         } if len(iv_pts) else None,
         "sheet_iv": None if sheet_iv is None else {
-            "x": _clean(sheet_iv["x"]), "y": _clean(sheet_iv["y"]),
-            "z": [_clean(row) for row in sheet_iv["z"]],
+            "x": _clean(sheet_iv["x"], 3), "y": _clean(sheet_iv["y"], 3),
+            "z": [_clean(row, 3) for row in sheet_iv["z"]],
         },
         "occ_mark": _occ_payload(sl, MARK_FIELD),
         "occ_print": _occ_payload(sl, PRINT_FIELD),
@@ -221,6 +252,7 @@ def build_payload(cache: Path) -> dict:
         dates = list(counts.index)
     rights = sorted(wide["cp"].unique().tolist())
 
+    ric_table = _RicTable()
     combos, default_date = {}, None
     best = -1
     for d in dates:
@@ -229,7 +261,7 @@ def build_payload(cache: Path) -> dict:
             if sl.empty:
                 continue
             key = f"{d.date()}|{cp}"
-            combos[key] = build_combo(sl)
+            combos[key] = build_combo(sl, ric_table)
             score = len(sl) * sl["expiry"].nunique()
             if score > best:
                 best, default_date = score, (str(d.date()), cp)
@@ -304,6 +336,7 @@ def build_payload(cache: Path) -> dict:
         "rights": rights,
         "default": {"date": default_date[0], "cp": default_date[1]},
         "combos": combos,
+        "rics": ric_table.as_list(),
         "stock": stock_payload,
         "theme": {
             "base": T.BASE, "panel": T.PANEL, "panelHi": T.PANEL_HI,

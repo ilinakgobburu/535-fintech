@@ -477,6 +477,8 @@ const cap = t => ({text:t,xref:'paper',yref:'paper',x:0,y:1,xanchor:'left',yanch
                    showarrow:false,font:{size:10.5,color:T.faint,family:T.font}});
 const CFG = {displayModeBar:false, responsive:true};
 const combo = () => DATA.combos[state.date+'|'+state.cp];
+// RICs are interned in DATA.rics; slices carry indices into it.
+const ricOf = ids => (ids||[]).map(i => DATA.rics[i]);
 const money = v => v==null ? 'n/a' : '$'+Number(v).toFixed(3);
 const pct   = v => v==null ? 'n/a' : Math.round(v)+'%';
 
@@ -594,13 +596,13 @@ function renderSurface(){
   }
   if(state.mark && c.mark.k.length){
     traces.push({type:'scatter3d', mode:'markers', name:MARK+' (mark)',
-      x:xOf(c.mark), y:c.mark.d, z:c.mark.v, customdata:c.mark.ric,
+      x:xOf(c.mark), y:c.mark.d, z:c.mark.v, customdata:ricOf(c.mark.ric),
       marker:{size:4,color:T.mark,opacity:.9,symbol:'circle',line:{width:0}},
       hovertemplate:`<b>${MARK}</b> $%{z:.3f}<br>${xLbl} ${xFmt} · DTE %{y}<br>%{customdata}<extra></extra>`});
   }
   if(state.print && c.print.k.length){
     traces.push({type:'scatter3d', mode:'markers', name:PRINT+' (traded)',
-      x:xOf(c.print), y:c.print.d, z:c.print.v, customdata:c.print.ric,
+      x:xOf(c.print), y:c.print.d, z:c.print.v, customdata:ricOf(c.print.ric),
       marker:{size:6,color:T.print,opacity:1,symbol:'diamond',line:{width:.5,color:T.base}},
       hovertemplate:`<b>${PRINT}</b> $%{z:.3f}<br>${xLbl} ${xFmt} · DTE %{y}<br>%{customdata}<extra></extra>`});
   }
@@ -693,7 +695,7 @@ function renderCompare(){
       line:{color:T.faint,dash:'dash',width:1},xaxis:'x',yaxis:'y'});
     traces.push({type:'scatter',mode:'markers',name:'carries both',
       x:b.x,y:b.y,xaxis:'x',yaxis:'y',
-      customdata:b.ric.map((r,i)=>[r,b.k[i],b.d[i],b.gap[i]]),
+      customdata:ricOf(b.ric).map((r,i)=>[r,b.k[i],b.d[i],b.gap[i]]),
       marker:{size:9,color:T.both,opacity:.85,line:{width:2,color:T.panel}},
       hovertemplate:`${PRINT} $%{x:.3f}<br>${MARK} $%{y:.3f}<br>gap $%{customdata[3]:.3f}`+
         `<br>K %{customdata[1]:.2f} · DTE %{customdata[2]}<br>%{customdata[0]}<extra></extra>`});
