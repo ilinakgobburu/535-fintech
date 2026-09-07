@@ -136,6 +136,180 @@ def interpolate_grid(
     return {"x": xi, "y": yi, "z": zz, "coverage": float(np.isfinite(zz).mean())}
 
 
+def spread_stats(wide: pd.DataFrame) -> dict:
+    """
+    The error bar on the mark.
+
+    The assignment asks what price you would actually get filled at on a strike
+    that has a mark and no print, and answers "you do not know." The bid-ask
+    spread is how big that not-knowing is, and it is measurable.
+
+    Split by whether the contract traded, because the interesting claim is that
+    the contracts with no print are exactly the ones whose quotes are widest --
+    i.e. the mark is least trustworthy precisely where it is the only number
+    you have.
+    """
+    out = {
+        "median_spread": None, "median_spread_pct": None,
+        "traded_spread_pct": None, "untraded_spread_pct": None,
+        "widest_spread_pct": None, "n_quoted": 0,
+        "ratio": None,
+    }
+    if wide is None or wide.empty or "spread" not in wide.columns:
+        return out
+
+    q = wide.dropna(subset=["spread", "spread_pct"])
+    q = q[np.isfinite(q["spread_pct"])]
+    if q.empty:
+        return out
+
+    traded = q[q["has_print"]]["spread_pct"]
+    untraded = q[~q["has_print"]]["spread_pct"]
+
+    out["n_quoted"] = int(len(q))
+    out["median_spread"] = float(q["spread"].median())
+    out["median_spread_pct"] = float(q["spread_pct"].median())
+    out["widest_spread_pct"] = float(q["spread_pct"].max())
+    if len(traded):
+        out["traded_spread_pct"] = float(traded.median())
+    if len(untraded):
+        out["untraded_spread_pct"] = float(untraded.median())
+    if out["traded_spread_pct"] and out["untraded_spread_pct"]:
+        out["ratio"] = out["untraded_spread_pct"] / out["traded_spread_pct"]
+    return out
+
+
+def spread_by_bucket(wide: pd.DataFrame, n_buckets: int = 7) -> dict | None:
+    """
+    Median spread-as-%-of-mark bucketed by moneyness, split traded/untraded.
+    Shows the smile-shaped liquidity cost: cheapest at the money, blowing out
+    in the wings where the only number you have is the mark.
+    """
+    if wide is None or wide.empty or "spread_pct" not in wide.columns:
+        return None
+    q = wide.dropna(subset=["spread_pct", "moneyness"])
+    q = q[np.isfinite(q["spread_pct"]) & np.isfinite(q["moneyness"])]
+    if len(q) < 12:
+        return None
+
+    lo, hi = float(q["moneyness"].min()), float(q["moneyness"].max())
+    if not (hi > lo):
+        return None
+    edges = np.linspace(lo, hi, n_buckets + 1)
+    centres, traded, untraded, counts = [], [], [], []
+    for i in range(n_buckets):
+        a, b = edges[i], edges[i + 1]
+        sel = q[(q["moneyness"] >= a) & (q["moneyness"] <= b if i == n_buckets - 1
+                                        else q["moneyness"] < b)]
+        if sel.empty:
+            continue
+        t = sel[sel["has_print"]]["spread_pct"]
+        u = sel[~sel["has_print"]]["spread_pct"]
+        centres.append(float((a + b) / 2))
+        traded.append(float(t.median()) if len(t) else None)
+        untraded.append(float(u.median()) if len(u) else None)
+        counts.append(int(len(sel)))
+    if not centres:
+        return None
+    return {"moneyness": centres, "traded": traded,
+            "untraded": untraded, "counts": counts}
+
+
+def trade_position_histogram(wide: pd.DataFrame, n_bins: int = 12) -> dict | None:
+    """
+    Where inside the bid-ask did the actual print land?
+
+    0 = filled at the bid, 0.5 = filled at the mid, 1 = filled at the ask.
+    If prints pile up at the edges rather than the middle, then the mid was
+    not an achievable price -- somebody paid the spread to get done. That is
+    direct evidence against using the mark as a fill assumption.
+    """
+    if wide is None or wide.empty or "trade_in_spread" not in wide.columns:
+        return None
+    v = wide["trade_in_spread"].dropna()
+    v = v[np.isfinite(v)]
+    # Allow a little outside [0,1]: prints can be stale relative to the close.
+    v = v[(v >= -0.25) & (v <= 1.25)]
+    if len(v) < 10:
+        return None
+
+    edges = np.linspace(0.0, 1.0, n_bins + 1)
+    counts, _ = np.histogram(np.clip(v, 0.0, 1.0), bins=edges)
+    inside = v[(v >= 0) & (v <= 1)]
+    at_edges = float(((inside <= 0.1) | (inside >= 0.9)).mean() * 100) if len(inside) else None
+    near_mid = float(((inside > 0.4) & (inside < 0.6)).mean() * 100) if len(inside) else None
+    return {
+        "centres": [float((edges[i] + edges[i + 1]) / 2) for i in range(n_bins)],
+        "counts": [int(c) for c in counts],
+        "n": int(len(v)),
+        "median": float(v.median()),
+        "pct_at_edges": at_edges,
+        "pct_near_mid": near_mid,
+    }
+
+
+def interpolation_holdout(
+    sl: pd.DataFrame,
+    value_col: str = MARK_FIELD,
+    min_points: int = 20,
+) -> dict | None:
+    """
+    Quantify the danger the assignment warns about, instead of asserting it.
+
+    Take the cells we DO observe, hide each one in turn, rebuild the linear
+    interpolant from its neighbours, and compare the guess to the truth. Errors
+    here are a BEST case: these are interior cells surrounded by real data. The
+    holes we would actually want to fill are in the wings, with less support,
+    so the true error is worse than this.
+    """
+    cloud = sl.dropna(subset=["strike", "dte", value_col])
+    if len(cloud) < min_points:
+        return None
+
+    x = cloud["strike"].to_numpy(float)
+    y = cloud["dte"].to_numpy(float)
+    z = cloud[value_col].to_numpy(float)
+    if np.ptp(x) == 0 or np.ptp(y) == 0:
+        return None
+
+    # Rescale DTE into strike units so the triangulation is not degenerate.
+    y_scale = np.ptp(x) / np.ptp(y)
+    pts = np.column_stack([x, y * y_scale])
+
+    truth, guess = [], []
+    for i in range(len(z)):
+        mask = np.ones(len(z), dtype=bool)
+        mask[i] = False
+        try:
+            g = griddata(pts[mask], z[mask], pts[i:i + 1], method="linear")
+        except Exception:
+            continue
+        if g is None or not np.isfinite(g[0]):
+            continue  # outside the hull of its neighbours -- cannot be guessed
+        truth.append(float(z[i]))
+        guess.append(float(g[0]))
+
+    if len(truth) < 8:
+        return None
+    truth_a, guess_a = np.array(truth), np.array(guess)
+    err = guess_a - truth_a
+    abs_err = np.abs(err)
+    rel = 100.0 * abs_err / np.where(truth_a == 0, np.nan, truth_a)
+    rel = rel[np.isfinite(rel)]
+
+    return {
+        "n_tested": int(len(truth)),
+        "n_unguessable": int(len(z) - len(truth)),
+        "truth": [round(v, 4) for v in truth],
+        "guess": [round(v, 4) for v in guess],
+        "median_abs_err": float(np.median(abs_err)),
+        "p90_abs_err": float(np.percentile(abs_err, 90)),
+        "max_abs_err": float(abs_err.max()),
+        "median_rel_err": float(np.median(rel)) if len(rel) else None,
+        "bias": float(np.median(err)),
+    }
+
+
 def occupancy_matrix(wide: pd.DataFrame, field: str) -> pd.DataFrame | None:
     """
     (expiry x strike) matrix of 1/0 -- did this cell carry a number.

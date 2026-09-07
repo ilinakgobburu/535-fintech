@@ -189,6 +189,41 @@
   <table class="tbl" id="tbl"></table>
 </details>
 
+<h2>So what would you actually get filled at?</h2>
+<div class="reading">
+  <p class="lede" style="margin-bottom:6px">
+    The assignment poses this and answers "you do not know." That is right — but
+    the size of the not-knowing is measurable, because the same pull that gives
+    a mark also gives the <code>BID</code> and <code>ASK</code> it sits between.
+    The mark is a point estimate. <b>The spread is its error bar.</b>
+  </p>
+  <p id="spread-lede" class="notes" style="margin-top:10px"></p>
+</div>
+<div class="tiles" id="tiles-spread"></div>
+<div class="grid2" style="margin-top:18px">
+  <div class="card"><div id="p-spread" class="plot"></div></div>
+  <div class="card"><div id="p-fill" class="plot"></div></div>
+</div>
+<p class="notes" id="spread-note"></p>
+
+<h2>How wrong is the interpolated sheet, really?</h2>
+<div class="reading">
+  <p class="lede" style="margin-bottom:6px">
+    Rather than assert that filling holes is dangerous, measure it. Every cell
+    that <i>is</i> observed gets hidden in turn, rebuilt by linear interpolation
+    from its neighbours, and compared against the truth.
+  </p>
+  <p class="notes" style="margin-top:10px">
+    These errors are a <b>best case</b>. Each tested cell is an interior point
+    ringed by real observations. The holes you would actually want to fill sit
+    in the wings with far less support around them, so the true error is worse
+    than what this measures.
+  </p>
+</div>
+<div class="tiles" id="tiles-holdout"></div>
+<div class="card" style="margin-top:18px"><div id="p-holdout" class="plot"></div></div>
+<p class="notes" id="holdout-note"></p>
+
 <h2>The underlying, for context</h2>
 <div class="card"><div id="p-stock" class="plot"></div></div>
 
@@ -496,16 +531,23 @@ function renderProse(){
      deep in the money there is frequently neither. On ${state.date} only
      <b>${s.n_both}</b> of <b>${s.n_series}</b> listed series carried both a mark
      and a trade; <b>${s.pct_txt}</b> had a mark with no trade behind it at all.`;
+  const h = c.holdout;
+  const biasTxt = h ? `measured on this date, that bias is
+     ${h.bias>=0?'+':''}${money(h.bias)} and the median miss on a cell we
+     actually know is ${money(h.median_abs_err)}` :
+    `the chord between two observed points sits above the true curve`;
   document.getElementById('a2').innerHTML =
-    `A $0.50 grid on a high-single-digit name means adjacent strikes are several
-     percent apart in moneyness, so the option value genuinely changes between
-     neighbours — and the surface is convex, so straight-line interpolation
-     systematically undershoots between two observed points. Worse, the cells you
-     are filling are empty <i>because nobody wanted to trade them</i>: the gaps are
-     where liquidity is absent, not where it happens to be unrecorded. Filling them
-     produces a smooth, confident-looking sheet whose most authoritative-looking
-     regions are precisely the ones with no evidence underneath, and reading a fill
-     price off it would mean quoting a number the market never made.`;
+    `A $0.50 grid on a name trading near ${spot} means adjacent strikes are several
+     percent apart in moneyness, so value genuinely changes between neighbours —
+     and because the price curve is convex, a straight line drawn between two
+     observed points sits <i>above</i> the truth, so interpolation systematically
+     <b>overshoots</b> (${biasTxt}). Worse, the cells being filled are empty
+     <i>because nobody wanted to trade them</i>: the gaps mark absent liquidity,
+     not merely unrecorded liquidity. Filling them yields a smooth,
+     confident-looking sheet whose most authoritative regions are exactly the ones
+     with no evidence underneath — and reading a fill price off it means quoting a
+     number the market never made, in the contracts where it would least likely
+     have traded with you.`;
   document.getElementById('a3').innerHTML =
     `<span class="k-mark">${MARK}</span> is the mark: it is the closing NBBO
      midpoint, it exists on far more series than trades do, and it is the field the
@@ -516,6 +558,174 @@ function renderProse(){
      never happened.`;
 }
 
+/* ---------- spread: the error bar on the mark ---------- */
+function renderSpread(){
+  const A = DATA.aggregate, s = A.spread, b = A.spread_bucket;
+  const p1 = v => v==null ? 'n/a' : v.toFixed(1)+'%';
+
+  document.getElementById('tiles-spread').innerHTML = `
+    <div class="tile hero">
+      <div class="label">Median spread, as % of the mark</div>
+      <div class="value">${p1(s.median_spread_pct)}</div>
+      <div class="sub">${money(s.median_spread)} wide · ${s.n_quoted} quoted series</div>
+    </div>
+    <div class="tile hero2">
+      <div class="label">Widest quote in the panel</div>
+      <div class="value">${p1(s.widest_spread_pct)}</div>
+      <div class="sub">the ask was more than double the mark</div>
+    </div>
+    <div class="tile">
+      <div class="label">Trades landing near the mid</div>
+      <div class="value">${A.trade_hist?p1(A.trade_hist.pct_near_mid):'n/a'}</div>
+      <div class="sub">of ${A.trade_hist?A.trade_hist.n:0} prints, within 40–60% of the quote</div>
+    </div>
+    <div class="tile">
+      <div class="label">Sessions aggregated</div>
+      <div class="value">${A.n_dates}</div>
+      <div class="sub">these two panels pool every date</div>
+    </div>`;
+
+  document.getElementById('spread-lede').innerHTML =
+    `Across the whole panel the median quote is <b>${p1(s.median_spread_pct)}</b> of
+     the mark — so a "price" of $1.00 typically sits inside a quote roughly
+     ${money(s.median_spread)} wide. That is the width of your ignorance on any
+     contract you did not see trade.`;
+
+  // Left: spread vs moneyness, split by whether the contract traded.
+  if(b){
+    const traces = [
+      {type:'scatter',mode:'lines+markers',name:'traded that day',
+       x:b.moneyness,y:b.traded,connectgaps:true,
+       line:{color:T.print,width:2},
+       marker:{size:9,color:T.print,symbol:'diamond',line:{width:2,color:T.panel}},
+       hovertemplate:'K/S %{x:.2f}<br>median spread %{y:.1f}% of mark<extra>traded</extra>'},
+      {type:'scatter',mode:'lines+markers',name:'never traded',
+       x:b.moneyness,y:b.untraded,connectgaps:true,
+       line:{color:T.mark,width:2,dash:'dot'},
+       marker:{size:9,color:T.mark,symbol:'circle',line:{width:2,color:T.panel}},
+       hovertemplate:'K/S %{x:.2f}<br>median spread %{y:.1f}% of mark<extra>no trade</extra>'},
+    ];
+    Plotly.react('p-spread', traces, base({
+      height:430, margin:{l:64,r:24,t:64,b:112},
+      title:{text:'The cost of not knowing, by moneyness',
+        font:{size:15,color:T.text,family:T.font},x:0,xanchor:'left',y:.97,yanchor:'top'},
+      xaxis:ax('Moneyness  K / S'), yaxis:ax('Median spread (% of mark)'),
+      legend:{orientation:'h',yanchor:'bottom',y:1.0,x:1,xanchor:'right',
+        bgcolor:'rgba(11,16,32,.78)',bordercolor:T.line,borderwidth:1,
+        font:{size:11,color:T.text}},
+      annotations:[{text:'Conditioned on moneyness, quotes on contracts that never traded are consistently wider.',
+        xref:'paper',yref:'paper',x:0,y:-0.26,xanchor:'left',yanchor:'top',
+        showarrow:false,font:{size:10.5,color:T.faint,family:T.font}}],
+    }), CFG);
+  }
+
+  // Right: where inside the quote the print actually landed.
+  const h = A.trade_hist;
+  if(h){
+    Plotly.react('p-fill', [{type:'bar',x:h.centres,y:h.counts,
+      marker:{color:T.both,line:{width:2,color:T.panel}},
+      hovertemplate:'%{y} prints landed here<extra></extra>',showlegend:false}],
+      base({height:430, margin:{l:64,r:24,t:64,b:112}, bargap:.06,
+        title:{text:'Where in the quote did the trade actually happen?',
+          font:{size:15,color:T.text,family:T.font},x:0,xanchor:'left',y:.97,yanchor:'top'},
+        xaxis:ax('0 = filled at the bid   ·   0.5 = at the mid   ·   1 = at the ask',
+          {range:[0,1],tickvals:[0,.25,.5,.75,1]}),
+        yaxis:ax('Prints'),
+        shapes:[{type:'line',x0:.5,x1:.5,y0:0,y1:1,yref:'paper',
+          line:{color:T.faint,dash:'dash',width:1}}],
+        annotations:[
+          {text:'the mid',x:.5,y:1,yref:'paper',yanchor:'bottom',
+           showarrow:false,font:{size:10,color:T.faint,family:T.font}},
+          {text:`Only ${h.pct_near_mid.toFixed(0)}% of prints landed near the mid — using it as your fill price is wrong most of the time.`,
+           xref:'paper',yref:'paper',x:0,y:-0.26,xanchor:'left',yanchor:'top',
+           showarrow:false,font:{size:10.5,color:T.faint,family:T.font}}],
+      }), CFG);
+  }
+
+  document.getElementById('spread-note').innerHTML =
+    `<b>A wrinkle worth reading carefully.</b> Pooled across everything, contracts
+     that never traded show a <i>narrower</i> median spread
+     (${p1(s.untraded_spread_pct)}) than ones that did (${p1(s.traded_spread_pct)}) —
+     the opposite of what you would expect. The left-hand chart shows why that
+     aggregate is a lie: within almost every moneyness bucket the untraded
+     quotes are wider, sometimes twice as wide. The pooled number flips because
+     untraded contracts cluster deep in the money, where the option costs enough
+     that even a fat spread is small as a percentage. Condition on moneyness or
+     you will draw exactly the wrong conclusion.`;
+}
+
+/* ---------- holdout: measuring the interpolation error ---------- */
+function renderHoldout(){
+  const h = combo().holdout;
+  const tiles = document.getElementById('tiles-holdout');
+  if(!h){
+    tiles.innerHTML = `<div class="tile"><div class="label">Holdout test</div>
+      <div class="value" style="font-size:19px">not enough points</div>
+      <div class="sub">this slice has too few observations to test</div></div>`;
+    Plotly.react('p-holdout', [], base({height:380,
+      xaxis:{visible:false},yaxis:{visible:false},
+      annotations:[{text:'Pick a denser as-of date to run the holdout test.',
+        xref:'paper',yref:'paper',x:.5,y:.5,xanchor:'center',showarrow:false,
+        font:{size:12.5,color:T.muted,family:T.font}}]}), CFG);
+    document.getElementById('holdout-note').textContent = '';
+    return;
+  }
+
+  tiles.innerHTML = `
+    <div class="tile hero2">
+      <div class="label">Median error filling a known cell</div>
+      <div class="value">${money(h.median_abs_err)}</div>
+      <div class="sub">${h.median_rel_err==null?'':h.median_rel_err.toFixed(1)+'% of the true mark'}</div>
+    </div>
+    <div class="tile">
+      <div class="label">90th percentile error</div>
+      <div class="value">${money(h.p90_abs_err)}</div>
+      <div class="sub">worst case ${money(h.max_abs_err)}</div>
+    </div>
+    <div class="tile">
+      <div class="label">Systematic bias</div>
+      <div class="value">${h.bias>=0?'+':''}${money(h.bias)}</div>
+      <div class="sub">${h.bias>=0?'overshoots — the chord sits above a convex curve':'undershoots'}</div>
+    </div>
+    <div class="tile">
+      <div class="label">Cells it could not guess at all</div>
+      <div class="value">${h.n_unguessable}</div>
+      <div class="sub">of ${h.n_tested + h.n_unguessable} — outside their neighbours' hull</div>
+    </div>`;
+
+  const all = h.truth.concat(h.guess);
+  const lo = Math.min.apply(null,all), hi = Math.max.apply(null,all);
+  const pad = hi>lo ? (hi-lo)*.06 : .05;
+  Plotly.react('p-holdout', [
+    {type:'scatter',mode:'lines',name:'perfect',hoverinfo:'skip',
+     x:[lo-pad,hi+pad],y:[lo-pad,hi+pad],line:{color:T.faint,dash:'dash',width:1}},
+    {type:'scatter',mode:'markers',name:'interpolated guess',
+     x:h.truth,y:h.guess,
+     marker:{size:8,color:T.interp,opacity:.8,line:{width:2,color:T.panel}},
+     hovertemplate:'true $%{x:.3f}<br>guessed $%{y:.3f}<extra></extra>'},
+  ], base({height:430, margin:{l:70,r:24,t:64,b:112},
+      title:{text:`Interpolating cells we already know · ${state.date}`,
+        font:{size:15,color:T.text,family:T.font},x:0,xanchor:'left',y:.97,yanchor:'top'},
+      xaxis:ax('True MID_PRICE ($)',{range:[lo-pad,hi+pad]}),
+      yaxis:ax('What interpolation guessed ($)',{range:[lo-pad,hi+pad]}),
+      legend:{orientation:'h',yanchor:'bottom',y:1.0,x:1,xanchor:'right',
+        bgcolor:'rgba(11,16,32,.78)',bordercolor:T.line,borderwidth:1,
+        font:{size:11,color:T.text}},
+      annotations:[{text:'Points above the dashed line are cells where interpolation invented a price higher than the real one.',
+        xref:'paper',yref:'paper',x:0,y:-0.26,xanchor:'left',yanchor:'top',
+        showarrow:false,font:{size:10.5,color:T.faint,family:T.font}}],
+  }), CFG);
+
+  const gap = combo().stats.median_abs_diff;
+  document.getElementById('holdout-note').innerHTML =
+    `<b>Put that next to the other number on this page.</b> Interpolation misses a
+     <i>known</i> cell by ${money(h.median_abs_err)} at the median, while the median
+     disagreement between the mark and an actual trade is
+     ${gap==null?'n/a':money(gap)}. The error you introduce by inventing a price is
+     the same order of magnitude as the entire mark-versus-trade effect this
+     assignment is about — and that is on the easy cells.`;
+}
+
 /* ---------- controls ---------- */
 function renderAll(){
   const c = combo();
@@ -523,6 +733,7 @@ function renderAll(){
   renderOcc('p-occ-mark',  c.occ_mark,  MARK,  T.markScale);
   renderOcc('p-occ-print', c.occ_print, PRINT, T.printScale);
   renderTable();
+  renderHoldout();
 }
 
 function paintCp(){
@@ -571,7 +782,7 @@ function wire(){
   });
 }
 
-renderChrome(); wire(); renderAll(); renderStock();
+renderChrome(); wire(); renderAll(); renderStock(); renderSpread();
 </script>
 </body>
 </html>

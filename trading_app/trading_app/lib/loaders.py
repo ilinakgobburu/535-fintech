@@ -28,6 +28,12 @@ from .ric import parse_option_ric
 MARK_FIELD = "MID_PRICE"   # closing NBBO midpoint -- the mark
 PRINT_FIELD = "TRDPRC_1"   # last trade -- evidence someone traded
 
+# Not required by the assignment, but pulled because they are what turns
+# "you do not know what you would get filled at" into a measurable number.
+BID_FIELD = "BID"
+ASK_FIELD = "ASK"
+QUOTE_FIELDS = [BID_FIELD, ASK_FIELD]
+
 # Anything we recognise as a price field when sniffing a MultiIndex level.
 KNOWN_FIELDS = {
     "TRDPRC_1", "MID_PRICE", "SETTLE", "CLOSE",
@@ -160,15 +166,17 @@ def attach_underlying(tidy: pd.DataFrame, df_stock: pd.DataFrame) -> pd.DataFram
 
 def pivot_fields(tidy: pd.DataFrame) -> pd.DataFrame:
     """One row per (date, ric) with the mark and the print side by side."""
+    wanted = [MARK_FIELD, PRINT_FIELD] + QUOTE_FIELDS
     empty_cols = [
         "date", "ric", "underlying", "cp", "expiry", "strike", "dte",
-        "spot", "moneyness", MARK_FIELD, PRINT_FIELD,
+        "spot", "moneyness", *wanted,
         "has_mark", "has_print", "abs_diff", "rel_diff",
+        "spread", "spread_pct", "trade_in_spread",
     ]
     if tidy.empty:
         return pd.DataFrame(columns=empty_cols)
 
-    keep = tidy[tidy["field"].isin([MARK_FIELD, PRINT_FIELD])]
+    keep = tidy[tidy["field"].isin(wanted)]
     if keep.empty:
         return pd.DataFrame(columns=empty_cols)
 
@@ -183,7 +191,7 @@ def pivot_fields(tidy: pd.DataFrame) -> pd.DataFrame:
     )
     wide.columns.name = None
 
-    for field in (MARK_FIELD, PRINT_FIELD):
+    for field in wanted:
         if field not in wide.columns:
             wide[field] = np.nan
 
@@ -191,6 +199,18 @@ def pivot_fields(tidy: pd.DataFrame) -> pd.DataFrame:
     wide["has_print"] = wide[PRINT_FIELD].notna()
     wide["abs_diff"] = (wide[MARK_FIELD] - wide[PRINT_FIELD]).abs()
     wide["rel_diff"] = wide["abs_diff"] / wide[MARK_FIELD].replace(0, np.nan)
+
+    # How wide is the quote the mark sits in the middle of? This is the honest
+    # width of "you do not know what you would have been filled at".
+    spread = wide[ASK_FIELD] - wide[BID_FIELD]
+    wide["spread"] = spread.where(spread >= 0)          # crossed quotes are bad data
+    wide["spread_pct"] = 100.0 * wide["spread"] / wide[MARK_FIELD].replace(0, np.nan)
+
+    # Where inside the quote did the print actually land?
+    #   0.0 = traded at the bid, 0.5 = at the mid, 1.0 = at the ask
+    denom = wide["spread"].replace(0, np.nan)
+    wide["trade_in_spread"] = (wide[PRINT_FIELD] - wide[BID_FIELD]) / denom
+
     return wide.sort_values(["date", "expiry", "strike"]).reset_index(drop=True)
 
 

@@ -29,8 +29,9 @@ from trading_app.lib.loaders import (  # noqa: E402
     MARK_FIELD, PRINT_FIELD, build_frames, load_payload,
 )
 from trading_app.lib.metrics import (  # noqa: E402
-    fmt_money, fmt_pct, interpolate_grid, occupancy_matrix, slice_asof,
-    sparsity_stats,
+    fmt_money, fmt_pct, interpolate_grid, interpolation_holdout,
+    occupancy_matrix, slice_asof, sparsity_stats, spread_by_bucket,
+    spread_stats, trade_position_histogram,
 )
 
 DEFAULT_CACHE = ROOT / "trading_app" / "data" / "option_pipeline_data.pkl"
@@ -111,6 +112,8 @@ def build_combo(sl: pd.DataFrame) -> dict:
         },
         "occ_mark": _occ_payload(sl, MARK_FIELD),
         "occ_print": _occ_payload(sl, PRINT_FIELD),
+        "holdout": interpolation_holdout(sl, MARK_FIELD),
+        "spread": spread_stats(sl),
     }
 
 
@@ -148,7 +151,17 @@ def build_payload(cache: Path) -> dict:
         }
 
     overall = sparsity_stats(wide)
+    # Aggregated across every session: per-slice these would be too thin to
+    # bucket meaningfully, and the claims they support are about the panel as
+    # a whole, not about one day.
+    aggregate = {
+        "spread": spread_stats(wide),
+        "spread_bucket": spread_by_bucket(wide),
+        "trade_hist": trade_position_histogram(wide),
+        "n_dates": int(wide["date"].nunique()),
+    }
     return {
+        "aggregate": aggregate,
         "meta": {
             "underlying": frames["underlying"],
             "fetched_at": frames["fetched_at"],
