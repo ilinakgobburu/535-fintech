@@ -29,9 +29,10 @@ from trading_app.lib.loaders import (  # noqa: E402
     MARK_FIELD, PRINT_FIELD, build_frames, load_payload,
 )
 from trading_app.lib.metrics import (  # noqa: E402
-    fmt_money, fmt_pct, interpolate_grid, interpolation_holdout,
-    occupancy_matrix, slice_asof, sparsity_stats, spread_by_bucket,
-    spread_stats, trade_position_histogram,
+    arbitrage_audit, fmt_money, fmt_pct, interpolate_grid, interpolation_holdout,
+    occupancy_matrix, print_probability, quote_quality, slice_asof,
+    sparsity_stats, spread_by_bucket, spread_stats, trade_position_histogram,
+    vertical_spread_example,
 )
 
 DEFAULT_CACHE = ROOT / "trading_app" / "data" / "option_pipeline_data.pkl"
@@ -82,6 +83,11 @@ def build_combo(sl: pd.DataFrame) -> dict:
     # units: $1.25 of strike is roughly 0.10 of K/S on a $13 name.
     sheet_mny = interpolate_grid(sl, MARK_FIELD, n_strike=SHEET_NX, n_dte=SHEET_NY,
                                  max_fill_gap=0.10, x_col="moneyness")
+    # Bid and ask sheets turn the "surface" into a slab with real thickness.
+    sheet_bid = interpolate_grid(sl, "BID", n_strike=SHEET_NX, n_dte=SHEET_NY,
+                                 max_fill_gap=1.25)
+    sheet_ask = interpolate_grid(sl, "ASK", n_strike=SHEET_NX, n_dte=SHEET_NY,
+                                 max_fill_gap=1.25)
 
     return {
         "spot": spot_val,
@@ -119,6 +125,14 @@ def build_combo(sl: pd.DataFrame) -> dict:
         "sheet_mny": None if sheet_mny is None else {
             "x": _clean(sheet_mny["x"]), "y": _clean(sheet_mny["y"]),
             "z": [_clean(row) for row in sheet_mny["z"]],
+        },
+        "sheet_bid": None if sheet_bid is None else {
+            "x": _clean(sheet_bid["x"]), "y": _clean(sheet_bid["y"]),
+            "z": [_clean(row) for row in sheet_bid["z"]],
+        },
+        "sheet_ask": None if sheet_ask is None else {
+            "x": _clean(sheet_ask["x"]), "y": _clean(sheet_ask["y"]),
+            "z": [_clean(row) for row in sheet_ask["z"]],
         },
         "occ_mark": _occ_payload(sl, MARK_FIELD),
         "occ_print": _occ_payload(sl, PRINT_FIELD),
@@ -198,6 +212,10 @@ def build_payload(cache: Path) -> dict:
         "spread_bucket": spread_by_bucket(wide),
         "trade_hist": trade_position_histogram(wide),
         "n_dates": int(wide["date"].nunique()),
+        "audit": arbitrage_audit(wide),
+        "print_prob": print_probability(wide),
+        "quote_quality": quote_quality(wide),
+        "spread_example": vertical_spread_example(wide),
     }
     return {
         "aggregate": aggregate,

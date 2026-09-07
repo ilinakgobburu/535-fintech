@@ -337,3 +337,246 @@ def occupancy_matrix(wide: pd.DataFrame, field: str) -> pd.DataFrame | None:
     grid = sl.pivot_table(index="_label", columns="strike", values="_hit", aggfunc="max")
     order = sl.drop_duplicates("_label").sort_values("expiry")["_label"].tolist()
     return grid.reindex(order, axis=0).reindex(sorted(grid.columns), axis=1)
+
+
+# --------------------------------------------------------------------------
+# Structural checks: things an option surface must obey regardless of model
+# --------------------------------------------------------------------------
+
+def arbitrage_audit(wide: pd.DataFrame, strike_step: float = 0.50) -> dict:
+    """
+    Test the surface against two rules that hold for ANY arbitrage-free market,
+    with no model and no volatility assumption:
+
+      monotonicity  a call struck higher cannot cost more:  C(K) >= C(K+h)
+      convexity     a butterfly cannot cost negative money:
+                    C(K-h) - 2C(K) + C(K+h) >= 0
+
+    Each is checked twice.
+
+      "mid"        using MID_PRICE, the mark
+      "executable" using the prices you could actually transact at -- buy the
+                   wings at the ask, sell the body at the bid; sell the low
+                   strike at the bid, buy the high strike at the ask
+
+    A violation at the mid is not an arbitrage. It is evidence that the mid is
+    not a price. A violation at executable prices WOULD be free money, so if
+    the market is functioning there should be none.
+
+    Only strictly consecutive strikes on the listed grid are compared, so a
+    missing strike never fabricates a violation.
+    """
+    out = {
+        "n_bfly": 0, "bfly_mid": 0, "bfly_exec": 0, "worst_bfly": None,
+        "n_mono": 0, "mono_mid": 0, "mono_exec": 0, "worst_mono": None,
+        "n_intr": 0, "intr_mid": 0, "intr_ask": 0, "worst_intr": None,
+        "examples": [],
+    }
+    if wide is None or wide.empty:
+        return out
+
+    calls = wide[wide["cp"] == "C"]
+    if calls.empty:
+        return out
+
+    worst_bf, worst_mn = 0.0, 0.0
+    for (_, _), g in calls.groupby(["date", "expiry"]):
+        g = g.sort_values("strike")
+        K = g["strike"].to_numpy(float)
+        M = g[MARK_FIELD].to_numpy(float)
+        B = g["BID"].to_numpy(float) if "BID" in g else np.full(len(K), np.nan)
+        A = g["ASK"].to_numpy(float) if "ASK" in g else np.full(len(K), np.nan)
+        rics = g["ric"].tolist()
+
+        for i in range(len(K) - 1):
+            if abs(K[i + 1] - K[i] - strike_step) > 1e-9:
+                continue
+            if np.isfinite(M[i]) and np.isfinite(M[i + 1]):
+                out["n_mono"] += 1
+                gap = M[i + 1] - M[i]
+                if gap > 1e-12:
+                    out["mono_mid"] += 1
+                    worst_mn = max(worst_mn, gap)
+                if np.isfinite(A[i]) and np.isfinite(B[i + 1]) and B[i + 1] - A[i] > 1e-12:
+                    out["mono_exec"] += 1
+
+        for i in range(len(K) - 2):
+            if (abs(K[i + 1] - K[i] - strike_step) > 1e-9
+                    or abs(K[i + 2] - K[i + 1] - strike_step) > 1e-9):
+                continue
+            if not (np.isfinite(M[i]) and np.isfinite(M[i + 1]) and np.isfinite(M[i + 2])):
+                continue
+            out["n_bfly"] += 1
+            v = M[i] - 2 * M[i + 1] + M[i + 2]
+            if v < -1e-12:
+                out["bfly_mid"] += 1
+                if v < worst_bf:
+                    worst_bf = v
+                    out["examples"] = [{
+                        "rics": [rics[i], rics[i + 1], rics[i + 2]],
+                        "strikes": [float(K[i]), float(K[i + 1]), float(K[i + 2])],
+                        "mids": [float(M[i]), float(M[i + 1]), float(M[i + 2])],
+                        "cost_mid": float(v),
+                        "cost_exec": (float(A[i] - 2 * B[i + 1] + A[i + 2])
+                                      if np.isfinite(A[i]) and np.isfinite(B[i + 1])
+                                      and np.isfinite(A[i + 2]) else None),
+                    }]
+            if np.isfinite(A[i]) and np.isfinite(B[i + 1]) and np.isfinite(A[i + 2]):
+                if A[i] - 2 * B[i + 1] + A[i + 2] < -1e-12:
+                    out["bfly_exec"] += 1
+
+    out["worst_bfly"] = float(worst_bf) if worst_bf < 0 else None
+    out["worst_mono"] = float(worst_mn) if worst_mn > 0 else None
+
+    # Intrinsic floor. Spot-based, so no carry or dividend adjustment -- this is
+    # an approximation and the page says so.
+    q = calls.dropna(subset=[MARK_FIELD, "spot"])
+    if len(q):
+        intrinsic = np.maximum(q["spot"] - q["strike"], 0.0)
+        below = q[MARK_FIELD] < intrinsic - 1e-12
+        out["n_intr"] = int(len(q))
+        out["intr_mid"] = int(below.sum())
+        if below.any():
+            out["worst_intr"] = float((intrinsic - q[MARK_FIELD])[below].max())
+        qa = q.dropna(subset=["ASK"]) if "ASK" in q else q.iloc[0:0]
+        if len(qa):
+            out["intr_ask"] = int((qa["ASK"] < np.maximum(qa["spot"] - qa["strike"], 0.0)
+                                   - 1e-12).sum())
+    return out
+
+
+MONEYNESS_BINS = [0, .80, .90, .97, 1.03, 1.10, 1.20, np.inf]
+MONEYNESS_LABELS = ["deep ITM", "ITM", "near ITM", "ATM", "near OTM", "OTM", "deep OTM"]
+DTE_BINS = [-1, 5, 10, 20, 40, np.inf]
+DTE_LABELS = ["0-5d", "6-10d", "11-20d", "21-40d", "40d+"]
+
+
+def print_probability(wide: pd.DataFrame) -> dict | None:
+    """
+    P(a trade printed) over moneyness x days-to-expiry.
+
+    The hole is not noise: it has a shape. Liquidity peaks around the money and
+    falls away on BOTH sides -- steeply into deep ITM, where the option is
+    expensive and behaves like the stock, and more gently into deep OTM, where
+    it is nearly worthless. That asymmetric hump is a structure you could model,
+    which turns "missing" from an absence into a quantity.
+    """
+    if wide is None or wide.empty or "moneyness" not in wide.columns:
+        return None
+    w = wide[wide["cp"] == "C"].dropna(subset=["moneyness", "dte"]).copy()
+    if len(w) < 50:
+        return None
+    w["mb"] = pd.cut(w["moneyness"], MONEYNESS_BINS, labels=MONEYNESS_LABELS)
+    w["db"] = pd.cut(w["dte"], DTE_BINS, labels=DTE_LABELS)
+
+    grid = w.pivot_table(index="mb", columns="db", values="has_print",
+                         aggfunc="mean", observed=False) * 100
+    counts = w.pivot_table(index="mb", columns="db", values="has_print",
+                           aggfunc="size", observed=False)
+    grid = grid.reindex(MONEYNESS_LABELS).reindex(DTE_LABELS, axis=1)
+    counts = counts.reindex(MONEYNESS_LABELS).reindex(DTE_LABELS, axis=1)
+
+    marg = []
+    for m in MONEYNESS_LABELS:
+        s = w[w["mb"] == m]
+        marg.append({
+            "label": m,
+            "pct": float(100 * s["has_print"].mean()) if len(s) else None,
+            "n": int(len(s)),
+            "median_mark": float(s[MARK_FIELD].median()) if s[MARK_FIELD].notna().any() else None,
+        })
+    return {
+        "x": DTE_LABELS, "y": MONEYNESS_LABELS,
+        "z": [[None if pd.isna(v) else round(float(v), 1) for v in row]
+              for row in grid.to_numpy()],
+        "n": [[0 if pd.isna(v) else int(v) for v in row] for row in counts.to_numpy()],
+        "marginal": marg,
+    }
+
+
+def quote_quality(wide: pd.DataFrame) -> dict:
+    """
+    Things that would discredit the quotes, tested and mostly NOT found.
+
+    Reporting what was ruled out matters: both the assignment and this page
+    describe the mid as 'a midpoint of a possibly-stale quote'. That is testable,
+    and it turns out to be largely false here. The mid's problem is not that it
+    is stale. It is that it is unexecutable.
+    """
+    out = {"n": 0, "crossed": 0, "zero_bid": 0,
+           "stale_n": 0, "stale": 0, "stale_pct": None}
+    if wide is None or wide.empty or "BID" not in wide.columns:
+        return out
+    q = wide.dropna(subset=["BID", "ASK"])
+    out["n"] = int(len(q))
+    if len(q):
+        out["crossed"] = int((q["BID"] >= q["ASK"]).sum())
+        out["zero_bid"] = int((q["BID"] <= 0).sum())
+
+    s = wide.dropna(subset=[MARK_FIELD, "spot"]).sort_values(["ric", "date"])
+    if len(s) > 10:
+        s = s.assign(dmid=s.groupby("ric")[MARK_FIELD].diff().abs(),
+                     dspot=s.groupby("ric")["spot"].diff().abs())
+        cand = s.dropna(subset=["dmid", "dspot"])
+        cand = cand[cand["dspot"] > 0.05]
+        if len(cand):
+            out["stale_n"] = int(len(cand))
+            out["stale"] = int((cand["dmid"] < 1e-9).sum())
+            out["stale_pct"] = float(100 * out["stale"] / len(cand))
+    return out
+
+
+def vertical_spread_example(wide: pd.DataFrame, strike_step: float = 0.50) -> dict | None:
+    """
+    One real vertical spread, priced at the mark and at prices you could trade.
+
+    Abstractions about basis points do not land. "This spread is worth X at the
+    mid and Y if you actually have to trade it" does.
+
+    The example returned is the one closest to the MEDIAN slippage, not the
+    worst. Picking the worst would be cherry-picking; the median says what a
+    typical trade costs, and the distribution is reported alongside it.
+    """
+    if wide is None or wide.empty or "BID" not in wide.columns:
+        return None
+
+    rows = []
+    for (d, e), g in wide[wide["cp"] == "C"].groupby(["date", "expiry"]):
+        g = g.sort_values("strike").dropna(subset=[MARK_FIELD, "BID", "ASK"])
+        K = g["strike"].to_numpy(float)
+        for i in range(len(K) - 1):
+            if abs(K[i + 1] - K[i] - strike_step) > 1e-9:
+                continue
+            lo, hi = g.iloc[i], g.iloc[i + 1]
+            mid_val = float(lo[MARK_FIELD] - hi[MARK_FIELD])
+            if not (0.05 <= mid_val <= strike_step):
+                continue  # a vertical cannot be worth more than its width
+            exec_val = float(lo["ASK"] - hi["BID"])   # buy low strike, sell high
+            rows.append({
+                "date": str(pd.Timestamp(d).date()),
+                "expiry": str(pd.Timestamp(e).date()),
+                "dte": int(lo["dte"]),
+                "k_long": float(lo["strike"]), "k_short": float(hi["strike"]),
+                "ric_long": str(lo["ric"]), "ric_short": str(hi["ric"]),
+                "mid_value": mid_val,
+                "exec_value": exec_val,
+                "slippage": exec_val - mid_val,
+                "slippage_pct": 100.0 * (exec_val - mid_val) / mid_val,
+                "legs": {
+                    "long": {"mid": float(lo[MARK_FIELD]), "bid": float(lo["BID"]),
+                             "ask": float(lo["ASK"])},
+                    "short": {"mid": float(hi[MARK_FIELD]), "bid": float(hi["BID"]),
+                              "ask": float(hi["ASK"])},
+                },
+            })
+
+    if not rows:
+        return None
+    slips = np.array([r["slippage_pct"] for r in rows], dtype=float)
+    med = float(np.median(slips))
+    pick = min(rows, key=lambda r: abs(r["slippage_pct"] - med))
+    pick["n_spreads"] = len(rows)
+    pick["median_slippage_pct"] = med
+    pick["p90_slippage_pct"] = float(np.percentile(slips, 90))
+    pick["pct_worthless"] = float(100.0 * (slips >= 100).mean())
+    return pick

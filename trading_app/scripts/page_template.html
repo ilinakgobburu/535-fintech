@@ -122,6 +122,7 @@
   .chip[data-k="mark"][aria-pressed="true"]{color:var(--mark)}
   .chip[data-k="print"][aria-pressed="true"]{color:var(--print)}
   .chip[data-k="sheet"][aria-pressed="true"]{color:var(--both)}
+  .chip[data-k="slab"][aria-pressed="true"]{color:var(--print)}
   .chip[aria-pressed="false"] .dot{opacity:.3}
 
   .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px;margin-bottom:18px}
@@ -159,6 +160,7 @@
   <div class="brand">Option Surface <span>Lab</span></div>
   <a href="#sec-numbers">The two numbers</a>
   <a href="#sec-slice">3D surface</a>
+  <a href="#sec-arb">Arbitrage audit</a>
   <a href="#sec-reading">Reading it</a>
   <a href="#sec-compare">Mark vs trade</a>
   <a href="#sec-coverage">Coverage</a>
@@ -211,11 +213,48 @@
     <button class="chip" data-k="mark"  aria-pressed="true"><span class="dot"></span><span id="lbl-mark">MID_PRICE</span></button>
     <button class="chip" data-k="print" aria-pressed="true"><span class="dot diamond"></span><span id="lbl-print">TRDPRC_1</span></button>
     <button class="chip" data-k="sheet" aria-pressed="true"><span class="dot"></span>Interpolated sheet</button>
+    <button class="chip" data-k="slab" aria-pressed="false"><span class="dot"></span>Bid/ask slab</button>
   </div>
 </div>
 
 <div class="progress"><i id="prog"></i></div>
 <div class="card"><div id="p-surface" class="plot"></div></div>
+
+<h2 id="sec-arb">The market is arbitrage-free. The mid is not.</h2>
+<div class="reading">
+  <p class="lede">
+    Two rules hold for any option market, with no model and no volatility
+    assumption behind them. A call struck higher cannot cost more than one struck
+    lower. And a butterfly — buy the wings, sell twice the body — cannot cost
+    negative money, because it can never be worth less than zero.
+  </p>
+  <p class="notes" style="margin-top:10px">
+    Both are tested twice: once on <code>MID_PRICE</code>, and once on prices you
+    could actually transact at — buying the wings at the <b>ask</b> and selling
+    the body at the <b>bid</b>. Only strictly consecutive $0.50 strikes on the
+    same expiry and date are compared, so a missing strike never manufactures a
+    violation.
+  </p>
+</div>
+<div class="tiles" id="tiles-arb"></div>
+<div class="card" style="padding:16px 18px;margin-top:14px"><table class="tbl" id="arb-tbl"></table></div>
+<div id="arb-example"></div>
+<p class="notes" id="arb-note"></p>
+
+<h2 id="sec-hole">The hole has a shape</h2>
+<div class="reading">
+  <p class="lede">
+    If missingness were random you could do nothing about it. It is not — it is a
+    smooth, structured gradient, which means it is something you could model.
+  </p>
+</div>
+<div class="card"><div id="p-holeshape" class="plot"></div></div>
+<p class="notes" id="hole-note"></p>
+
+<h2 id="sec-ruledout">What I tested and did not find</h2>
+<div class="reading"><p class="lede" id="ruledout-lede"></p></div>
+<div class="card" style="padding:16px 18px"><table class="tbl" id="ruledout-tbl"></table></div>
+<p class="notes" id="ruledout-note"></p>
 
 <h2 id="sec-reading">Reading the plot</h2>
 <div class="reading">
@@ -307,6 +346,12 @@
     trade as a diamond. The palette was checked against the plot surface with a
     contrast and color-vision validator rather than chosen by eye.</li>
   <li id="note-fields"></li>
+  <li id="note-puts"></li>
+  <li><b>The bid/ask slab.</b> Toggle it on the 3D plot to replace the single mid
+    sheet with three surfaces — bid floor, mid, ask ceiling. Any price you read off
+    the middle sheet is really a line through a slab you could be anywhere inside,
+    and the convexity violations above are wiggles in that middle sheet that never
+    poke through the outer two.</li>
 </ul>
 
 <footer id="footer"></footer>
@@ -319,7 +364,7 @@ const T = DATA.theme, M = DATA.meta;
 const MARK = M.mark_field, PRINT = M.print_field;
 const state = {
   date: DATA.default.date, cp: DATA.default.cp,
-  mark: true, print: true, sheet: true, axis: 'strike',
+  mark: true, print: true, sheet: true, slab: false, axis: 'strike',
 };
 
 const base = (over={}) => Object.assign({
@@ -383,6 +428,21 @@ function renderChrome(){
     `<code>SETTLE</code> returns "universe does not support" on this RIC space — `+
     `so <code>${MARK}</code>, the closing NBBO midpoint, is the closest mark-of-the-close available.`;
 
+  const pn = document.getElementById('note-puts');
+  const rights = (DATA.rights||[]);
+  if(pn && rights.length === 1 && rights[0] === 'C'){
+    pn.innerHTML = `<b>The missing put wing — an unexplained hole in this pull.</b>
+      <code>fetch_lseg.py</code> requests both rights, and the RIC builder is correct
+      per Appendix A: the August put <code>UUUUT212601500.U^T26</code> round-trips to
+      21-Aug-2026 / put / $15.00. But LSEG returns no data for any put on this name,
+      while the identical call strike <code>UUUUH212601500.U^H26</code> returns 131
+      cells from the same request. So this is LSEG coverage for expired ${M.underlying}
+      puts, not a construction error. The assignment asks for "puts or calls," so
+      calls-only is compliant — but a 50% absence in my own pull is exactly the kind
+      of hole this assignment is about, and it belongs on the page rather than in
+      silence.`;
+  } else if(pn){ pn.remove(); }
+
   document.getElementById('footer').innerHTML =
     `Built from ${M.synthetic?'a synthetic panel':'an LSEG pickle'} pulled `+
     `${M.fetched_at}. ${M.n_series_total} contracts over ${M.n_dates_total} sessions. `+
@@ -426,6 +486,18 @@ function renderSurface(){
   const axisTitle = mny ? 'Moneyness  K / S' : 'Strike ($)';
   const xFmt = mny ? '%{x:.3f}' : '%{x:.2f}';
   const xLbl = mny ? 'K/S' : 'K';
+  if(state.slab && !mny && c.sheet_bid && c.sheet_ask){
+    // Bid below, ask above: the "surface" is really a slab you could be
+    // anywhere inside. Violations in the mid sheet never poke through these.
+    [['sheet_bid','BID floor',T.mark],['sheet_ask','ASK ceiling',T.print]].forEach(
+      ([key,label,col])=>{
+        const g = c[key];
+        traces.push({type:'surface', x:g.x, y:g.y, z:g.z, name:label,
+          colorscale:[[0,col],[1,col]], opacity:.20, showscale:false,
+          hoverinfo:'skip', showlegend:true,
+          contours:{x:{show:false},y:{show:false},z:{show:false}}});
+      });
+  }
   if(state.sheet && state.mark && sheet){
     traces.push({type:'surface', x:sheet.x, y:sheet.y, z:sheet.z,
       name:'Interpolated sheet', colorscale:T.interpScale, opacity:T.interpOpacity,
@@ -798,6 +870,179 @@ function renderHoldout(){
      assignment is about — and that is on the easy cells.`;
 }
 
+/* ---------- structural audit ---------- */
+function renderArb(){
+  const a = DATA.aggregate.audit;
+  if(!a || !a.n_bfly){ return; }
+  const p1 = (k,n) => n ? (100*k/n).toFixed(1)+'%' : 'n/a';
+
+  document.getElementById('tiles-arb').innerHTML = `
+    <div class="tile hero2">
+      <div class="label">Butterflies that violate convexity at the mid</div>
+      <div class="value">${p1(a.bfly_mid,a.n_bfly)}</div>
+      <div class="sub">${a.bfly_mid.toLocaleString()} of ${a.n_bfly.toLocaleString()} tested</div>
+    </div>
+    <div class="tile hero">
+      <div class="label">…at executable prices</div>
+      <div class="value">${p1(a.bfly_exec,a.n_bfly)}</div>
+      <div class="sub">every violation disappears</div>
+    </div>
+    <div class="tile">
+      <div class="label">Worst butterfly at the mid</div>
+      <div class="value">${money(a.worst_bfly)}</div>
+      <div class="sub">negative cost = free money, if it were real</div>
+    </div>
+    <div class="tile">
+      <div class="label">Mids below intrinsic value</div>
+      <div class="value">${p1(a.intr_mid,a.n_intr)}</div>
+      <div class="sub">worst ${money(a.worst_intr)} · never true of the ask</div>
+    </div>`;
+
+  document.getElementById('arb-tbl').innerHTML =
+    `<tr><th>Structural rule</th><th>Violated at the mid</th><th>At executable prices</th></tr>` +
+    [['Butterfly / convexity', `${a.bfly_mid.toLocaleString()} / ${a.n_bfly.toLocaleString()} = ${p1(a.bfly_mid,a.n_bfly)}`,
+      `${a.bfly_exec} = ${p1(a.bfly_exec,a.n_bfly)}`],
+     ['Monotonic in strike', `${a.mono_mid.toLocaleString()} / ${a.n_mono.toLocaleString()} = ${p1(a.mono_mid,a.n_mono)}`,
+      `${a.mono_exec} = ${p1(a.mono_exec,a.n_mono)}`],
+     ['At or above intrinsic', `${a.intr_mid.toLocaleString()} / ${a.n_intr.toLocaleString()} = ${p1(a.intr_mid,a.n_intr)}`,
+      `${a.intr_ask} = ${p1(a.intr_ask,a.n_intr)}`],
+    ].map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td></tr>`).join('');
+
+  const ex = (a.examples||[])[0];
+  if(ex){
+    document.getElementById('arb-example').innerHTML = `
+      <div class="card" style="padding:16px 18px;margin-top:14px">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px">
+          The worst single case, in full
+        </div>
+        <table class="tbl">
+          <tr><th>Strike</th><th>$${ex.strikes[0].toFixed(2)}</th>
+              <th>$${ex.strikes[1].toFixed(2)}</th><th>$${ex.strikes[2].toFixed(2)}</th></tr>
+          <tr><td>MID_PRICE</td><td>${money(ex.mids[0])}</td>
+              <td><b style="color:var(--print)">${money(ex.mids[1])}</b></td>
+              <td>${money(ex.mids[2])}</td></tr>
+        </table>
+        <p class="notes" style="margin-top:10px">
+          The $${ex.strikes[1].toFixed(2)} call is marked <b>higher than both its
+          neighbours</b>, which no call surface can do. Buying this butterfly at
+          the mid would <i>pay you</i> ${money(Math.abs(ex.cost_mid))}.
+          ${ex.cost_exec==null?'':`At prices you could actually trade it costs
+          <b>${money(ex.cost_exec)}</b> — the free money was never there.`}
+        </p>
+      </div>`;
+  }
+
+  document.getElementById('arb-note').innerHTML =
+    `<b>This is the sharpest statement of the whole assignment.</b> Roughly a third
+     of the mid surface is not a valid option price surface at all — it implies
+     butterflies you could buy for negative money. Yet at executable prices there
+     is not a single violation, of any of the three rules. The market is perfectly
+     arbitrage-free; <code>${MARK}</code> is not. The mid is not a price with a
+     little noise on it — it is a point estimate whose error bar is wide enough to
+     swallow arbitrage.
+     <br><br>
+     It also explains the holdout result further down. That measured a
+     ${'+'}$0.015 interpolation bias and attributed it to convexity. Here is the
+     direct proof: the point set being interpolated is not convex ${p1(a.bfly_mid,a.n_bfly)}
+     of the time, so the chord-above-the-curve argument is running on a surface
+     that is locally the wrong shape to begin with.
+     <br><br>
+     <b>Caveat.</b> The intrinsic test uses spot without a carry or dividend
+     adjustment, and these are American options, so treat that row as approximate.
+     The butterfly and monotonicity tests need no such assumption.`;
+}
+
+/* ---------- the shape of the hole ---------- */
+function renderHole(){
+  const h = DATA.aggregate.print_prob;
+  if(!h){ return; }
+  Plotly.react('p-holeshape', [{
+    type:'heatmap', z:h.z, x:h.x, y:h.y,
+    colorscale:[[0,T.panel],[.5,'#4A45A0'],[1,T.mark]],
+    zmin:0, zmax:100, xgap:3, ygap:3,
+    colorbar:{title:{text:'P(print) %',font:{size:11,color:T.muted}},
+      tickfont:{size:10,color:T.muted}, outlinewidth:0, thickness:12},
+    customdata:h.n,
+    hovertemplate:'%{y} · %{x}<br><b>%{z:.0f}%</b> printed<br>%{customdata} series<extra></extra>',
+  }], base({height:420, margin:{l:96,r:20,t:64,b:70},
+    title:{text:'P(a trade printed) · moneyness × days to expiry',
+      font:{size:15,color:T.text,family:T.font},x:0,xanchor:'left',y:.97,yanchor:'top'},
+    xaxis:ax('Days to expiry',{showgrid:false,type:'category'}),
+    yaxis:ax('',{showgrid:false,type:'category'}),
+    annotations:[cap('Bright = almost always trades. Dark = a mark and nothing behind it.')],
+  }), CFG);
+
+  const m = Object.fromEntries(h.marginal.map(r=>[r.label,r]));
+  const f=(k)=> m[k] && m[k].pct!=null ? m[k].pct.toFixed(0)+'%' : 'n/a';
+  const mk=(k)=> m[k] && m[k].median_mark!=null ? money(m[k].median_mark) : 'n/a';
+  document.getElementById('hole-note').innerHTML =
+    `<b>Liquidity is a hump, and it falls off on both sides.</b> Trading peaks around
+     the money (${f('ATM')} ATM, ${f('OTM')} OTM) and decays in both directions —
+     steeply into deep in-the-money (<b>${f('deep ITM')}</b>, and only 8% beyond 40
+     days) and more gently into deep out-of-the-money (<b>${f('deep OTM')}</b>).
+     <br><br>
+     The two wings are empty for opposite reasons, and the median marks say which
+     is which: a deep ITM call costs ${mk('deep ITM')} and behaves almost exactly
+     like the stock, so nobody ties up that much capital to own it; a deep OTM call
+     costs ${mk('deep OTM')} and is nearly worthless, so there is little reason to
+     bother. Between them sits the band where the leverage is actually attractive.
+     <br><br>
+     This is the same effect behind the Simpson's-paradox note further down: pooled
+     across everything, untraded contracts look like they have <i>narrower</i>
+     spreads, precisely because so many of them are the expensive deep-ITM ones
+     where a fat spread is small as a percentage.
+     <br><br>
+     Because the gradient is smooth rather than random, it is fittable. A model of
+     P(print | moneyness, DTE) would give a confidence surface to sit beside the
+     price surface and say how much each cell deserves to be believed — turning the
+     hole from an absence into a quantity. That is next week's problem.`;
+}
+
+/* ---------- negative results ---------- */
+function renderRuledOut(){
+  const q = DATA.aggregate.quote_quality, ex = DATA.aggregate.spread_example;
+  if(!q || !q.n){ return; }
+  document.getElementById('ruledout-lede').innerHTML =
+    `Findings selected by narrative are worth little. These are the things I
+     tested that would have discredited the quotes — and did not.`;
+  document.getElementById('ruledout-tbl').innerHTML =
+    `<tr><th>Hypothesis</th><th>Result</th><th>Verdict</th></tr>` +
+    [['Quotes are crossed or locked (bid ≥ ask)',
+      `${q.crossed} of ${q.n.toLocaleString()}`, 'not found'],
+     ['Mid is really half an ask (zero bid)',
+      `${q.zero_bid} of ${q.n.toLocaleString()}`, 'not found'],
+     ['Quotes are stale — mid unchanged while spot moved >$0.05',
+      `${q.stale} of ${q.stale_n.toLocaleString()} = ${q.stale_pct==null?'n/a':q.stale_pct.toFixed(1)+'%'}`,
+      'largely false'],
+    ].map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td></tr>`).join('');
+
+  let note = `<b>The staleness claim does not survive contact with the data.</b>
+     The assignment describes <code>${MARK}</code> as "a mid of a possibly-stale
+     quote," and an earlier draft of this page repeated it. Tested directly, the
+     quotes refresh: only ${q.stale_pct==null?'n/a':q.stale_pct.toFixed(1)+'%'}
+     held their mid still while the underlying moved more than five cents, none
+     were crossed, and none had a zero bid. These are live, well-formed quotes.
+     <b>The mid's problem is not that it is stale — it is that it is
+     unexecutable.</b>`;
+  if(ex){
+    note += `<br><br><b>What that costs, in dollars.</b> Take one real vertical from
+      this data: on ${ex.date}, buy the $${ex.k_long.toFixed(2)} call and sell the
+      $${ex.k_short.toFixed(2)}, ${ex.dte} days to expiry. Marked at the mid it is
+      worth <b>${money(ex.mid_value)}</b> (${money(ex.legs.long.mid)} −
+      ${money(ex.legs.short.mid)}). To actually put it on you pay the long leg's ask
+      and receive the short leg's bid: ${money(ex.legs.long.ask)} −
+      ${money(ex.legs.short.bid)} = <b>${money(ex.exec_value)}</b>. The mid understated
+      the cost by ${money(ex.slippage)}, or <b>${ex.slippage_pct.toFixed(0)}%</b>.
+      <br><br>
+      That example is the <i>median</i> of all ${ex.n_spreads.toLocaleString()}
+      adjacent-strike verticals in the panel, not the worst — the 90th percentile is
+      ${ex.p90_slippage_pct.toFixed(0)}%, and <b>${ex.pct_worthless.toFixed(0)}%</b> of
+      them cost at least twice their mid value to trade. A backtest that fills at the
+      mid is not off by a rounding error. It is off by more than the position.`;
+  }
+  document.getElementById('ruledout-note').innerHTML = note;
+}
+
 /* ---------- cross-name comparison ---------- */
 function renderCompare2(){
   const sib = DATA.sibling;
@@ -1021,7 +1266,7 @@ function wireScrollSpy(){
   });
 }
 
-renderChrome(); wire(); renderAll(); renderStock(); renderSpread(); renderCompare2(); wirePlayback(); wireScrollSpy();
+renderChrome(); wire(); renderAll(); renderStock(); renderSpread(); renderCompare2(); renderArb(); renderHole(); renderRuledOut(); wirePlayback(); wireScrollSpy();
 </script>
 </body>
 </html>
