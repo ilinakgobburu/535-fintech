@@ -164,6 +164,7 @@
   <a href="#sec-coverage">Coverage</a>
   <a href="#sec-fill">Fill uncertainty</a>
   <a href="#sec-holdout">Interpolation error</a>
+  <a class="ticker-link" id="nav-sibling" href="#" hidden></a>
 </nav>
 
 <header>
@@ -279,6 +280,11 @@
 <div class="tiles" id="tiles-holdout"></div>
 <div class="card" style="margin-top:18px"><div id="p-holdout" class="plot"></div></div>
 <p class="notes" id="holdout-note"></p>
+
+<h2 id="sec-compare2">Does this generalize, or is it a UUUU quirk?</h2>
+<div class="reading" id="compare-intro"></div>
+<div class="card" style="padding:16px 18px"><table class="tbl" id="compare-tbl"></table></div>
+<p class="notes" id="compare-note"></p>
 
 <h2>The underlying, for context</h2>
 <div class="card"><div id="p-stock" class="plot"></div></div>
@@ -792,6 +798,69 @@ function renderHoldout(){
      assignment is about — and that is on the easy cells.`;
 }
 
+/* ---------- cross-name comparison ---------- */
+function renderCompare2(){
+  const sib = DATA.sibling;
+  if(sib){
+    const a = document.getElementById('nav-sibling');
+    a.textContent = sib.label; a.href = sib.href; a.hidden = false;
+  }
+  const rows = DATA.compare;
+  const secs = ['sec-compare2'].map(id=>document.getElementById(id));
+  if(!rows || rows.length < 2){
+    secs.forEach(el=>{ if(el) el.hidden = true; });
+    ['compare-intro','compare-tbl','compare-note'].forEach(id=>{
+      const el=document.getElementById(id); if(el) el.closest('.card')?.remove?.(), el && (el.innerHTML='');
+    });
+    return;
+  }
+  const p1 = v => v==null ? 'n/a' : v.toFixed(1)+'%';
+  const m3 = v => v==null ? 'n/a' : '$'+v.toFixed(3);
+
+  document.getElementById('compare-intro').innerHTML =
+    `<p class="lede">A single name proves nothing. The same pipeline was run on a
+     second underlying as a control, to test whether the sparsity story is a
+     property of listed options or just a quirk of this one ticker.</p>`;
+
+  const hdr = ['Measure'].concat(rows.map(r =>
+    r.href ? `<a href="${r.href}" style="color:var(--both)">${r.label}</a>` : r.label));
+  const body = [
+    ['Price range', rows.map(r=>`$${r.spot_lo.toFixed(2)}–$${r.spot_hi.toFixed(2)}`)],
+    ['Listed series', rows.map(r=>r.n_series.toLocaleString())],
+    ['Mark, no trade', rows.map(r=>p1(r.pct_mark_no_trade))],
+    ['Median |mark − trade|', rows.map(r=>m3(r.median_abs_diff))],
+    ['… as % of mark', rows.map(r=>p1(r.median_rel_diff_pct))],
+    ['Median spread (% of mark)', rows.map(r=>p1(r.median_spread_pct))],
+    ['Prints landing near the mid', rows.map(r=>p1(r.pct_near_mid))],
+  ];
+  document.getElementById('compare-tbl').innerHTML =
+    `<tr><th>${hdr.join('</th><th>')}</th></tr>` +
+    body.map(([k,vals])=>`<tr><td>${k}</td><td>${vals.join('</td><td>')}</td></tr>`).join('');
+
+  // Narrate whichever direction the data actually went.
+  const a = rows[0], b = rows[1];
+  const holesUp = (b.pct_mark_no_trade ?? 0) > (a.pct_mark_no_trade ?? 0);
+  const tighter = (b.median_spread_pct ?? 99) < (a.median_spread_pct ?? 99);
+  document.getElementById('compare-note').innerHTML =
+    `<b>The control group refused to cooperate, which is the interesting part.</b>
+     ${b.label} is the far larger, more liquid name, so the obvious guess is that
+     its holes would close. Its <i>quotes</i> did get better —
+     ${tighter?'a tighter':'a wider'} median spread
+     (${p1(b.median_spread_pct)} vs ${p1(a.median_spread_pct)}) and
+     ${p1(b.pct_near_mid)} of prints landing near the mid against
+     ${p1(a.pct_near_mid)}. But the share of listed contracts that never traded went
+     <b>${holesUp?'up':'down'}</b>, ${p1(a.pct_mark_no_trade)} → ${p1(b.pct_mark_no_trade)}.
+     Liquidity improves the quality of each quote without filling the grid: a bigger
+     name gets a far wider set of strikes listed, and market makers quote everything
+     they list, so more contracts end up marked yet untraded. Sparsity is not a
+     small-cap problem you can outrun by picking a liquid underlying.
+     <br><br>
+     <b>Read this as suggestive, not controlled.</b> The two names differ in strike
+     spacing ($0.50 vs $2.50) and price level, so "one listed series" is not the
+     same unit on both sides. The direction is informative; the magnitudes are not
+     strictly comparable.`;
+}
+
 /* ---------- controls ---------- */
 function renderAll(){
   const c = combo();
@@ -952,7 +1021,7 @@ function wireScrollSpy(){
   });
 }
 
-renderChrome(); wire(); renderAll(); renderStock(); renderSpread(); wirePlayback(); wireScrollSpy();
+renderChrome(); wire(); renderAll(); renderStock(); renderSpread(); renderCompare2(); wirePlayback(); wireScrollSpy();
 </script>
 </body>
 </html>

@@ -127,6 +127,35 @@ def build_combo(sl: pd.DataFrame) -> dict:
     }
 
 
+def summarize_cache(label: str, path: Path, href: str | None) -> dict | None:
+    """One row of the cross-name comparison table."""
+    try:
+        frames = build_frames(load_payload(path))
+    except Exception:
+        return None
+    wide = frames["wide"]
+    if wide.empty:
+        return None
+    st = sparsity_stats(wide)
+    sp = spread_stats(wide)
+    hist = trade_position_histogram(wide)
+    return {
+        "label": label,
+        "href": href,
+        "underlying": frames["underlying"],
+        "n_series": st["n_series"],
+        "n_dates": st["n_dates"],
+        "pct_mark_no_trade": st["pct_mark_no_trade"],
+        "median_abs_diff": st["median_abs_diff"],
+        "median_rel_diff_pct": st["median_rel_diff_pct"],
+        "median_spread_pct": sp["median_spread_pct"],
+        "median_spread": sp["median_spread"],
+        "pct_near_mid": None if hist is None else hist["pct_near_mid"],
+        "spot_lo": float(frames["stock"]["LOW_1"].min()),
+        "spot_hi": float(frames["stock"]["HIGH_1"].max()),
+    }
+
+
 def build_payload(cache: Path) -> dict:
     frames = build_frames(load_payload(cache))
     wide, stock = frames["wide"], frames["stock"]
@@ -172,6 +201,8 @@ def build_payload(cache: Path) -> dict:
     }
     return {
         "aggregate": aggregate,
+        "compare": None,      # filled in by main() when --compare is given
+        "sibling": None,
         "meta": {
             "underlying": frames["underlying"],
             "fetched_at": frames["fetched_at"],
@@ -214,9 +245,30 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--cache", type=Path, default=DEFAULT_CACHE)
     ap.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    ap.add_argument("--sibling", default=None,
+                    help="nav link to the other name, as 'Label=href'")
+    ap.add_argument("--compare", nargs="*", default=[],
+                    help="rows for the comparison table, each 'Label=path=href'")
     args = ap.parse_args()
 
     payload = build_payload(args.cache)
+
+    if args.sibling and "=" in args.sibling:
+        label, href = args.sibling.split("=", 1)
+        payload["sibling"] = {"label": label, "href": href}
+
+    rows = []
+    for spec in args.compare:
+        parts = spec.split("=")
+        if len(parts) < 2:
+            continue
+        label, path = parts[0], Path(parts[1])
+        href = parts[2] if len(parts) > 2 else None
+        row = summarize_cache(label, path, href)
+        if row:
+            rows.append(row)
+    if len(rows) > 1:
+        payload["compare"] = rows
     template = (ROOT / "scripts" / "page_template.html").read_text(encoding="utf-8")
 
     html = template.replace(
