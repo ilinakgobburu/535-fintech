@@ -184,8 +184,9 @@ never traded run consistently wider — up to 2× in the wings (calls; 1.4× put
 > conclusion. The page says this out loud.
 
 **Where the print landed inside the quote.** Only **31.1%** of 6,014 prints
-landed near the mid, with a pile-up at the ask. The mid was not an achievable
-price for most of the trades that actually happened.
+landed near the mid, with bumps at both edges of the quote — 497 at the bid,
+522 at the ask. The mid was not an achievable price for most of the trades that
+actually happened, and the ones that missed it missed in both directions.
 
 **How wrong interpolation really is.** Each observed cell is hidden in turn,
 rebuilt from its neighbors, and compared to the truth. Median miss **$0.030** —

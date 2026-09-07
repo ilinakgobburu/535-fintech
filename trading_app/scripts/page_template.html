@@ -64,7 +64,7 @@
   }
   h1{font-size:30px;line-height:1.15;margin:0 0 10px;font-weight:700;letter-spacing:-.02em}
   h1 .accent{color:var(--mark)}
-  .lede{color:var(--muted);max-width:74ch;margin:0;font-size:15px}
+  .lede{color:var(--muted);max-width:74ch;margin:0 auto;font-size:15px}
 
   .prov{
     display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:16px;
@@ -131,7 +131,7 @@
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
   @media(max-width:900px){.grid2{grid-template-columns:1fr}}
 
-  .reading{max-width:76ch}
+  .reading{max-width:76ch;margin-left:auto;margin-right:auto}
   .qa{margin:0 0 22px;padding-left:15px;border-left:2px solid var(--line)}
   .qa .q{color:var(--muted);font-size:13px;margin:0 0 6px;font-style:italic}
   .qa .a{margin:0;color:var(--text)}
@@ -143,7 +143,7 @@
   .k-print{color:var(--print);font-weight:600}
   .k-both{color:var(--both);font-weight:600}
 
-  .notes{color:var(--muted);font-size:13px;max-width:76ch}
+  .notes{color:var(--muted);font-size:13px;max-width:76ch;margin-left:auto;margin-right:auto}
   .notes li{margin-bottom:9px}
   footer{margin-top:52px;padding-top:20px;border-top:1px solid var(--line);color:var(--faint);font-size:12px}
   table.tbl{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:12px;margin-top:10px}
@@ -660,7 +660,7 @@ function renderSurfaceIV(c, mny){
       contours:{x:{show:false},y:{show:false},z:{show:false}}});
   }
   traces.push({type:'scatter3d', mode:'markers', name:'Implied vol of the mark',
-    x:xOf(c.iv), y:c.iv.d, z:c.iv.v, customdata:c.iv.ric,
+    x:xOf(c.iv), y:c.iv.d, z:c.iv.v, customdata:ricOf(c.iv.ric),
     marker:{size:4,color:T.mark,opacity:.9,symbol:'circle',line:{width:0}},
     hovertemplate:`<b>IV</b> %{z:.1%}<br>${xLbl} ${xFmt} · DTE %{y}<br>%{customdata}<extra></extra>`});
 
@@ -1048,7 +1048,7 @@ function renderArb(){
     <div class="tile hero">
       <div class="label">…at executable prices</div>
       <div class="value">${p1(a.bfly_exec,a.n_bfly)}</div>
-      <div class="sub">every violation disappears</div>
+      <div class="sub">every butterfly violation disappears</div>
     </div>
     <div class="tile">
       <div class="label">Worst butterfly at the mid</div>
@@ -1101,11 +1101,27 @@ function renderArb(){
 
   const par = DATA.aggregate.parity || {};
   const nviol = par.n_exec_viol;
+  // Totalled across both rights straight from the rendered audits, so this
+  // sentence cannot drift away from the table printed directly beneath it.
+  const hasPut = !!(ap && ap.n_bfly);
+  const exBfly = (a.bfly_exec||0) + (hasPut ? ap.bfly_exec||0 : 0);
+  const exMono = (a.mono_exec||0) + (hasPut ? ap.mono_exec||0 : 0);
+  const exIntr = (a.intr_ask||0)  + (hasPut ? ap.intr_ask||0  : 0);
+  const nIntr  = (a.n_intr||0)    + (hasPut ? ap.n_intr||0    : 0);
   document.getElementById('arb-note').innerHTML =
     `<b>This is the sharpest statement of the whole assignment.</b> Roughly a third
      of the mid surface is not a valid option price surface at all — it implies
-     butterflies you could buy for negative money. Yet on these three rules, across
-     both rights, <b>every single violation disappears at executable prices</b>.
+     butterflies you could buy for negative money. Yet at executable prices they
+     all but vanish. ${(exBfly===0 && exMono===0)
+       ? `Across both rights <b>not one butterfly and not one monotonicity
+          violation survives</b>`
+       : `Across both rights ${exBfly} butterfly and ${exMono} monotonicity
+          violations survive`}, ${exIntr===0
+       ? 'and no ask sits below intrinsic'
+       : `and just ${exIntr} ask${exIntr===1?'':'s'} of ${nIntr.toLocaleString()}
+          sit below intrinsic — ${(100*exIntr/nIntr).toFixed(2)}%${
+            hasPut && (a.intr_ask||0)===0 ? ', all of them puts'
+            : hasPut && (ap.intr_ask||0)===0 ? ', all of them calls' : ''}`}.
      <code>${MARK}</code> is not a price with a little noise on it — it is a point
      estimate whose error bar is wide enough to swallow arbitrage.
      ${nviol==null ? '' : `<br><br>
