@@ -42,12 +42,21 @@ docs/ccj.html           <- the control name
 
 ```bash
 cd trading_app
-python3 -m pytest tests -q      # 108 tests, no LSEG session needed
+python3 -m pytest tests -q      # 124 tests, no LSEG session needed
 ```
 
-Every bug these pin produced **zero rows and no error message**. That is the
-failure mode worth testing here: an exception is visible, an empty panel looks
-like a quiet day.
+Two different failure modes are pinned here.
+
+The RIC and loader tests pin bugs that produced **zero rows and no error
+message** — the failure mode worth testing in a synthetic RIC universe, where
+an exception is visible but an empty panel looks like a quiet day.
+
+The metrics tests pin bugs that produce a **plausible wrong number**, which is
+worse, because nothing about the page looks broken. The two required
+statistics, the arbitrage rules and their put sign flip, the interpolation
+bias, and the fill-location denominator each have a case whose answer is known
+by construction. Every one of them was checked by re-introducing the bug and
+confirming the test fails.
 
 ### Rebuild the site
 
