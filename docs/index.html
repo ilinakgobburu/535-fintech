@@ -875,9 +875,9 @@ function renderProse(){
        there is frequently neither.`;
 
   document.getElementById('a1').innerHTML =
-    `The cloud is dense in a narrow band around the money — within roughly a dollar
-     or two of ${spot} — and at the front of the expiry axis, where near-dated
-     contracts still attract flow. ${shape} On ${state.date} only
+    `The cloud is dense in a band around the money — centered on ${spot} — and at
+     the front of the expiry axis, where near-dated contracts still attract flow.
+     ${shape} On ${state.date} only
      <b>${s.n_both}</b> of <b>${s.n_series}</b> listed series carried both a mark
      and a trade; <b>${s.pct_txt}</b> had a mark with no trade behind it at all.`;
 
@@ -1188,7 +1188,7 @@ function renderArb(){
         </table>
         <p class="notes" style="margin-top:10px">
           The $${ex.strikes[1].toFixed(2)} call is marked <b>higher than both its
-          neighbours</b>, which no call surface can do. Buying this butterfly at
+          neighbors</b>, which no call surface can do. Buying this butterfly at
           the mid would <i>pay you</i> ${money(Math.abs(ex.cost_mid))}.
           ${ex.cost_exec==null?'':`At prices you could actually trade it costs
           <b>${money(ex.cost_exec)}</b> — the free money was never there.`}
@@ -1650,7 +1650,7 @@ function renderSpace(){
      because it comes from drawing a straight line through a curve that bends.
      Interpolating vol removes the part of the error caused by the geometry
      being wrong, and leaves the part caused by the data being sparse. The first
-     was a modelling choice I controlled; the second is the assignment's actual
+     was a modeling choice I controlled; the second is the assignment's actual
      subject and no change of variable will fix it.
      <br><br>
      <b>Same caveat as the section above, doubled.</b> These are interior cells
