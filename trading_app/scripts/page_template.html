@@ -153,6 +153,12 @@
   .wrap > p.notes, .wrap > ul.notes{columns:2;column-gap:52px}
   .wrap > ul.notes{padding-left:20px}
   .notes li{break-inside:avoid}
+  .qa{break-inside:avoid}
+  .reading.qa-grid{
+    columns:auto;display:grid;grid-template-columns:repeat(3,1fr);gap:0 34px
+  }
+  .reading.qa-grid .qa{margin-bottom:0}
+  @media(max-width:1000px){.reading.qa-grid{grid-template-columns:1fr;gap:0}}
   @media(max-width:1000px){
     .reading,.wrap > p.notes,.wrap > ul.notes{columns:1}
   }
@@ -291,7 +297,7 @@
 <p class="notes" id="ruledout-note"></p>
 
 <h2 id="sec-reading">Reading the plot</h2>
-<div class="reading">
+<div class="reading qa-grid">
   <div class="qa">
     <p class="q">Where is the cloud of price data dense, and where is it empty?</p>
     <p class="a" id="a1"></p>
@@ -354,7 +360,7 @@
 <div class="card" style="margin-top:18px"><div id="p-holdout" class="plot"></div></div>
 <p class="notes" id="holdout-note"></p>
 
-<h2 id="sec-space">You are interpolating in the wrong space.</h2>
+<h2 id="sec-space">Interpolation in the wrong space</h2>
 <div class="reading">
   <p class="lede" style="margin-bottom:6px">
     The section above measures the error from interpolating <b>price</b> and
@@ -1354,6 +1360,9 @@ function renderCompare2(){
 function renderAll(){
   const c = combo();
   renderTiles(); renderProse(); renderSurface(); renderCompare();
+  // the answers above are rewritten per slice, so their length can cross the
+  // one-column / two-column threshold as the reader steps through dates
+  if (typeof balanceProse === 'function') balanceProse();
   renderOcc('p-occ-mark',  c.occ_mark,  MARK,  T.markScale);
   renderOcc('p-occ-print', c.occ_print, PRINT, T.printScale);
   renderTable();
@@ -1681,6 +1690,16 @@ function renderParity(){
      would launder an impossible quote into a plausible surface point.`:''}`;
 }
 
+/* ---------- one column or two, decided by how much text there is ---------- */
+function balanceProse(){
+  const MIN_CHARS = 420;   // ~6 lines at this measure: enough to fill two columns
+  document.querySelectorAll('.reading:not(.qa-grid), .wrap > p.notes, .wrap > ul.notes')
+    .forEach(el => {
+      const n = (el.textContent || '').trim().length;
+      el.style.columnCount = n < MIN_CHARS ? '1' : '';
+    });
+}
+
 /* ---------- highlight the section you are looking at ---------- */
 function wireScrollSpy(){
   const links = Array.from(document.querySelectorAll('nav a'));
@@ -1702,7 +1721,7 @@ function wireScrollSpy(){
 }
 
 renderChrome(); wire(); renderAll(); renderStock(); renderSpread(); renderCompare2(); renderArb(); renderHole(); renderRuledOut(); renderSpace();
-renderParity(); wirePlayback(); wireScrollSpy();
+renderParity(); wirePlayback(); wireScrollSpy(); balanceProse();
 </script>
 </body>
 </html>
