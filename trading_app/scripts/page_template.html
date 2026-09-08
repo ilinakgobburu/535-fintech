@@ -1232,11 +1232,11 @@ function renderArb(){
      four-legged trades on an American underlying where early exercise and
      borrow costs are not in the test.`}
      <br><br>
-     It also explains the holdout result further down. That measured a
+     It also explains the positive interpolation bias measured further down —
      ${(()=>{const sp=DATA.aggregate.space;
         return sp&&sp.price&&sp.price.bias!=null
-          ? (sp.price.bias>=0?'+':'')+money(sp.price.bias) : 'positive';})()}
-     interpolation bias and attributed it to convexity. Here is the
+          ? (sp.price.bias>=0?'+':'')+money(sp.price.bias) : 'a positive amount';})()}
+     across the whole panel in price space, attributed there to convexity. Here is the
      direct proof: the point set being interpolated is not convex ${p1(a.bfly_mid,a.n_bfly)}
      of the time, so the chord-above-the-curve argument is running on a surface
      that is locally the wrong shape to begin with.

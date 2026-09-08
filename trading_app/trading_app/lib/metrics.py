@@ -245,10 +245,14 @@ def trade_position_histogram(wide: pd.DataFrame, n_bins: int = 12) -> dict | Non
         return None
 
     edges = np.linspace(0.0, 1.0, n_bins + 1)
-    counts, _ = np.histogram(np.clip(v, 0.0, 1.0), bins=edges)
-    inside = v[(v >= 0) & (v <= 1)]
-    at_edges = float(((inside <= 0.1) | (inside >= 0.9)).mean() * 100) if len(inside) else None
-    near_mid = float(((inside > 0.4) & (inside < 0.6)).mean() * 100) if len(inside) else None
+    # One denominator for the bars and the percentages beside them. Clipping
+    # rather than dropping the prints that landed outside the quote matters:
+    # they are the strongest evidence against the mid being achievable, and
+    # excluding them from the "near the mid" denominator biases toward it.
+    clipped = np.clip(v, 0.0, 1.0)
+    counts, _ = np.histogram(clipped, bins=edges)
+    at_edges = float(((clipped <= 0.1) | (clipped >= 0.9)).mean() * 100)
+    near_mid = float(((clipped > 0.4) & (clipped < 0.6)).mean() * 100)
     return {
         "centers": [float((edges[i] + edges[i + 1]) / 2) for i in range(n_bins)],
         "counts": [int(c) for c in counts],
@@ -471,7 +475,9 @@ def arbitrage_audit(wide: pd.DataFrame, strike_step: float | None = None,
                     out["mono_mid"] += 1
                     worst_mn = max(worst_mn, gap)
                 if is_put:
-                    # sell the high strike at the bid, buy the low at the ask
+                    # sell the LOW strike at the bid, buy the HIGH at the ask:
+                    # long the higher-struck put is a payoff that is never
+                    # negative, so being paid to hold it is free money
                     if (np.isfinite(A[i + 1]) and np.isfinite(B[i])
                             and B[i] - A[i + 1] > 1e-12):
                         out["mono_exec"] += 1

@@ -118,7 +118,7 @@ slope carries almost no information about a rate: raw fits imply annualized rate
 from `−2567%` to `+394%` for `dte ≤ 15`. The code pins `D = 1.0` whenever the raw
 slope leaves `0.90 < D < 1.02`, which fires on **23 of 246 fits (9.3%)** — always
 on the high side; the 0.90 floor never binds on this data — and that pinning drags
-the median `D` from `1.00193` to `1.00075`. So `D = 1.00075` is not independent
+the median `D` from `1.00332` to `1.00075`. So `D = 1.00075` is not independent
 validation; it is partly the guard rail. (A `D` above 1 implies a slightly
 *negative* rate, which is itself a sign the slope is fitting noise.)
 
@@ -183,7 +183,7 @@ never traded run consistently wider — up to 2× in the wings (calls; 1.4× put
 > spread is small as a percentage. Condition on moneyness or you invert the
 > conclusion. The page says this out loud.
 
-**Where the print landed inside the quote.** Only **31.1%** of 6,014 prints
+**Where the print landed inside the quote.** Only **29.3%** of 6,014 prints
 landed near the mid, with bumps at both edges of the quote — 497 at the bid,
 522 at the ask. The mid was not an achievable price for most of the trades that
 actually happened, and the ones that missed it missed in both directions.
