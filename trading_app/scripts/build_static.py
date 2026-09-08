@@ -303,6 +303,10 @@ def build_payload(cache: Path) -> dict:
         # the effect. One bucket set per right.
         "spread_bucket": spread_by_bucket(wide[wide["cp"] == "C"]),
         "spread_bucket_put": spread_by_bucket(wide[wide["cp"] == "P"]),
+        # Both rights in one bucket set. The page claims that pooling the
+        # rights cancels the effect out, so the pooled count has to be
+        # measured rather than asserted.
+        "spread_bucket_all": spread_by_bucket(wide),
         "trade_hist": trade_position_histogram(wide),
         "n_dates": int(wide["date"].nunique()),
         "audit": arbitrage_audit(wide, cp="C"),
