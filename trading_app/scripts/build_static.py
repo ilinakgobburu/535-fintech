@@ -9,6 +9,25 @@ chooses which precomputed slice to draw. There is exactly one implementation
 of the math.
 
     python scripts/build_static.py
+
+The published site is two pages built from this one template: UUUU as the
+subject and CCJ as the liquidity control. Both must be rebuilt together, since
+each carries the other's comparison row:
+
+    python scripts/build_static.py \\
+        --cache trading_app/data/option_pipeline_data.pkl \\
+        --out ../docs/index.html \\
+        --sibling "CCJ (control)=ccj.html" \\
+        --compare "UUUU=trading_app/data/option_pipeline_data.pkl=index.html" \\
+                  "CCJ=trading_app/data/option_pipeline_data_CCJ.pkl=ccj.html"
+
+    python scripts/build_static.py \\
+        --cache trading_app/data/option_pipeline_data_CCJ.pkl \\
+        --out ../docs/ccj.html \\
+        --sibling "UUUU=index.html" \\
+        --control-of "UUUU=index.html" \\
+        --compare "UUUU=trading_app/data/option_pipeline_data.pkl=index.html" \\
+                  "CCJ=trading_app/data/option_pipeline_data_CCJ.pkl=ccj.html"
 """
 
 from __future__ import annotations
@@ -357,6 +376,9 @@ def main() -> int:
                     help="nav link to the other name, as 'Label=href'")
     ap.add_argument("--compare", nargs="*", default=[],
                     help="rows for the comparison table, each 'Label=path=href'")
+    ap.add_argument("--control-of", default=None, dest="control_of",
+                    help="mark this build as the control group for another "
+                         "name, as 'Label=href'")
     args = ap.parse_args()
 
     payload = build_payload(args.cache)
@@ -364,6 +386,13 @@ def main() -> int:
     if args.sibling and "=" in args.sibling:
         label, href = args.sibling.split("=", 1)
         payload["sibling"] = {"label": label, "href": href}
+
+    # A control build carries a standing explanation of why it exists at all.
+    # Without it this page looks like a duplicate of the primary one, and the
+    # whole point of a control is lost on anyone who lands here first.
+    if args.control_of and "=" in args.control_of:
+        label, href = args.control_of.split("=", 1)
+        payload["control"] = {"label": label, "href": href}
 
     rows = []
     for spec in args.compare:

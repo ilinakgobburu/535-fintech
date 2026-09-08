@@ -91,6 +91,15 @@
   }
   .banner.hidden{display:none}
 
+  .controlnote{
+    margin:18px 0 0;padding:14px 18px;border-radius:8px;font-size:var(--fs-base);
+    line-height:1.55;border:1px solid var(--line);border-left:3px solid var(--both);
+    background:var(--panel);color:var(--muted)
+  }
+  .controlnote b{color:var(--text);font-weight:600}
+  .controlnote a{color:var(--both)}
+  .controlnote.hidden{display:none}
+
   h2{
     font-size:var(--fs-h2);line-height:1.25;letter-spacing:-.018em;color:var(--text);
     font-weight:650;margin:64px 0 18px;padding-top:26px;
@@ -214,6 +223,7 @@
   </p>
   <div class="prov" id="prov"></div>
   <div class="banner hidden" id="banner"></div>
+  <div class="controlnote hidden" id="control-note"></div>
 </header>
 
 <h2 id="sec-numbers">The two numbers</h2>
@@ -303,7 +313,7 @@
     <p class="a" id="a1"></p>
   </div>
   <div class="qa">
-    <p class="q">Why is interpolating across empty cells dangerous on a $0.50 strike grid for a name like UUUU?</p>
+    <p class="q" id="q2"></p>
     <p class="a" id="a2"></p>
   </div>
   <div class="qa">
@@ -498,6 +508,32 @@ function renderChrome(){
   document.getElementById('lede-print').textContent = PRINT;
   document.getElementById('lbl-mark').textContent = MARK;
   document.getElementById('lbl-print').textContent = PRINT;
+
+  const ctl = DATA.control;
+  if(ctl){
+    const cn = document.getElementById('control-note');
+    cn.classList.remove('hidden');
+    cn.innerHTML = `<b>Why this page exists.</b> This is not a second copy of the
+      analysis — it is the control for it. Every claim on the
+      <a href="${ctl.href}">${ctl.label} page</a> is open to one obvious
+      objection: that sparsity is a quirk of a single thinly traded small-cap
+      rather than a property of listed options. ${M.underlying} is the test of
+      that. It is a much more liquid underlying at a far higher price level, and
+      it is pushed through the <i>identical</i> pipeline — same fields, same
+      parser, same statistics, same code — so whatever survives the change of
+      name is a statement about the instrument, not about
+      ${ctl.label}.<br><br>
+      It did not cooperate, and that is the useful part. Liquidity improves the
+      quality of every quote here while leaving the grid <i>emptier</i>, not
+      fuller: a bigger name lists far more strikes, market makers quote
+      everything they list, and so more contracts end up marked and never
+      traded. Sparsity is not a small-cap problem you can outrun by picking a
+      liquid underlying. The side-by-side numbers are in
+      <a href="#sec-compare2">Does this generalize</a>.<br><br>
+      <b>Read the direction, not the magnitude.</b> The two names differ in
+      strike spacing and price level, so "one listed series" is not the same
+      unit on both sides. This is a suggestive control, not a matched one.`;
+  }
 
   document.getElementById('prov').innerHTML = [
     ['source', M.synthetic ? 'SYNTHETIC PANEL' : 'LSEG cache'],
@@ -859,6 +895,10 @@ function renderProse(){
     : 'meaningfully apart in moneyness';
   const bflyTxt = (au && au.n_bfly)
     ? `<b>${(100*au.bfly_mid/au.n_bfly).toFixed(0)}%</b>` : null;
+
+  document.getElementById('q2').textContent =
+    `Why is interpolating across empty cells dangerous on a `+
+    `$${M.strike_step.toFixed(2)} strike grid for a name like ${M.underlying}?`;
 
   document.getElementById('a2').innerHTML =
     `A $${M.strike_step.toFixed(2)} grid on a name trading near ${spot} puts adjacent
@@ -1321,6 +1361,7 @@ function renderCompare2(){
     r.href ? `<a href="${r.href}" style="color:var(--both)">${r.label}</a>` : r.label));
   const body = [
     ['Price range', rows.map(r=>`$${r.spot_lo.toFixed(2)}–$${r.spot_hi.toFixed(2)}`)],
+    ['Strike spacing', rows.map(r=>`$${r.strike_step.toFixed(2)}`)],
     ['Listed series', rows.map(r=>r.n_series.toLocaleString())],
     ['Mark, no trade', rows.map(r=>p1(r.pct_mark_no_trade))],
     ['Median |mark − trade|', rows.map(r=>m3(r.median_abs_diff))],
