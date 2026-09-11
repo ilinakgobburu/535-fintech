@@ -25,6 +25,15 @@ Thumbs.db
 .idea/
 .vscode/
 
+# The 1-minute cache is ~390 MB and is NOT committed. Unlike the hourly caches
+# it is not needed to build the site: scripts/bar_size_study.py distils it into
+# trading_app/data/bar_size_study.json, which is a few kilobytes and IS
+# committed, so the page builds without it and the finding stays checkable by
+# anyone who re-pulls. Regenerate with:
+#   python3 scripts/fetch_hw2.py --interval 1min --band 8 --lookback-days 7 \
+#       --batch-size 10 --out trading_app/data/covered_call_AAPL_1min.pkl
+*_1min.pkl
+
 # NOTE: option_pipeline_data.pkl is deliberately NOT ignored.
 # The assignment requires the app to load a cached LSEG pickle, and the
 # published site has to build without LSEG credentials, so the cache is

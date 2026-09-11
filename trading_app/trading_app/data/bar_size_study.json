@@ -1,0 +1,34 @@
+{
+ "hourly": {
+  "contracts": 270,
+  "quoted_bars": 12390,
+  "printed_bars": 9644,
+  "printed_share": 77.83696529459242,
+  "median_spread_all": 0.2999999999999998,
+  "median_spread_printed": 0.1999999999999993,
+  "median_abs_resid": 0.024999999999999998,
+  "resid_over_spread": 0.37500000000000444,
+  "at_mid_pct": 24.450435503940273,
+  "outside_pct": 14.008710078805475
+ },
+ "minute": {
+  "contracts": 270,
+  "quoted_bars": 589081,
+  "printed_bars": 215534,
+  "printed_share": 36.58817717767166,
+  "median_spread_all": 0.29999999999999893,
+  "median_spread_printed": 0.050000000000000266,
+  "median_abs_resid": 0.010000000000000009,
+  "resid_over_spread": 0.2999999999999992,
+  "at_mid_pct": 28.64884426586989,
+  "outside_pct": 5.087364406543747
+ },
+ "snapshot": {
+  "matched_hours": 10571,
+  "bid_is_last_pct": 100.0,
+  "ask_is_last_pct": 100.0,
+  "bid_is_min_pct": 23.75366568914956,
+  "ask_is_max_pct": 20.102166304039354
+ },
+ "matched_cells": 1579
+}

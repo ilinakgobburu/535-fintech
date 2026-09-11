@@ -169,7 +169,7 @@ def _as_ric_field(got, batch: list[str], fields: list[str]) -> pd.DataFrame | No
     return None
 
 
-def _relabel_per_field(ld, batch, fields, start, end):
+def _relabel_per_field(ld, batch, fields, start, end, interval="1h"):
     """
     Re-request a batch one field at a time and label locally.
 
@@ -181,7 +181,7 @@ def _relabel_per_field(ld, batch, fields, start, end):
     for f in fields:
         try:
             one = ld.get_history(universe=batch, fields=[f],
-                                 start=start, end=end, interval="1h")
+                                 start=start, end=end, interval=interval)
         except Exception:
             continue
         norm = _as_ric_field(one, batch, [f])
@@ -198,7 +198,8 @@ def _relabel_per_field(ld, batch, fields, start, end):
 
 
 def pull_batch(ld, batch: list[str], fields: list[str],
-               start: str, end: str, stats: dict) -> pd.DataFrame | None:
+               start: str, end: str, stats: dict,
+               interval: str = "1h") -> pd.DataFrame | None:
     """
     One request per batch, with the failure modes handled SEPARATELY -- which
     is the whole trick, because they look alike and want opposite fixes.
@@ -219,15 +220,15 @@ def pull_batch(ld, batch: list[str], fields: list[str],
     """
     try:
         got = ld.get_history(universe=batch, fields=fields,
-                             start=start, end=end, interval="1h")
+                             start=start, end=end, interval=interval)
     except Exception:
         stats["threw"] += 1
         if len(batch) == 1:
             stats["dead_rics"].append(batch[0])
             return None
         h = len(batch) // 2
-        parts = [x for x in (pull_batch(ld, batch[:h], fields, start, end, stats),
-                             pull_batch(ld, batch[h:], fields, start, end, stats))
+        parts = [x for x in (pull_batch(ld, batch[:h], fields, start, end, stats, interval),
+                             pull_batch(ld, batch[h:], fields, start, end, stats, interval))
                  if x is not None and not x.empty]
         if not parts:
             return None
@@ -240,12 +241,12 @@ def pull_batch(ld, batch: list[str], fields: list[str],
 
     if got.columns.nlevels == 1 and len(batch) > 1:
         stats["collapsed"] += 1
-        return _relabel_per_field(ld, batch, fields, start, end)
+        return _relabel_per_field(ld, batch, fields, start, end, interval)
 
     norm = _as_ric_field(got, batch, fields)
     if norm is None:
         stats["unresolved"] += 1
-        return _relabel_per_field(ld, batch, fields, start, end)
+        return _relabel_per_field(ld, batch, fields, start, end, interval)
     return norm
 
 
@@ -263,6 +264,8 @@ def main() -> int:
     ap.add_argument("--batch-size", type=int, default=20)
     ap.add_argument("--pause", type=float, default=0.0)
     ap.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    ap.add_argument("--interval", default="1h",
+                    help="LSEG bar size: 1h (default) or 1min")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
@@ -290,9 +293,34 @@ def main() -> int:
         print(f"open_session failed: {exc}")
         return 2
 
-    print("fetching underlying (hourly)...")
-    df_stock = ld.get_history(universe=[args.stock], fields=STOCK_FIELDS,
-                              start=args.start, end=args.end, interval="1h")
+    print(f"fetching underlying ({args.interval})...")
+    if args.interval == "1h":
+        df_stock = ld.get_history(universe=[args.stock], fields=STOCK_FIELDS,
+                                  start=args.start, end=args.end, interval="1h")
+    else:
+        # A minute pull of the whole window is large enough that LSEG truncates
+        # it silently, so it is requested one week at a time and stitched. The
+        # weeks are taken from a business-day calendar here rather than from the
+        # tape, because we do not have the tape yet -- a holiday just yields an
+        # empty chunk, which concat drops.
+        chunks = []
+        edges = pd.date_range(args.start, args.end, freq="7D").tolist()
+        if pd.Timestamp(args.end) not in edges:
+            edges.append(pd.Timestamp(args.end))
+        for a, b in zip(edges[:-1], edges[1:]):
+            try:
+                c = ld.get_history(universe=[args.stock], fields=STOCK_FIELDS,
+                                   start=str(a.date()), end=str(b.date()),
+                                   interval=args.interval)
+            except Exception as exc:
+                print(f"  {a.date()} -> {b.date()}: {type(exc).__name__}")
+                continue
+            if c is not None and not c.empty:
+                chunks.append(c)
+                print(f"  {a.date()} -> {b.date()}: {len(c)} bars", flush=True)
+        df_stock = (pd.concat(chunks).sort_index() if chunks else None)
+        if df_stock is not None:
+            df_stock = df_stock[~df_stock.index.duplicated(keep="last")]
     if df_stock is None or df_stock.empty:
         print("no underlying history")
         ld.close_session()
@@ -314,8 +342,15 @@ def main() -> int:
               f" -> {w['expiry']} ({w['expiry'].strftime('%a')})"
               f"  {w['sessions']} sessions{flag}")
 
-    highs = pd.to_numeric(rth["HIGH_1"], errors="coerce")
-    lows = pd.to_numeric(rth["LOW_1"], errors="coerce")
+    # Band on the LAST-TRADE series, not on HIGH_1/LOW_1. The extremes carry
+    # odd-lot and out-of-sequence prints -- on this pull HIGH_1 sits more than
+    # 1% above its own bar body on 12.8% of bars and LOW_1 more than 1% below
+    # on 21.2%, reaching +10.6% and -18.0%. Banding on them stretched a single
+    # week's range to $277-$345 and generated dozens of strikes the stock never
+    # came near. Widening a band is harmless -- it only costs dead RICs -- but
+    # "where the stock actually traded" should mean what it says.
+    prints = pd.to_numeric(rth["TRDPRC_1"], errors="coerce")
+    highs, lows = prints, prints
     idx_dates = pd.Series([d.date() for d in rth.index], index=rth.index)
 
     stats = {"threw": 0, "collapsed": 0, "unresolved": 0, "dead_rics": []}
@@ -337,7 +372,7 @@ def main() -> int:
         for i, batch in enumerate(batches, 1):
             frame = pull_batch(ld, batch, OPTION_FIELDS,
                                str(first), str(expiry + dt.timedelta(days=1)),
-                               stats)
+                               stats, args.interval)
             if frame is not None and not frame.empty:
                 # The check that caught the label-flip bug, kept permanently:
                 # every RIC label must be one we actually asked for. A frame
@@ -375,7 +410,7 @@ def main() -> int:
         "stock_ric": args.stock,
         "fetched_at": dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "window": [args.start, args.end],
-        "interval": "1h",
+        "interval": args.interval,
         "session_utc": [SESSION_START_UTC, SESSION_END_UTC],
         "weeks": weeks,
         "series_per_expiry": per_expiry,
