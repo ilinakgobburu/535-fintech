@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Covered Call Backtest</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"
+        onerror="window.__plotlyFailed=1"></script>
+<style>
+/*__STYLE__*/
+/* ---- HW2 additions -------------------------------------------------- */
+  /* A grid or flex item defaults to min-width:auto, which refuses to shrink
+     below its content -- so an overflow-x:auto table inside one pushes the
+     whole PAGE sideways instead of scrolling itself. Only visible under about
+     420px, which is exactly where nobody checks. */
+  .tbl-wrap{overflow-x:auto;border-radius:10px;max-width:100%}
+  .grid2 > *{min-width:0}
+  .card{min-width:0}
+  .reading.qa-grid > *{min-width:0}
+  table.tbl td.note{text-align:left;color:var(--faint);font-size:var(--fs-xs);
+    font-family:var(--font);min-width:230px;white-space:normal;line-height:1.45}
+  table.tbl td.side{text-align:left;font-weight:600}
+  .s-BUY{color:var(--up)} .s-SELL{color:var(--mark)}
+  .s-EXPIRE{color:var(--muted)} .s-ASSIGN{color:var(--print)}
+  table.tbl tr.wk-sep td{border-top:2px solid var(--line)}
+  .pos{color:var(--mark)} .neg{color:var(--down)}
+  .rulebox{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:20px 24px;margin:20px 0}
+  .rulebox ol{margin:0;padding-left:22px;color:var(--text);line-height:1.75}
+  .rulebox ol li{margin-bottom:12px}
+  .rulebox .tag{font-family:var(--mono);font-size:var(--fs-xs);color:var(--both);
+    text-transform:uppercase;letter-spacing:.08em;font-weight:600;margin-right:8px}
+  .callout{border-left:3px solid var(--print);background:rgba(201,133,0,.07);
+    padding:14px 18px;border-radius:0 8px 8px 0;margin:18px 0;color:var(--text);
+    font-size:var(--fs-base);line-height:1.65}
+  .callout.good{border-left-color:var(--mark);background:rgba(25,158,112,.07)}
+  .eqn{font-family:var(--mono);font-size:var(--fs-sm);color:var(--muted);
+    background:var(--panel-hi);border:1px solid var(--line);border-radius:8px;
+    padding:14px 18px;margin:14px 0;white-space:pre;overflow-x:auto;line-height:1.7}
+  .lead-in{color:var(--muted);font-size:var(--fs-lede);line-height:1.62;
+    max-width:92ch;margin:0 0 6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<nav>
+  <div class="brand">Covered <span>Call</span></div>
+  <a href="#sec-rules">Rules</a>
+  <a href="#sec-blotter">Blotter</a>
+  <a href="#sec-ledger">Ledger</a>
+  <a href="#sec-regt">Reg T</a>
+  <a href="#sec-fill">Mid vs trade</a>
+  <a href="#sec-hours">Which hour</a>
+  <a href="#sec-cf">Counterfactuals</a>
+  <a href="#sec-analysis">Analysis</a>
+  <a href="#sec-methods">Methods</a>
+  <a href="#sec-data">Data</a>
+  <a class="ticker-link" href="index.html">← Assignment 1.1 · Surface Lab</a>
+</nav>
+
+<header>
+  <div class="eyebrow">MEng FinTech · Algorithmic Trading II · Assignment 2</div>
+  <h1>Covered Call <span class="accent">·</span> <span id="h-ticker">—</span></h1>
+  <p class="lede">
+    Long 100 shares, short one weekly call, one name, no rolls. The strategy is
+    small enough to state in a sentence, which means the whole result lives in
+    the decisions around it — <em>which strike</em>, <em>at what price</em>, and
+    <em>at which moment</em>. This page books all three explicitly and then
+    measures how much each one was worth.
+  </p>
+  <div class="prov" id="prov"></div>
+  <div class="banner hidden" id="banner"></div>
+</header>
+
+<h2 id="sec-rules">The rules, before the results</h2>
+<p class="lead-in">
+  Every line below is executed by one loop in
+  <code>lib/covered_call.py</code>. Nothing on this page is chosen by hand, and
+  nothing is chosen after seeing the outcome.
+</p>
+
+<div class="rulebox">
+  <ol>
+    <li><span class="tag">entry</span> On the <strong>first session of each
+      week</strong> — not "Monday", see below — at the
+      <span id="r-hour">—</span> bar: if the book is flat, buy
+      <strong>100 shares at the stock print</strong>. Cash decreases.</li>
+    <li><span class="tag">strike</span> In the same bar, sell <strong>one call
+      expiring at the end of that same week</strong>, struck at the
+      <strong>lowest listed strike at or above spot</strong>. When spot sits
+      exactly on a listed strike, that strike is the answer — the rule is
+      "at or above", not "strictly above", which is what makes the ATM case
+      work instead of silently selling an extra strike of upside.</li>
+    <li><span class="tag">fill</span> The call fills at
+      <strong>mid = (BID + ASK) / 2</strong> in that same bar. Both legs come
+      from one bar, so neither leg sees the other's future.
+      <strong>No two-sided quote, no fill</strong> — and because the combo is
+      one decision, an unpriceable call also means we do not buy the stock.</li>
+    <li><span class="tag">wait</span> Hold to expiry. No rolls, no
+      buy-to-close, no adjustment of any kind.
+      At the closing print of the week's last session:
+      <br><strong>S<sub>T</sub> &gt; K</strong> → assigned. Deliver the shares,
+      cash increases by 100 × K, the book is flat, and the next week starts the
+      combo again.
+      <br><strong>S<sub>T</sub> ≤ K</strong> → expires worthless. Keep the
+      shares, keep the premium, and next week simply write another call against
+      stock we already own.</li>
+  </ol>
+</div>
+
+<div class="callout">
+  <strong>The tie is decided on purpose.</strong> At S<sub>T</sub> exactly equal
+  to K the call has no intrinsic value and is not rationally exercised, so we
+  treat it as expiring. It is a measure-zero case on real prices, but it has to
+  be decided somewhere rather than falling out of a floating-point comparison by
+  accident. <code>tests/test_covered_call.py</code> pins both sides of it.
+</div>
+
+<div class="tiles" id="tiles"></div>
+
+<h2 id="sec-blotter">Blotter</h2>
+<p class="lead-in">
+  Only trades that were actually booked. No working orders, no signals, no
+  intentions. Each row names the rule that produced it.
+</p>
+<div class="card"><div class="tbl-wrap"><table class="tbl" id="tbl-blotter"></table></div></div>
+<div id="blotter-note" class="notes"></div>
+
+<h2 id="sec-ledger">Ledger</h2>
+<p class="lead-in">
+  Shares, the short call with its strike and expiry, cash, and the marks — at
+  the close of every session. The ledger is <em>derived from the blotter</em>
+  rather than accumulated alongside it, so the two cannot drift apart: cash at
+  any bar is the starting cash plus the deltas of the blotter events that have
+  happened by then, and a test asserts exactly that at every one of the
+  <span id="l-bars">—</span> bars.
+</p>
+<div class="card"><div class="tbl-wrap"><table class="tbl" id="tbl-ledger"></table></div></div>
+
+<h2 id="sec-regt">Reg T, used like an account</h2>
+<p class="lead-in">
+  Reg T rather than portfolio margin, for a reason that is not just "the
+  handout said so": Reg T is computable without a broker's PM engine, and a
+  book that clears Reg T also clears PM. The implication runs one way only, so
+  the conservative requirement is the one worth reporting.
+</p>
+<div class="eqn">LMV       = shares × stock mark
+NAV       = cash + stock MV + option MV        (a short call is NEGATIVE)
+initial   = 50% × LMV                          covered short call adds $0
+maint     = 25% × LMV                          FINRA
+available = NAV − initial
+excess    = NAV − maint</div>
+<p class="lead-in">
+  The covered call adds nothing to the initial requirement, which is the whole
+  reason the position is called covered: the short call's only obligation is to
+  deliver stock the account already owns. Cash moves on blotter events and
+  nowhere else — buy stock, collect premium, expire at zero, assign at the
+  strike. Marks move NAV; they never move cash.
+</p>
+<div class="card"><div id="plot-nav" class="plot" style="height:460px"></div></div>
+<div class="card"><div id="plot-margin" class="plot" style="height:340px"></div></div>
+<div id="feas" class="callout"></div>
+
+<h2 id="sec-fill">Does the mid predict the trade?</h2>
+<p class="lead-in">
+  The whole book fills at the mid, so the assumption deserves evidence rather
+  than a sentence. Below is every hourly bar in which a call both had a
+  two-sided quote and actually printed: <span id="f-n">—</span> of them.
+</p>
+<div class="card"><div id="plot-scatter" class="plot" style="height:520px"></div></div>
+<div id="fit-pooled" class="callout"></div>
+
+<h3 style="font-size:var(--fs-sub);margin:26px 0 8px">The test that settles it: squeeze the price range</h3>
+<p class="lead-in" style="margin-top:0">
+  A pooled R&sup2; over contracts worth one cent to ninety-nine dollars is
+  inflated by range alone. The honest check is whether the fit survives inside a
+  narrow band, where knowing that a $3 option is not a $6 option is actually
+  difficult. <strong>It does</strong> — which was not the expected answer, and is
+  reported here because it was not.
+</p>
+<div class="tbl-wrap"><table class="tbl" id="tbl-price"></table></div>
+<div id="fit-written" class="callout good"></div>
+
+<div class="grid2" style="margin-top:26px">
+  <div><h3 style="font-size:var(--fs-sub);margin:8px 0">By moneyness</h3>
+    <div class="tbl-wrap"><table class="tbl" id="tbl-buckets"></table></div></div>
+  <div><h3 style="font-size:var(--fs-sub);margin:8px 0">By how often it traded in the bar</h3>
+    <div class="tbl-wrap"><table class="tbl" id="tbl-moves"></table></div></div>
+</div>
+<div id="fit-note" class="notes"></div>
+
+<h2 id="sec-hours">An undeclared parameter, and what it was worth</h2>
+<p class="lead-in">
+  "Fill at mid" is only half an assumption. The other half is <em>which</em>
+  mid — and nothing in the assignment, or in most backtests, says. Below is the
+  identical book, same rule and same strike logic and same calendar, written at
+  each tradeable hour of the entry session. Only the clock moves.
+</p>
+<div class="card"><div id="plot-hours" class="plot" style="height:400px"></div></div>
+<div class="tbl-wrap"><table class="tbl" id="tbl-hours"></table></div>
+<div id="hours-note" class="notes"></div>
+
+<h2 id="sec-cf">What the strike rule cost</h2>
+<p class="lead-in">
+  The booked rule is the assignment's baseline. These are three alternatives run
+  through the <em>identical</em> engine — same calendar, same fills, same
+  ledger — so the difference between them is a difference of decisions and not
+  of two implementations that drifted.
+</p>
+<div class="tbl-wrap"><table class="tbl" id="tbl-rules"></table></div>
+<div id="rules-note" class="notes"></div>
+
+<h2 id="sec-analysis">What happened</h2>
+<div id="analysis" class="reading"></div>
+
+<h2 id="sec-methods">Methods: two things the handout gets wrong</h2>
+<div id="methods" class="reading"></div>
+
+<h2 id="sec-data">Data</h2>
+<div id="data-state"></div>
+<div class="notes" id="data-note"></div>
+
+<footer id="footer"></footer>
+</div>
+
+<script>
+const DATA = /*__PAYLOAD__*/null;
+</script>
+<script>
+/*__APP__*/
+</script>
+</body>
+</html>
