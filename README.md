@@ -22,15 +22,16 @@ trading_app/
   scripts/fetch_hw2.py              hourly LSEG pull, banded chains
   scripts/build_hw2.py              -> docs/hw2.html
   scripts/hw2_app.js                the page's figures and computed prose
-  scripts/mutation_check.py         re-introduces 12 bugs, asserts the suite catches each
-  tests/test_covered_call.py        35 tests
+  scripts/bar_size_study.py         hourly vs a 1-minute re-pull -> a <1 KB committed JSON
+  scripts/mutation_check.py         re-introduces 16 bugs, asserts the suite catches each
+  tests/test_covered_call.py        47 tests
 docs/hw2.html                       <- the graded artefact
 ```
 
 ```bash
 cd trading_app
-python3 -m pytest tests -q             # 159 tests (124 from 1.1, 35 here)
-python3 scripts/mutation_check.py      # 12 mutations, all caught
+python3 -m pytest tests -q             # 171 tests (124 from 1.1, 47 here)
+python3 scripts/mutation_check.py      # 16 mutations, all caught
 python3 scripts/build_hw2.py           # rebuild the page from the cached pull
 ```
 
@@ -139,12 +140,74 @@ It did *not* outrank the strike rule, which spans $2,631. I expected the reverse
 after watching one Monday's mid move 2× intraday, and one vivid observation
 turned out to be a poor guide to the aggregate.
 
+### Selling the cap the market prices at a 25% chance of being breached
+
+A fixed-distance rule sells the same cap in a calm week and a violent one. Two
+counterfactual rules instead back the week's at-the-money implied vol out of the
+chain — reusing the Black-76 inversion from 1.1, with `F = spot` and `D = 1`,
+which 1.1's own parity fit justifies at this horizon — and solve
+
+```
+K* = S · exp( σ√T · N⁻¹(1 − p)  −  σ²T/2 )
+```
+
+for a stated breach probability `p`. Implied vol ran **24.3%–47.1%**, and the
+rule did widen when the week was priced to move: in the 47.1% week it pushed the
+strike to its furthest, 3.83% out.
+
+**It did not beat a fixed 2% rule** — $53,170 against $53,313, which over ten
+weeks is noise. The valuable output was the calibration:
+
+| target breach probability | realised assignment |
+|---|---|
+| 25% | **40%** |
+| 15% | **20%** |
+
+Both under-predicted, and they were supposed to. **The probability an option
+price implies is risk-neutral, and the risk-neutral measure has zero drift by
+construction.** This tape had +16%. A cap 25% likely to be breached by a
+driftless stock is a good deal more likely to be breached by one marching
+upward. Anyone reading an option-implied probability as a forecast should read
+those two rows first.
+
+### Checking the bar itself against a 1-minute re-pull
+
+Two claims rested on what an hourly bar *is*. Both were assumptions, so the same
+contracts were re-pulled at one minute (589,081 two-sided quoted bars) and both
+were measured.
+
+**An hourly BID/ASK is exactly the last minute's quote** — 100.0% of 10,571
+matched contract-hours, against 23.8% for the hour's lowest bid. It is a
+snapshot at the close of the bar, not an aggregated envelope over it. Had it
+been an envelope, every "mid" in this backtest would have been the midpoint of
+an hour of quote range rather than a price anyone could trade against, and the
+fill assumption would not have survived. The convention is now measured.
+
+**Two-thirds of the impossible prints were the bar.** On identical
+(contract, day) cells, prints landing outside their own bar's quote fall from
+**14.0% hourly to 5.1% at one minute**. The remainder is the honest rate.
+
+**And a trap that nearly produced a false claim.** Conditioned on bars that also
+printed, the median spread is $0.200 hourly against $0.050 at one minute — which
+reads as "minute data is four times cleaner". Measured *unconditionally* on the
+same contracts and days the two agree exactly at **$0.300**. The difference is
+entirely selection: 78% of hourly bars contain a trade against 37% of minute
+bars, so "this bar printed" is a far more demanding filter at one minute and it
+selects the liquid, tight-spread moments. Third time this hazard has appeared
+across the two assignments.
+
+The minute cache is ~390 MB and is **not** committed; `scripts/bar_size_study.py`
+distils it to a <1 KB JSON that is, so the page builds without it and the numbers
+stay checkable.
+
 ### The tests, and a bug in the thing that checks the tests
 
-35 tests, split by failure mode: the RIC and calendar tests pin bugs that produce
+47 tests, split by failure mode: the RIC and calendar tests pin bugs that produce
 *silence*, the blotter/ledger/Reg T tests pin bugs that produce a *plausible wrong
-number*. `scripts/mutation_check.py` re-introduces 12 specific bugs one at a time
-and asserts the suite fails on each.
+number*. `scripts/mutation_check.py` re-introduces 16 specific bugs one at a time
+and asserts the suite fails on each. One of them was not caught on the first run
+— the bar-size study could have compared unmatched contracts and no test would
+have noticed — which is the entire reason the harness exists.
 
 That harness had a bug worth recording. CPython validates a `.pyc` against the
 source's *(mtime, size)*. Every mutation here is a same-length edit (`< 2` →
@@ -162,7 +225,9 @@ closer to one observation than to ten. Nothing here supports a claim about
 covered calls in general. It supports something narrower and still worth having:
 given this tape, these are exactly the trades the stated rules produce, this is
 what they cost, and this is the order in which the decisions mattered — strike
-distance first, order hour second, fill convention a distant third.
+distance first, order hour second, fill convention a distant third. The one
+finding that travels beyond this window is the calibration gap, because it is a
+statement about what a risk-neutral probability *is* rather than about AAPL.
 
 ---
 

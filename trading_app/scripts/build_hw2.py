@@ -127,6 +127,13 @@ def build_payload(cache: Path) -> dict:
     floor = min_start_cash(run, stock, options)
     ohlc = A.ohlc_integrity(stock)
 
+    # The 1-minute study is precomputed into a small JSON because the minute
+    # cache itself is ~390 MB and is not committed. Absent, the page simply
+    # omits the section rather than inventing one.
+    study_path = ROOT / "trading_app" / "data" / "bar_size_study.json"
+    bar_study = (json.loads(study_path.read_text(encoding="utf-8"))
+                 if study_path.exists() else None)
+
     cyc = pd.DataFrame(run["cycles"])
     booked = cyc[cyc["status"].isin(["assigned", "expired"])] if len(cyc) else cyc
 
@@ -217,6 +224,7 @@ def build_payload(cache: Path) -> dict:
             "by_moves": [jrec(b) for b in fit["by_moves"]],
             "resid": jrec(fit["resid"]),
         },
+        "bar_study": bar_study,
         "ohlc": {
             "bars": ohlc["bars"],
             "high": jrec(ohlc["high"]),

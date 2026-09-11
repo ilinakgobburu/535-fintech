@@ -362,9 +362,16 @@
       <li><strong>${pct(R.outside_pct)} of prints landed outside the quote entirely</strong> —
         below the bid or above the ask. That is not an arbitrage; it is the bar. In an hourly
         bar the BID/ASK is the quote standing at the end of the hour while TRDPRC_1 is the last
-        trade inside it, so the two are simply not simultaneous. It bounds how precise this
-        comparison can be at all, and it is the single strongest argument for pulling
-        minute bars if this were repeated.</li>
+        trade inside it, so the two are simply not simultaneous.
+        ${D.bar_study
+          ? `Rather than leave that as an excuse, the same contracts were re-pulled at one
+             minute: on identical cells the figure falls from
+             ${pct(D.bar_study.hourly.outside_pct)} to
+             ${pct(D.bar_study.minute.outside_pct)}, so roughly two-thirds of it was the
+             sampling and the rest is real. <a href="#sec-bars" style="color:var(--both)">The
+             measurement is below.</a>`
+          : `It bounds how precise this comparison can be, and it is the strongest argument for
+             pulling minute bars if this were repeated.`}</li>
       <li><strong>Liquidity moves the miss, not the fit.</strong> Going from one trade in the bar
         to ${esc(D.fit.by_moves[D.fit.by_moves.length - 1].label)}, R² barely moves
         (${num(D.fit.by_moves[0].r2, 4)} → ${num(D.fit.by_moves[D.fit.by_moves.length - 1].r2, 4)})
@@ -462,19 +469,16 @@
   // counterfactual rules
   (function rulesTable() {
     const R = D.rule_sweep;
-    const NAMES = {
-      nearest_otm: "nearest OTM (booked)",
-      otm_1pct: "first strike ≥ spot × 1.01",
-      otm_2pct: "first strike ≥ spot × 1.02",
-      premium_50c: "furthest strike still paying ≥ $0.50",
-    };
+    // Labels ride along with the sweep so a rule added in Python cannot show up
+    // here under its bare function key.
+    const nameOf = r => r.label || r.rule;
     let h = `<thead><tr><th>Strike rule</th><th>Median strike over spot</th>`
       + `<th>Median premium</th><th>Premium collected</th><th>Assigned</th>`
       + `<th>Final NAV</th><th>P&L</th></tr></thead><tbody>`;
     R.forEach(r => {
       const on = r.rule === M.rule;
       h += `<tr${on ? ' style="background:var(--panel-hi)"' : ""}>`
-        + `<td>${esc(NAMES[r.rule] || r.rule)}</td>`
+        + `<td>${esc(nameOf(r))}${on ? " &nbsp;← booked" : ""}</td>`
         + `<td>${pct(r.median_otm_pct, 2)}</td><td>${money(r.median_premium, 2)}</td>`
         + `<td>${money(r.premium_collected)}</td>`
         + `<td>${r.assignments} / ${r.weeks_booked}</td>`
@@ -493,20 +497,46 @@
     const hourSpread = Math.max(...D.hour_sweep.map(s => s.pnl))
                      - Math.min(...D.hour_sweep.map(s => s.pnl));
     const best = R[pn.indexOf(Math.max(...pn))];
+    const probRules = R.filter(r => r.target_prob !== null && r.target_prob !== undefined);
     const beatBH = R.filter(r => r.pnl > H.bh_pnl).length;
     // Is "further out is better" monotone in this window?
     const byDist = R.slice().sort((a, b) => a.median_otm_pct - b.median_otm_pct);
     let mono = true;
     for (let i = 1; i < byDist.length; i++) if (byDist[i].pnl < byDist[i - 1].pnl) mono = false;
 
+    const calib = probRules.map(r =>
+      `${pct(100 * r.target_prob, 0)} priced → <strong>${pct(100 * r.realised_prob, 0)}</strong> realised`
+    ).join(", ");
+
     el("rules-note").innerHTML = `<ul class="notes">
+      <li><strong>The implied-vol rule under-predicted assignment, and it was supposed to.</strong>
+        Two of the rules target a stated probability of the cap being breached, solved out of the
+        week's own at-the-money implied vol (median ${pct(100 * R[0].median_atm_iv)}, ranging
+        ${pct(100 * Math.min(...R.map(r => (r.iv_range || [NaN])[0])))}–${pct(100 * Math.max(...R.map(r => (r.iv_range || [NaN, NaN])[1])))}).
+        They came in ${calib}. That gap is not a broken rule: the probability an option price
+        implies is a <em>risk-neutral</em> one, and the risk-neutral measure has zero drift by
+        construction. This tape had a ${pct(STOCK.ret)} drift. A cap that is 25% likely to be
+        breached by a driftless stock is a good deal more likely to be breached by one marching
+        upward, and that is the entire discrepancy. Anyone reading an option-implied probability
+        as a forecast should read these two rows first.</li>
+      <li><strong>Adapting to volatility did not beat a fixed distance here.</strong> The 25%
+        rule wrote a median ${pct(R.find(r => r.rule === "iv_prob_25").median_otm_pct, 2)} out
+        against the fixed 2% rule's
+        ${pct(R.find(r => r.rule === "otm_2pct").median_otm_pct, 2)} — nearly the same place on
+        average — and finished
+        ${money(Math.abs(R.find(r => r.rule === "iv_prob_25").pnl - R.find(r => r.rule === "otm_2pct").pnl))}
+        ${R.find(r => r.rule === "iv_prob_25").pnl > R.find(r => r.rule === "otm_2pct").pnl ? "ahead" : "behind"}.
+        The adaptivity is real — in the week priced at
+        ${pct(100 * Math.max(...D.cycles.filter(c => c.atm_iv).map(c => c.atm_iv)))} implied vol it
+        pushed the strike to its widest — but over ten weeks that difference is well inside noise.
+        The theoretical motivation is sound and this window cannot confirm it.</li>
       <li><strong>Every rule lost to simply holding the stock.</strong> ${beatBH === 0
         ? `None of the ${R.length} beat buy-and-hold's ${signed(H.bh_pnl)}`
         : `${beatBH} of ${R.length} beat buy-and-hold's ${signed(H.bh_pnl)}`}, and the closer
         the rule wrote to the money the worse it did: the booked nearest-OTM rule finished
         ${signed(H.pnl)} while writing a median
-        ${pct(R.find(r => r.rule === M.rule).median_otm_pct, 2)} above spot, and the furthest
-        rule finished ${signed(best.pnl)}. ${mono
+        ${pct(R.find(r => r.rule === M.rule).median_otm_pct, 2)} above spot, and the best of the
+        alternatives — ${esc(nameOf(best))} — finished ${signed(best.pnl)}. ${mono
           ? "Across these four the ordering is monotone in distance from spot."
           : "The ordering is nearly, but not perfectly, monotone in distance from spot — the furthest rule is not the best, because a strike far enough out stops being paid for."}
         That is not a discovery about covered calls; it is a description of what a cap does to
@@ -518,10 +548,10 @@
         on this data. It is worth saying that I expected the opposite after watching one
         Monday's mid move 2× intraday, and that a single vivid observation turned out to be a
         poor guide to the aggregate.</li>
-      <li><strong>These are counterfactuals, not results.</strong> Four rules over
+      <li><strong>These are counterfactuals, not results.</strong> ${R.length} rules over
         ${M.weeks} weeks on one name in one quarter is far too little to choose between them.
-        All four share a single price path, so they are closer to one observation than to
-        forty, and the ranking would not survive a different quarter. Picking the winner after
+        All ${R.length} share a single price path, so they are closer to one observation than to
+        ${R.length * M.weeks}, and the ranking would not survive a different quarter. Picking the winner after
         the fact is precisely the mistake the pre-committed booked rule exists to avoid. They
         are here to size the <em>sensitivity</em>, not to nominate a strategy.</li>
       <li><strong>What would change my mind.</strong> If the furthest-OTM rule still won over
@@ -529,6 +559,70 @@
         about the tape. This window contains no such period, so the comparison above cannot
         distinguish "writing closer to the money is worse" from "selling calls into a rally is
         worse", and the second is almost certainly the whole of it.</li>
+    </ul>`;
+  })();
+
+  // ---- bar size study ---------------------------------------------------
+  (function barStudy() {
+    const B = D.bar_study;
+    const sec = document.getElementById("sec-bars");
+    if (!B) {                       // no minute cache on this build
+      if (sec) sec.remove();
+      const host = el("bars"); if (host) host.remove();
+      document.querySelectorAll('nav a[href="#sec-bars"]').forEach(a => a.remove());
+      return;
+    }
+    const h = B.hourly, m = B.minute, s = B.snapshot;
+    el("bars-n").textContent = m.quoted_bars.toLocaleString();
+
+    el("bars").innerHTML = `<ul class="notes">
+      <li><strong>An hourly BID/ASK is exactly the last minute's quote.</strong> Checked on
+        ${s.matched_hours.toLocaleString()} matched contract-hours, the hourly bid equals the
+        final minute bar's bid ${pct(s.bid_is_last_pct)} of the time and the ask
+        ${pct(s.ask_is_last_pct)} — against ${pct(s.bid_is_min_pct)} for the hour's lowest bid
+        and ${pct(s.ask_is_max_pct)} for its highest ask. So it is a snapshot at the close of
+        the bar, not an aggregated envelope over it. That matters more than it sounds: had the
+        hourly quote been a min-bid/max-ask envelope, <em>every</em> "mid" in this backtest
+        would have been the midpoint of an hour's worth of quote range rather than a price
+        anyone could have traded against, and the fill assumption would not survive it. The
+        convention this page states is now measured rather than declared.</li>
+
+      <li><strong>Two-thirds of the impossible prints were the bar.</strong> On identical
+        (contract, day) cells — ${B.matched_cells.toLocaleString()} of them, the same
+        ${m.contracts} contracts — prints landing outside their own bar's quote fall from
+        <strong>${pct(h.outside_pct)} at one hour to ${pct(m.outside_pct)} at one minute</strong>.
+        That is the artefact measured instead of assumed: the hourly quote is end-of-hour while
+        the print is somewhere inside the hour, and shrinking the bar shrinks the gap. The
+        ${pct(m.outside_pct)} that survives is the honest rate — genuine trade-throughs, odd
+        lots, and a minute still not being an instant.</li>
+
+      <li><strong>The trap: minute spreads look four times tighter, and are not.</strong>
+        Conditioned on bars that also printed — which the mid-versus-trade comparison must do —
+        the median spread is ${money(h.median_spread_printed, 3)} hourly against
+        ${money(m.median_spread_printed, 3)} at one minute. Read carelessly that says minute
+        data is cleaner. Measured <em>unconditionally</em> on the same contracts and days, the
+        two agree exactly: ${money(h.median_spread_all, 3)} and
+        ${money(m.median_spread_all, 3)}. The difference is entirely selection —
+        ${pct(h.printed_share, 0)} of hourly bars contain a trade against
+        ${pct(m.printed_share, 0)} of minute bars, so "this bar printed" is a far more
+        demanding filter at one minute and it picks out the liquid, tight-spread moments.
+        HW1 found that pooling could invert a spread conclusion; this is the same hazard in a
+        different costume, and it is written up because it nearly produced a confident and
+        completely false claim.</li>
+
+      <li><strong>What this does not change.</strong> The book still fills at the hourly mid,
+        because that is the bar the assignment specifies and because the quote it uses has now
+        been shown to be a real end-of-hour quote. What the minute pull buys is not a better
+        backtest — it is knowing which of the hourly panel's oddities were the market and which
+        were the sampling. The residual-to-spread ratio, the statistic the fill argument
+        actually rests on, is ${pct(100 * h.resid_over_spread)} hourly and
+        ${pct(100 * m.resid_over_spread)} at one minute: close enough that the conclusion drawn
+        from hourly data stands.</li>
+
+      <li><strong>The minute cache is not in the repository.</strong> It is ~390 MB, which is
+        not a thing to put in git. <code>scripts/bar_size_study.py</code> distils it to a
+        &lt;1 KB JSON that <em>is</em> committed, so this section builds without it and anyone
+        with an LSEG session can re-pull and check every number above.</li>
     </ul>`;
   })();
 
@@ -576,7 +670,13 @@
         of the spread — and only ${pct(D.fit.resid.at_mid_pct)} of prints landed within a
         quarter-spread of it. For one contract a week on a chain this liquid, mid is a
         reasonable fill. It would not survive size, and it is not what a market order would
-        have gotten.`],
+        have gotten — that is the ${money(D.fit.resid.median_spread / 2, 2)} half-spread, every
+        week.${D.bar_study
+          ? ` And the hourly quote it uses is a genuine end-of-hour quote, not an aggregate:
+              re-pulling the same contracts at one minute matched the hourly bid and ask to the
+              final minute of every one of ${D.bar_study.snapshot.matched_hours.toLocaleString()}
+              contract-hours.`
+          : ""}`],
       ["Could the account carry it?",
        `${H.ever_infeasible
           ? `No. Available funds bottomed at ${money(H.min_available)}, so the book as

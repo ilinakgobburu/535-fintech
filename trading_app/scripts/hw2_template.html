@@ -57,6 +57,7 @@
   <a href="#sec-hours">Which hour</a>
   <a href="#sec-cf">Counterfactuals</a>
   <a href="#sec-analysis">Analysis</a>
+  <a href="#sec-bars">Bar size</a>
   <a href="#sec-methods">Methods</a>
   <a href="#sec-data">Data</a>
   <a class="ticker-link" href="index.html">← Assignment 1.1 · Surface Lab</a>
@@ -206,13 +207,27 @@ excess    = NAV − maint</div>
 
 <h2 id="sec-cf">What the strike rule cost</h2>
 <p class="lead-in">
-  The booked rule is the assignment's baseline. These are three alternatives run
-  through the <em>identical</em> engine — same calendar, same fills, same
-  ledger — so the difference between them is a difference of decisions and not
-  of two implementations that drifted.
+  The booked rule is the assignment's baseline. The others run through the
+  <em>identical</em> engine — same calendar, same fills, same ledger — so the
+  difference between them is a difference of decisions and not of two
+  implementations that drifted. Two of them are not fixed distances at all:
+  they solve for the strike the week's own at-the-money implied volatility
+  prices at a stated chance of being breached, reusing the Black-76 inversion
+  written for Assignment 1.1.
 </p>
 <div class="tbl-wrap"><table class="tbl" id="tbl-rules"></table></div>
 <div id="rules-note" class="notes"></div>
+
+<h2 id="sec-bars">Checking the bar against a 1-minute pull</h2>
+<p class="lead-in">
+  Two claims on this page rest on what an hourly bar <em>is</em>: that its
+  BID/ASK is the quote standing at the end of the hour, and that prints landing
+  outside their own bar's quote are a timing artefact rather than something
+  real. Both were assumptions. So the same contracts were re-pulled at one
+  minute — <span id="bars-n">—</span> two-sided quoted bars — and both were
+  measured.
+</p>
+<div id="bars" class="notes"></div>
 
 <h2 id="sec-analysis">What happened</h2>
 <div id="analysis" class="reading"></div>
