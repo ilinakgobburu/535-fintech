@@ -429,3 +429,176 @@ class TestSweeps:
         from trading_app.lib.cc_analysis import ols
         f = ols(np.array([1.0, 1.0, 1.0]), np.array([2.0, 3.0, 4.0]))
         assert np.isnan(f["r2"])
+
+
+# --------------------------------------------------------------------------
+# 7. the volatility-aware strike rule
+# --------------------------------------------------------------------------
+
+class TestImpliedVolRule:
+    @staticmethod
+    def chain_at_vol(spot: float, T: float, sigma: float,
+                     strikes=np.arange(280.0, 361.0, 2.5)) -> pd.DataFrame:
+        """A chain whose mids are Black-76 prices at a KNOWN sigma."""
+        from trading_app.lib.vol import bs_price
+        return pd.DataFrame({
+            "strike": strikes,
+            "mid": [bs_price(spot, float(k), T, sigma, 1.0, "C") for k in strikes],
+        })
+
+    def test_atm_iv_recovers_the_vol_it_was_priced_at(self):
+        from trading_app.lib.covered_call import atm_iv
+        T = 4 / 365.25
+        got = atm_iv(self.chain_at_vol(315.0, T, 0.32), 315.0, T)
+        assert got == pytest.approx(0.32, abs=1e-3)
+
+    def test_higher_vol_sells_a_further_strike(self):
+        """
+        The entire motivation for the rule: a fixed-distance rule sells the
+        same cap in a calm week and a violent one, and this must not.
+        """
+        from trading_app.lib.covered_call import by_assignment_prob
+        T = 4 / 365.25
+        calm = by_assignment_prob(self.chain_at_vol(315.0, T, 0.20), 315.0,
+                                  target=0.25, T=T)
+        wild = by_assignment_prob(self.chain_at_vol(315.0, T, 0.60), 315.0,
+                                  target=0.25, T=T)
+        assert wild > calm, f"vol 60% sold {wild}, vol 20% sold {calm}"
+
+    def test_a_lower_breach_target_sells_a_further_strike(self):
+        from trading_app.lib.covered_call import by_assignment_prob
+        T = 4 / 365.25
+        ch = self.chain_at_vol(315.0, T, 0.30)
+        k25 = by_assignment_prob(ch, 315.0, target=0.25, T=T)
+        k15 = by_assignment_prob(ch, 315.0, target=0.15, T=T)
+        assert k15 > k25
+
+    def test_the_strike_is_never_below_spot(self):
+        from trading_app.lib.covered_call import by_assignment_prob
+        T = 4 / 365.25
+        for sigma in (0.15, 0.30, 0.75):
+            for target in (0.10, 0.25, 0.45):
+                k = by_assignment_prob(self.chain_at_vol(315.0, T, sigma), 315.0,
+                                       target=target, T=T)
+                assert k is None or k >= 315.0 - 1e-9
+
+    def test_no_horizon_means_no_strike(self):
+        """Without T there is no distribution, so the rule must decline."""
+        from trading_app.lib.covered_call import by_assignment_prob
+        ch = self.chain_at_vol(315.0, 4 / 365.25, 0.30)
+        assert by_assignment_prob(ch, 315.0, target=0.25, T=None) is None
+        assert by_assignment_prob(ch, 315.0, target=0.25, T=0.0) is None
+
+    def test_unquotable_chain_means_no_strike(self):
+        from trading_app.lib.covered_call import by_assignment_prob
+        ch = pd.DataFrame({"strike": [300.0, 310.0], "mid": [np.nan, np.nan]})
+        assert by_assignment_prob(ch, 305.0, target=0.25, T=4 / 365.25) is None
+
+    def test_years_to_expiry_counts_down_to_the_close(self):
+        from trading_app.lib.covered_call import SESSION_END_UTC, years_to_expiry
+        exp = dt.date(2026, 7, 10)
+        mon = pd.Timestamp(dt.datetime(2026, 7, 6, 15))
+        thu = pd.Timestamp(dt.datetime(2026, 7, 9, 15))
+        assert years_to_expiry(mon, exp) > years_to_expiry(thu, exp) > 0
+        at_close = pd.Timestamp(dt.datetime.combine(exp, dt.time(SESSION_END_UTC)))
+        assert years_to_expiry(at_close, exp) == 0.0
+        assert years_to_expiry(at_close + pd.Timedelta(hours=5), exp) == 0.0
+
+    def test_every_registered_rule_has_a_label(self):
+        """A rule added in Python must not reach the page as a bare key."""
+        from trading_app.lib.covered_call import STRIKE_RULE_META, STRIKE_RULES
+        assert set(STRIKE_RULES) == set(STRIKE_RULE_META)
+        for name, meta in STRIKE_RULE_META.items():
+            assert meta["label"] and meta["label"] != name
+
+
+# --------------------------------------------------------------------------
+# 8. the hourly-vs-minute study
+# --------------------------------------------------------------------------
+
+class TestBarSizeStudy:
+    @staticmethod
+    def minute_panel(n_hours=2, per_hour=60):
+        rows = []
+        base = pd.Timestamp("2026-08-31 13:00:00")
+        rng = np.random.default_rng(0)
+        for hh in range(n_hours):
+            for i in range(per_hour):
+                ts = base + pd.Timedelta(hours=hh, minutes=i)
+                bid = 3.00 + 0.01 * rng.integers(-5, 6)
+                rows.append({"ts": ts, "ric": "AAPLI042632000.U^I26", "strike": 320.0,
+                             "expiry": dt.date(2026, 9, 4), "bid": bid, "ask": bid + 0.10,
+                             "mid": bid + 0.05, "spread": 0.10,
+                             "trdprc_1": bid + 0.05, "num_moves": 5.0,
+                             "acvol_uns": 50.0, "date": ts.date()})
+        return pd.DataFrame(rows)
+
+    def test_detects_that_the_hourly_quote_is_the_last_minute(self):
+        """
+        The check that licenses 'mid at the order bar'. If an hourly BID/ASK
+        were a min-bid/max-ask envelope, every mid in the book would be the
+        midpoint of an hour of quote range rather than a tradeable price.
+        """
+        from trading_app.lib.cc_analysis import bar_size_study
+        m = self.minute_panel()
+        m["hour"] = m["ts"].dt.floor("h")
+        last = m.groupby("hour").last().reset_index()
+        h = pd.DataFrame({
+            "ts": last["hour"], "ric": last["ric"], "strike": last["strike"],
+            "expiry": last["expiry"], "bid": last["bid"], "ask": last["ask"],
+            "mid": last["mid"], "spread": last["spread"],
+            "trdprc_1": last["trdprc_1"], "num_moves": last["num_moves"],
+            "acvol_uns": last["acvol_uns"], "date": last["hour"].dt.date,
+        })
+        out = bar_size_study(h, m.drop(columns=["hour"]))
+        assert out["snapshot"]["bid_is_last_pct"] == pytest.approx(100.0)
+        assert out["snapshot"]["ask_is_last_pct"] == pytest.approx(100.0)
+
+    def test_spots_an_envelope_instead_of_a_snapshot(self):
+        """The same check must FAIL loudly if the hourly quote is aggregated."""
+        from trading_app.lib.cc_analysis import bar_size_study
+        m = self.minute_panel()
+        m["hour"] = m["ts"].dt.floor("h")
+        g = m.groupby("hour").agg(lo=("bid", "min"), hi=("ask", "max")).reset_index()
+        h = pd.DataFrame({
+            "ts": g["hour"], "ric": "AAPLI042632000.U^I26", "strike": 320.0,
+            "expiry": dt.date(2026, 9, 4), "bid": g["lo"], "ask": g["hi"],
+            "mid": (g["lo"] + g["hi"]) / 2, "spread": g["hi"] - g["lo"],
+            "trdprc_1": (g["lo"] + g["hi"]) / 2, "num_moves": 5.0, "acvol_uns": 50.0,
+            "date": g["hour"].dt.date,
+        })
+        out = bar_size_study(h, m.drop(columns=["hour"]))
+        assert out["snapshot"]["bid_is_last_pct"] < 100.0
+        assert out["snapshot"]["bid_is_min_pct"] == pytest.approx(100.0)
+
+    def test_compares_only_cells_present_in_both_panels(self):
+        """
+        The comparison is only meaningful on IDENTICAL contracts and days.
+        The minute pull used a narrower strike band than the hourly one, so an
+        unmatched comparison would be reading a difference in which contracts
+        were sampled as though it were a difference in bar size -- which is the
+        exact mistake the study exists to avoid making.
+        """
+        from trading_app.lib.cc_analysis import bar_size_study
+        m = self.minute_panel()
+        extra = m.copy()
+        extra["ric"] = "AAPLI042633000.U^I26"      # a contract minute never saw
+        extra["strike"] = 330.0
+        extra["spread"] = 2.00                     # and a wildly different quote
+        extra["bid"] = 0.10
+        extra["ask"] = 2.10
+        extra["mid"] = 1.10
+        h = pd.concat([m, extra], ignore_index=True)
+
+        out = bar_size_study(h, m)
+        assert out["hourly"]["contracts"] == 1, "the unmatched contract leaked in"
+        assert out["hourly"]["median_spread_all"] == pytest.approx(0.10)
+        assert out["matched_cells"] == 1
+
+    def test_an_empty_hourly_panel_does_not_explode(self):
+        """df[[]] is COLUMN selection, so an empty mask must still be boolean."""
+        from trading_app.lib.cc_analysis import bar_size_study
+        m = self.minute_panel()
+        out = bar_size_study(m.iloc[:0].copy(), m)
+        assert out["matched_cells"] == 0
+        assert out["hourly"]["quoted_bars"] == 0

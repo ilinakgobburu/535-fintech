@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 
 from .covered_call import (
-    SHARES_PER_CONTRACT, STRIKE_RULES, TRADEABLE_HOURS,
+    SHARES_PER_CONTRACT, STRIKE_RULE_META, STRIKE_RULES, TRADEABLE_HOURS,
     build_ledger, run_backtest,
 )
 
@@ -231,6 +231,26 @@ def rule_sweep(stock, options, weeks, *, order_hour=15,
         booked = cyc[cyc["status"].isin(["assigned", "expired"])] if len(cyc) else cyc
         h["median_otm_pct"] = float(booked["otm_pct"].median()) if len(booked) else np.nan
         h["median_premium"] = float(booked["mid"].median()) if len(booked) else np.nan
+
+        meta = STRIKE_RULE_META.get(name, {})
+        h["label"] = meta.get("label", name)
+        h["target_prob"] = meta.get("target_prob")
+
+        # Calibration, for the rules that claim a probability. The target is
+        # RISK-NEUTRAL, so a gap against the realised rate is expected rather
+        # than a defect -- the risk-neutral measure has zero drift and the tape
+        # did not. Reporting both is the only way that distinction survives.
+        if h["target_prob"] is not None and len(booked):
+            h["realised_prob"] = float((booked["status"] == "assigned").mean())
+            h["prob_gap"] = h["realised_prob"] - h["target_prob"]
+        else:
+            h["realised_prob"] = None
+            h["prob_gap"] = None
+
+        h["median_atm_iv"] = (float(booked["atm_iv"].median())
+                              if len(booked) and "atm_iv" in booked else np.nan)
+        h["iv_range"] = ([float(booked["atm_iv"].min()), float(booked["atm_iv"].max())]
+                         if len(booked) and "atm_iv" in booked else None)
         out.append(h)
     return out
 
@@ -318,3 +338,89 @@ def ohlc_integrity(stock: pd.DataFrame) -> dict:
             "over_3pct": int((ret > 0.03).sum()),
         },
     }
+
+
+# --------------------------------------------------------------------------
+# does the bar size change the answer?
+# --------------------------------------------------------------------------
+
+def bar_size_study(opt_h: pd.DataFrame, opt_m: pd.DataFrame) -> dict:
+    """
+    The hourly panel against a 1-minute pull of the same contracts.
+
+    Three questions, and the third is the one that nearly produced a false
+    claim.
+
+    1. WHAT IS AN HOURLY BID/ASK? The whole book fills at (BID+ASK)/2, and the
+       page asserts that an hourly bar's quote is the one standing at the END
+       of the hour. That was a convention, not a measurement. Against the
+       minute data it is exactly the last minute's quote -- checked on every
+       matched contract-hour -- so the assumption is now verified rather than
+       declared, and "mid at the order bar" means what it claims to mean.
+
+    2. HOW MUCH OF THE IMPOSSIBLE PRINTING IS THE BAR? At hourly, a large
+       minority of prints land outside their own bar's quote, which is not an
+       arbitrage but an artefact: the quote is end-of-hour and the print is
+       somewhere inside it. Re-measured on identical (contract, day) cells at
+       one minute, that fraction collapses. What remains is the real rate.
+
+    3. ARE MINUTE SPREADS TIGHTER? This looks true and is not. Conditioning on
+       "this bar also printed" -- which the mid-vs-print comparison must do --
+       is far more selective at one minute than at one hour, and it selects the
+       liquid, tight-spread moments. Compared unconditionally on the same
+       contracts and days the two distributions agree. HW1 found pooling could
+       invert a spread conclusion; this is the same hazard wearing a different
+       hat, and it is reported because it was nearly missed.
+    """
+    def _prep(o):
+        d = o[o["mid"].notna() & o["spread"].notna() & (o["spread"] > 0)].copy()
+        d["in_spread"] = (d["trdprc_1"] - d["bid"]) / d["spread"]
+        return d
+
+    keys = set(zip(opt_m["ric"], opt_m["date"]))
+    # An explicitly-typed boolean Series, not a bare list: df[[]] is COLUMN
+    # selection, so an empty mask silently returns a frame with no columns at
+    # all rather than no rows, and the next line dies on a missing "mid".
+    mask = pd.Series([(r, d) in keys for r, d in zip(opt_h["ric"], opt_h["date"])],
+                     index=opt_h.index, dtype=bool)
+    h = _prep(opt_h[mask])
+    m = _prep(opt_m)
+
+    def _side(d):
+        traded = d[d["trdprc_1"].notna()]
+        ins = traded["in_spread"]
+        res = (traded["trdprc_1"] - traded["mid"]).abs()
+        return {
+            "contracts": int(d["ric"].nunique()),
+            "quoted_bars": int(len(d)),
+            "printed_bars": int(len(traded)),
+            "printed_share": float(100 * len(traded) / max(1, len(d))),
+            "median_spread_all": float(d["spread"].median()),
+            "median_spread_printed": float(traded["spread"].median()),
+            "median_abs_resid": float(res.median()),
+            "resid_over_spread": float((res / traded["spread"]).median()),
+            "at_mid_pct": float(100 * ((ins - 0.5).abs() <= 0.125).mean()),
+            "outside_pct": float(100 * ((ins < 0) | (ins > 1)).mean()),
+        }
+
+    # (1) is the hourly quote the last minute's quote?
+    mm = opt_m.copy()
+    mm["hour"] = mm["ts"].dt.floor("h")
+    agg = (mm.groupby(["ric", "hour"])
+             .agg(last_bid=("bid", "last"), last_ask=("ask", "last"),
+                  min_bid=("bid", "min"), max_ask=("ask", "max"),
+                  n=("bid", "size")).reset_index())
+    hh = opt_h[["ric", "ts", "bid", "ask"]].rename(
+        columns={"ts": "hour", "bid": "h_bid", "ask": "h_ask"})
+    j = agg.merge(hh, on=["ric", "hour"], how="inner").dropna(subset=["h_bid", "h_ask"])
+    j = j[j["n"] >= 30]
+    snapshot = {
+        "matched_hours": int(len(j)),
+        "bid_is_last_pct": float(100 * np.isclose(j["h_bid"], j["last_bid"], atol=1e-9).mean()),
+        "ask_is_last_pct": float(100 * np.isclose(j["h_ask"], j["last_ask"], atol=1e-9).mean()),
+        "bid_is_min_pct": float(100 * np.isclose(j["h_bid"], j["min_bid"], atol=1e-9).mean()),
+        "ask_is_max_pct": float(100 * np.isclose(j["h_ask"], j["max_ask"], atol=1e-9).mean()),
+    } if len(j) else {}
+
+    return {"hourly": _side(h), "minute": _side(m), "snapshot": snapshot,
+            "matched_cells": int(len(set(zip(h["ric"], h["date"])) & keys))}

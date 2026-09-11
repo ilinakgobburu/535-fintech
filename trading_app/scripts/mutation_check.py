@@ -92,6 +92,17 @@ MUTATIONS = [
     (AN, 'b, a = np.polyfit(x, y, 1)',
          'b, a = np.polyfit(x, y, 1); b = b * 1.05',
      "the OLS slope behind every reported R-squared is biased"),
+    (CC, 'k_star = spot * np.exp(sigma * np.sqrt(T) * ndtri(1.0 - target)',
+         'k_star = spot * np.exp(sigma * T * ndtri(1.0 - target)',
+     "the implied-vol rule scales by T instead of sqrt(T)"),
+    (CC, 'ndtri(1.0 - target)', 'ndtri(target)',
+     "the breach probability is inverted, selling caps the wrong side of spot"),
+    (CC, 'vols = [implied_vol(float(r.mid), float(spot), float(r.strike), T, 1.0, "C")',
+         'vols = [implied_vol(float(r.mid), float(spot), float(r.strike), T * 2, 1.0, "C")',
+     "implied vol inverted against the wrong horizon"),
+    (AN, 'mask = pd.Series([(r, d) in keys for r, d in zip(opt_h["ric"], opt_h["date"])],',
+         'mask = pd.Series([True for r, d in zip(opt_h["ric"], opt_h["date"])],',
+     "the bar-size study compares unmatched contracts"),
 ]
 
 

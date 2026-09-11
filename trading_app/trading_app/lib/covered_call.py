@@ -62,6 +62,7 @@ import numpy as np
 import pandas as pd
 
 from .ric import parse_option_ric
+from .vol import implied_vol
 
 SHARES_PER_CONTRACT = 100
 INITIAL_RATE = 0.50   # Reg T initial on a long equity position
@@ -220,11 +221,102 @@ def by_premium_floor(chain: pd.DataFrame, spot: float, *, floor: float = 0.50, *
     return float(q["strike"].iloc[-1]) if len(q) else None
 
 
+# --------------------------------------------------------------------------
+# the volatility-aware rule
+# --------------------------------------------------------------------------
+
+YEAR_SECONDS = 365.25 * 24 * 3600
+
+
+def years_to_expiry(ts, expiry: dt.date) -> float:
+    """Actual/365.25 from the order bar to the expiry session's close."""
+    close = pd.Timestamp(dt.datetime.combine(expiry, dt.time(SESSION_END_UTC)))
+    return max((close - pd.Timestamp(ts)).total_seconds(), 0.0) / YEAR_SECONDS
+
+
+def atm_iv(chain: pd.DataFrame, spot: float, T: float, n: int = 3) -> float:
+    """
+    Implied vol from the `n` listed strikes closest to spot, median-aggregated.
+
+    F = spot and D = 1. That is not laziness: HW1 fitted put-call parity
+    across this same RIC space and found the implied forward lands at spot
+    +$0.020, while the discount factor is NOT identified at these maturities
+    at all -- raw fits implied annualised rates from -2567% to +394% for
+    dte <= 15. At a one-week horizon on a non-dividend payer, F = S and D = 1
+    are the honest values, and a fitted D would be fitting noise. This pull is
+    calls-only in any case, so parity is unavailable here.
+
+    The median over three strikes rather than a single ATM inversion is for
+    robustness: one stale quote at the money should not set the week's strike.
+    """
+    q = chain[chain["mid"].notna() & (chain["mid"] > 0)]
+    if q.empty or T <= 0:
+        return float("nan")
+    q = q.assign(dist=(q["strike"] - spot).abs()).nsmallest(n, "dist")
+    vols = [implied_vol(float(r.mid), float(spot), float(r.strike), T, 1.0, "C")
+            for r in q.itertuples()]
+    vols = [v for v in vols if v is not None and np.isfinite(v) and v > 0]
+    return float(np.median(vols)) if vols else float("nan")
+
+
+def by_assignment_prob(chain: pd.DataFrame, spot: float, *,
+                       target: float = 0.25, T: float | None = None, **_):
+    """
+    Sell the cap the market's own volatility prices at a `target` chance of
+    being breached.
+
+    Under Black-76 with F = S the terminal price is S*exp(-s^2 T/2 + s sqrt(T) Z),
+    so P(S_T > K) = 1 - N(d) with d = [ln(K/S) + s^2 T/2] / (s sqrt(T)). Setting
+    that equal to `target` and solving:
+
+        K* = S * exp( s sqrt(T) * N^-1(1 - target)  -  s^2 T / 2 )
+
+    then take the lowest listed strike at or above K*.
+
+    READ THE PROBABILITY CORRECTLY. This is the RISK-NEUTRAL probability, not
+    a forecast. It is what the option market's prices imply, which is exactly
+    what makes it an algorithmic rule -- it needs no view - but a 25% target
+    does not predict 25% assignments, and the gap between the two is itself
+    worth reporting rather than hiding.
+
+    The point of the rule is that it ADAPTS. A fixed 2%-out rule sells the same
+    cap in a calm week and a violent one; this one widens when the week is
+    priced to move.
+    """
+    from scipy.special import ndtri          # inverse standard normal CDF
+
+    if T is None or not np.isfinite(T) or T <= 0:
+        return None
+    sigma = atm_iv(chain, spot, T)
+    if not np.isfinite(sigma) or sigma <= 0:
+        return None
+    k_star = spot * np.exp(sigma * np.sqrt(T) * ndtri(1.0 - target)
+                           - 0.5 * sigma * sigma * T)
+    ks = np.sort(chain["strike"].unique())
+    hit = ks[ks >= k_star - 1e-9]
+    return float(hit[0]) if len(hit) else None
+
+
 STRIKE_RULES = {
     "nearest_otm": nearest_otm,
     "otm_1pct": lambda c, s, **k: otm_by_offset(c, s, offset_pct=0.01),
     "otm_2pct": lambda c, s, **k: otm_by_offset(c, s, offset_pct=0.02),
     "premium_50c": lambda c, s, **k: by_premium_floor(c, s, floor=0.50),
+    "iv_prob_25": lambda c, s, **k: by_assignment_prob(c, s, target=0.25, **k),
+    "iv_prob_15": lambda c, s, **k: by_assignment_prob(c, s, target=0.15, **k),
+}
+
+# Labels and, where the rule states one, the risk-neutral breach probability it
+# is aiming at. Kept beside the rules rather than in the page's JavaScript so a
+# new rule cannot appear on the site under its bare function key.
+STRIKE_RULE_META = {
+    "nearest_otm": {"label": "nearest OTM", "target_prob": None},
+    "otm_1pct": {"label": "first strike \u2265 spot \u00d7 1.01", "target_prob": None},
+    "otm_2pct": {"label": "first strike \u2265 spot \u00d7 1.02", "target_prob": None},
+    "premium_50c": {"label": "furthest strike still paying \u2265 $0.50",
+                    "target_prob": None},
+    "iv_prob_25": {"label": "implied vol, 25% breach probability", "target_prob": 0.25},
+    "iv_prob_15": {"label": "implied vol, 15% breach probability", "target_prob": 0.15},
 }
 
 
@@ -279,7 +371,8 @@ def run_backtest(
             continue
 
         chain = options[(options["ts"] == ts) & (options["expiry"] == expiry_day)]
-        strike = pick(chain, float(spot)) if len(chain) else None
+        T = years_to_expiry(ts, expiry_day)
+        strike = pick(chain, float(spot), T=T) if len(chain) else None
         row = chain[np.isclose(chain["strike"], strike)] if strike is not None else chain.iloc[:0]
         mid = float(row["mid"].iloc[0]) if len(row) and np.isfinite(row["mid"].iloc[0]) else np.nan
 
@@ -347,6 +440,8 @@ def run_backtest(
             "mid": float(mid), "bid": float(r["bid"]), "ask": float(r["ask"]),
             "settle": s_t, "premium": qty * float(mid),
             "otm_pct": 100.0 * (strike / spot - 1.0),
+            "T_years": T,
+            "atm_iv": atm_iv(chain, float(spot), T),
         })
 
     return {"blotter": blotter, "cycles": cycles,
