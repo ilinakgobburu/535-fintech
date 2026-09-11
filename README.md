@@ -6,6 +6,166 @@ MEng FinTech · Algorithmic Trading II. One app, grown one homework at a time.
 
 ---
 
+## Assignment 2 — Covered Call Backtest
+
+**Published page:** [`docs/hw2.html`](https://ilinakgobburu.github.io/535-fintech/hw2.html)
+
+Long 100 AAPL shares, short one weekly call, ten cycles, no rolls. The strategy
+is small enough to state in a sentence, so the whole result lives in the
+decisions around it — which strike, at what price, at which moment — and the
+page books all three explicitly and then measures what each was worth.
+
+```
+trading_app/
+  trading_app/lib/covered_call.py   calendar, strike rules, blotter, ledger, Reg T
+  trading_app/lib/cc_analysis.py    mid-vs-print fits, the sweeps, OHLC integrity
+  scripts/fetch_hw2.py              hourly LSEG pull, banded chains
+  scripts/build_hw2.py              -> docs/hw2.html
+  scripts/hw2_app.js                the page's figures and computed prose
+  scripts/mutation_check.py         re-introduces 12 bugs, asserts the suite catches each
+  tests/test_covered_call.py        35 tests
+docs/hw2.html                       <- the graded artefact
+```
+
+```bash
+cd trading_app
+python3 -m pytest tests -q             # 159 tests (124 from 1.1, 35 here)
+python3 scripts/mutation_check.py      # 12 mutations, all caught
+python3 scripts/build_hw2.py           # rebuild the page from the cached pull
+```
+
+### The result
+
+AAPL ran **$275.73 → $319.76 (+16.0%)** over the ten weeks. The book wrote 10
+calls, collected **$3,567** of premium, and was **assigned 8 times**. It finished
+**+$682** against **+$3,826** for the same 100 shares simply held.
+
+That gap is the entire subject. Nearest-OTM sells a cap a median of **0.31%**
+above spot, and AAPL's weekly range is far wider than 0.31%, so assignment is
+close to the default outcome rather than the exception. On the 8 assigned weeks
+the stock closed **$7,289** above the strikes sold — $3,567 of certain income did
+not pay for $7,289 of surrendered upside. Every counterfactual strike rule beat
+the booked one, and **none of them beat buy-and-hold**, monotonically in distance
+from spot. None of that is a discovery about covered calls; it is a description
+of what a cap does to a stock that rose 16% through the window, and a flat or
+falling tape would invert the ordering.
+
+### Two things the handout gets wrong
+
+**The expiry day is zero-padded.** The scheme says *"DAY not zero-padded"*. Two
+of the three AAPL sample RICs it prints do not resolve:
+
+```
+AAPLF52619000.U^F26    handout form    LDError
+AAPLF052619000.U^F26   zero-padded     400 observations
+AAPLH72620500.U^H26    handout form    LDError
+AAPLH072620500.U^H26   zero-padded     478 observations
+```
+
+The third example expires on the 17th, so the rule never bites. Every testable
+case fails; every padded correction works. **Aug 7 and Sep 4 are single-digit
+Fridays in this very window**, so a literal reading silently drops 2 of 10
+cycles — the strikes come back empty and the weeks look quiet. Same shape as the
+1.1 put-wing finding: "no data came back" and "I asked the wrong question" are
+indistinguishable from the outside.
+
+**"Buy Monday, expire Friday" is a description, not a rule.** Jun 19 (Juneteenth)
+and Jul 3 (Jul 4 observed) are closed, and those weeks expire on the *Thursday* —
+the Thursday RIC resolves and the Friday one does not. The loop reads the
+underlying's own session calendar and takes the first and last session of each
+ISO week, so a holiday shifts the cycle instead of deleting it. It fires once
+here, on **2026-W27 → Thu Jul 2**.
+
+### A flat LSEG response means the opposite thing depending on what you asked for
+
+1.1 documented that a multi-field request losing all but one field returns flat
+columns of bare RICs. Probing again turned up the sharper rule — flat columns
+carry whichever axis has more than one member, and **when both are singletons the
+columns are fields**:
+
+```
+1 RIC,  3 fields -> columns ['BID','ASK','TRDPRC_1'], columns.name = the RIC
+2 RICs, 1 field  -> columns [ric, ric],               columns.name = 'BID'
+```
+
+That is a trap for the bisection the fetcher uses to skip strikes that never
+existed, because bisection drives batches to size one and flips the meaning of
+the response underneath itself. The first version labelled field names as RICs
+and reported 26 live series out of 20 requested — the only reason it was caught.
+Labels are now resolved by *membership* in the known batch and known field list,
+never by position, and the fetcher refuses to write a cache containing any label
+it did not ask for.
+
+### The bar extremes carry bad prints; the last-trade series does not
+
+`HIGH_1` runs more than 1% above the bar's own open/close body on **12.8%** of
+the 400 hourly bars and `LOW_1` more than 1% below on **21.2%**, reaching +10.6%
+and −18.0% — one hour that opened and closed near $301 reports a high of $333.
+`TRDPRC_1` shows nothing of the kind (median hourly move 0.26%, p99 2.05%).
+
+So entry and settlement read **TRDPRC_1 and never HIGH_1/LOW_1**. Any rule phrased
+as *"did the stock touch the strike"* would have booked assignments against trades
+that never happened, and would have looked entirely reasonable doing it. A test
+pins it: a bar whose `HIGH_1` is far through the strike but whose closing print is
+below it must expire.
+
+### The mid tracks the print. That is not the same as being fillable.
+
+Pooled R² is **0.9992**, which alone proves little on a chain spanning $0.01 to
+$99. I expected conditioning to collapse it the way pooling inverted 1.1's spread
+conclusion. **It did not** — R² holds between **0.952 and 0.998** inside narrow
+price bands, and 0.9965 in the band the book actually wrote in. The mid really
+does track the print, and that is reported here because it contradicted the
+expectation rather than because it flattered it.
+
+What it does not establish is fillability, and the spread is what separates the
+two claims. The median print missed the mid by **$0.035** on a median spread of
+**$0.20** — 30% of the spread — only **27.4%** landed within a quarter-spread of
+the mid, and **16.2% landed outside the quote entirely**. That last number is the
+hourly bar, not an arbitrage: BID/ASK is the quote at the end of the hour while
+TRDPRC_1 is the last trade inside it. R² near 0.999 and a mid that is the actual
+trade price about a third of the time are both true at once, because R² is
+answering "how big is this option" and the fill question is "who paid the spread".
+
+### The parameter nobody declares
+
+Writing at a different hour of the same entry session moves final P&L from
+**+$682 to +$1,390** — a $708 spread around a booked result of $682. The
+strategy is identical in every row; only the clock moves. The hour actually
+booked, 15:00 UTC, turned out to be **the worst of the seven**, and it is left
+standing because it was fixed before any of these numbers existed.
+
+It did *not* outrank the strike rule, which spans $2,631. I expected the reverse
+after watching one Monday's mid move 2× intraday, and one vivid observation
+turned out to be a poor guide to the aggregate.
+
+### The tests, and a bug in the thing that checks the tests
+
+35 tests, split by failure mode: the RIC and calendar tests pin bugs that produce
+*silence*, the blotter/ledger/Reg T tests pin bugs that produce a *plausible wrong
+number*. `scripts/mutation_check.py` re-introduces 12 specific bugs one at a time
+and asserts the suite fails on each.
+
+That harness had a bug worth recording. CPython validates a `.pyc` against the
+source's *(mtime, size)*. Every mutation here is a same-length edit (`< 2` →
+`< 0`) and mutate-then-restore happens within one second, so **both** fields
+match — Python accepted bytecode compiled from the *mutated* source as valid for
+the *restored* source. The mutation survived the restore, in bytecode, with
+correct code on disk. It surfaced as a build reporting 11 trading weeks instead of
+10. The harness now runs under `PYTHONDONTWRITEBYTECODE`, deletes the bytecode
+regardless, and finishes by asserting the suite still passes clean.
+
+### What this is evidence for
+
+Ten weekly cycles on one name in one quarter, all sharing a single price path —
+closer to one observation than to ten. Nothing here supports a claim about
+covered calls in general. It supports something narrower and still worth having:
+given this tape, these are exactly the trades the stated rules produce, this is
+what they cost, and this is the order in which the decisions mattered — strike
+distance first, order hour second, fill convention a distant third.
+
+---
+
 ## Assignment 1.1 — Option Surface Lab
 
 Listed options are not a filled sheet. They are a sparse cloud with large,
