@@ -38,6 +38,14 @@ Three defences, all of them cheap:
   2. any .pyc for a mutated file is deleted after the restore anyway;
   3. the run ends by asserting the suite passes CLEAN, which catches any
      restore that did not take.
+
+DO NOT RUN THIS CONCURRENTLY WITH THE TEST SUITE
+------------------------------------------------
+It edits source files in place. Running `pytest` beside it sees whatever
+mutation happens to be installed at that instant and fails for reasons that
+have nothing to do with the working tree -- which happened, and cost a few
+minutes of confusion over two tests insisting a count was a float. A lock file
+now refuses the second concurrent run outright.
 """
 
 from __future__ import annotations
@@ -51,59 +59,152 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 CC = ROOT / "trading_app" / "lib" / "covered_call.py"
 RIC = ROOT / "trading_app" / "lib" / "ric.py"
 AN = ROOT / "trading_app" / "lib" / "cc_analysis.py"
+F = ROOT / "scripts" / "fetch_hw2.py"
 TESTS = ROOT / "tests" / "test_covered_call.py"
+TESTS_FETCH = ROOT / "tests" / "test_fetch_shapes.py"
+TESTS_PAGE = ROOT / "tests" / "test_page.py"
+APP_JS = ROOT / "scripts" / "hw2_app.js"
+BUILD = ROOT / "scripts" / "build_hw2.py"
+TEMPLATE = ROOT / "scripts" / "hw2_template.html"
+README = ROOT.parent / "README.md"
 
-# (file, find, replace, what the bug would look like in production)
+# (file, find, replace, description, which test file must notice)
+#
+# Naming the test file keeps the run fast and makes the check sharper: it
+# asserts not merely that SOMETHING failed, but that the test written for this
+# bug is the one that failed.
 MUTATIONS = [
     (CC, '"cash_delta": qty * float(strike),',
          '"cash_delta": qty * float(s_t),',
      "assignment credits the settle instead of the strike "
-     "(turns a capped strategy into an uncapped one)"),
+     "(turns a capped strategy into an uncapped one)", TESTS),
     (CC, 'hit = ks[ks >= spot - 1e-9]',
          'hit = ks[ks > spot + 1e-9]',
-     "strike rule uses strictly-greater, silently skipping the ATM strike"),
+     "strike rule uses strictly-greater, silently skipping the ATM strike", TESTS),
     (CC, 'itm = s_t > strike',
          'itm = s_t >= strike',
-     "the S_T == K tie assigns instead of expiring"),
+     "the S_T == K tie assigns instead of expiring", TESTS),
     (CC, 'INITIAL_RATE = 0.50',
          'INITIAL_RATE = 0.25',
-     "Reg T initial computed at the maintenance rate"),
+     "Reg T initial computed at the maintenance rate", TESTS),
     (CC, 'im = INITIAL_RATE * lmv',
          'im = INITIAL_RATE * lmv + 100.0',
-     "a covered short call wrongly adds an initial requirement"),
+     "a covered short call wrongly adds an initial requirement", TESTS),
     (CC, 'option_mv = -SHARES_PER_CONTRACT * opt_mark if call is not None else 0.0',
          'option_mv = SHARES_PER_CONTRACT * opt_mark if call is not None else 0.0',
-     "the short call is marked as an asset instead of a liability"),
+     "the short call is marked as an asset instead of a liability", TESTS),
     (CC, 'cash += ev["cash_delta"]',
          'cash += ev["cash_delta"] * 1.0001',
-     "marks leak into cash, so the ledger drifts from the blotter"),
+     "marks leak into cash, so the ledger drifts from the blotter", TESTS),
     (RIC, 'f"{expiry.strftime(\'%d\')}{expiry.strftime(\'%y\')}"',
           'f"{expiry.day}{expiry.strftime(\'%y\')}"',
-     "the handout's unpadded expiry day (loses single-digit Fridays silently)"),
+     "the handout's unpadded expiry day (loses single-digit Fridays silently)", TESTS),
     (CC, 's_t = float(stock.at[ets, "TRDPRC_1"]) if ets is not None else np.nan',
          's_t = float(stock.at[ets, "HIGH_1"]) if ets is not None else np.nan',
-     "settlement read off HIGH_1, which carries bad prints, instead of the last trade"),
+     "settlement read off HIGH_1, which carries bad prints, instead of the last trade", TESTS),
     (CC, 'spot = stock.at[ts, "TRDPRC_1"] if "TRDPRC_1" in stock.columns else np.nan',
          'spot = stock.at[ts, "LOW_1"] if "LOW_1" in stock.columns else np.nan',
-     "the stock leg fills at the bar low rather than the print"),
+     "the stock leg fills at the bar low rather than the print", TESTS),
     (CC, 'sess = list(grp)\n        if len(sess) < 2:',
          'sess = list(grp)\n        if len(sess) < 0:',
-     "a one-session week is accepted as a full cycle"),
+     "a one-session week is accepted as a full cycle", TESTS),
     (AN, 'b, a = np.polyfit(x, y, 1)',
          'b, a = np.polyfit(x, y, 1); b = b * 1.05',
-     "the OLS slope behind every reported R-squared is biased"),
+     "the OLS slope behind every reported R-squared is biased", TESTS),
     (CC, 'k_star = spot * np.exp(sigma * np.sqrt(T) * ndtri(1.0 - target)',
          'k_star = spot * np.exp(sigma * T * ndtri(1.0 - target)',
-     "the implied-vol rule scales by T instead of sqrt(T)"),
+     "the implied-vol rule scales by T instead of sqrt(T)", TESTS),
     (CC, 'ndtri(1.0 - target)', 'ndtri(target)',
-     "the breach probability is inverted, selling caps the wrong side of spot"),
+     "the breach probability is inverted, selling caps the wrong side of spot", TESTS),
     (CC, 'vols = [implied_vol(float(r.mid), float(spot), float(r.strike), T, 1.0, "C")',
          'vols = [implied_vol(float(r.mid), float(spot), float(r.strike), T * 2, 1.0, "C")',
-     "implied vol inverted against the wrong horizon"),
+     "implied vol inverted against the wrong horizon", TESTS),
     (AN, 'mask = pd.Series([(r, d) in keys for r, d in zip(opt_h["ric"], opt_h["date"])],',
          'mask = pd.Series([True for r, d in zip(opt_h["ric"], opt_h["date"])],',
-     "the bar-size study compares unmatched contracts"),
+     "the bar-size study compares unmatched contracts", TESTS),
+
+    # --- the loaders: bugs that yield zero rows and no error message -------
+    (CC, 'lvl = int(np.argmax(scores))', 'lvl = df.columns.nlevels - 1',
+     "stock_panel picks the MultiIndex level by position instead of by "
+     "membership, dying far from the cause on a (Field, RIC) frame", TESTS),
+    (CC, 'ok = panel["bid"].notna() & panel["ask"].notna() & (panel["ask"] >= panel["bid"])',
+         'ok = panel["bid"].notna() & panel["ask"].notna()',
+     "a crossed quote gets a midpoint, inventing a price from bad data", TESTS),
+    (CC, 'if meta is None or meta["cp"] != "C":', 'if meta is None:',
+     "puts leak into a calls-only book", TESTS),
+    (AN, 'px = px[~px.index.duplicated(keep="last")]', 'px = px',
+     "mid_vs_print dies on a stock frame with a repeated timestamp", TESTS),
+
+    # --- the fetcher's response-shape resolution --------------------------
+    (F, 'got.columns = pd.MultiIndex.from_tuples([(name, l) for l in labels],',
+        'got.columns = pd.MultiIndex.from_tuples([(l, name) for l in labels],',
+     "a flat one-RIC response is labelled RIC-side-out, putting field names on "
+     "the RIC level -- the bug that reported 26 series out of 20", TESTS_FETCH),
+    (F, 'if len(batch) == 1 and set(labels) <= fset:',
+        'if len(batch) == 1:',
+     "a single-RIC response of unknown shape is relabelled anyway instead of "
+     "falling back", TESTS_FETCH),
+    (F, 'if lvl0 <= fset and not (lvl0 <= bset):   # (Field, RIC) ordering',
+        'if False:   # (Field, RIC) ordering',
+     "a (Field, RIC) MultiIndex is never swapped", TESTS_FETCH),
+
+    # --- the formatters the build log and the page share ------------------
+    (BUILD, 'return f"{Decimal(repr(float(x))).quantize(q, rounding=ROUND_HALF_UP):,}"',
+            'return f"{x:,.0f}"',
+     "money() rounds halves to even, so the build log disagrees with the "
+     "page it just wrote", TESTS_PAGE),
+    (BUILD, 'return int(x)          # counts must stay ints; "n = 26361.0" reads as a bug',
+            'return round(float(x), 6)',
+     "counts serialise as floats and the page reports n = 26361.0", TESTS_PAGE),
+
+    # --- the page itself ---------------------------------------------------
+    (APP_JS, 'xanchor: "left", y: 0.985, yanchor: "top" };',
+             'xanchor: "left", y: 1.0, yanchor: "bottom" };',
+     "chart titles are clipped off the top of the canvas; the charts still "
+     "draw, silently unlabelled", TESTS_PAGE),
+    (APP_JS, 'name: `Initial (${(M.initial_rate * 100).toFixed(0)}% LMV)`',
+             'name: "Initial (50% LMV)"',
+     "the margin legend asserts 50% rather than reading the rate it was given",
+     TESTS_PAGE),
+    (TEMPLATE, '.grid2 > *{min-width:0}', '.grid2 > *{min-width:auto}',
+     "tables inside a grid push the whole page sideways below ~420px", TESTS_PAGE),
+    (README, 'more than 1% below on **21.3%**', 'more than 1% below on **21.2%**',
+     "a README figure drifts from the page by one rounding step", TESTS_PAGE),
+
+    # --- the bisection, and the bar the order is sent on ------------------
+    (F, '        h = len(batch) // 2', '        return None',
+     "a batch containing one dead RIC discards every live RIC with it",
+     TESTS_FETCH),
+    (CC, 'return upto[-1] if len(upto) else same_day[0]',
+         'return same_day[0]',
+     "the order always fills on the first bar of the day regardless of the "
+     "hour asked for, silently ignoring the fill-hour parameter", TESTS),
 ]
+
+
+LOCK = ROOT / ".mutation_check.lock"
+
+
+class _Lock:
+    """
+    Refuse to start if another run is live. The harness leaves mutated source
+    on disk for the duration of each test run, so two of them interleaved, or
+    one of them beside a plain pytest, produce failures that describe nothing.
+    """
+
+    def __enter__(self):
+        if LOCK.exists():
+            raise SystemExit(
+                f"another mutation run appears to be live ({LOCK}).\n"
+                f"This harness edits source files in place; two at once will "
+                f"corrupt each other.\nIf you are sure nothing is running, "
+                f"delete that file.")
+        LOCK.write_text(str(os.getpid()), encoding="utf-8")
+        return self
+
+    def __exit__(self, *exc):
+        LOCK.unlink(missing_ok=True)
+        return False
 
 
 def _purge_pyc(path: pathlib.Path) -> None:
@@ -114,54 +215,75 @@ def _purge_pyc(path: pathlib.Path) -> None:
             pyc.unlink(missing_ok=True)
 
 
-def _run_suite() -> subprocess.CompletedProcess:
+# A mutation to the page's script or template only becomes visible once the
+# page is rebuilt, because the tests read docs/hw2.html -- the artefact, not
+# the source. Without this, three of the mutations below would be judged
+# against a stale page and would look "caught" or "missed" for the wrong
+# reason.
+NEEDS_REBUILD = {APP_JS, TEMPLATE}
+
+
+def _rebuild_page() -> None:
+    subprocess.run([sys.executable, str(BUILD)], capture_output=True, text=True,
+                   cwd=ROOT, env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
+
+
+def _run_suite(target: pathlib.Path | None = None) -> subprocess.CompletedProcess:
     env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+    which = [str(target)] if target is not None else [str(ROOT / "tests")]
     return subprocess.run(
-        [sys.executable, "-m", "pytest", str(TESTS), "-q", "--no-header", "-x"],
+        [sys.executable, "-m", "pytest", *which, "-q", "--no-header", "-x"],
         capture_output=True, text=True, cwd=ROOT, env=env)
 
 
 def main() -> int:
-    baseline = _run_suite()
-    if baseline.returncode != 0:
-        print("the suite does not pass before any mutation -- fix that first\n")
-        print(baseline.stdout[-2000:])
-        return 2
+  with _Lock():
+      _rebuild_page()                   # start from an artefact that matches source
+      baseline = _run_suite()
+      if baseline.returncode != 0:
+          print("the suite does not pass before any mutation -- fix that first\n")
+          print(baseline.stdout[-2000:])
+          return 2
 
-    missed = []
-    print(f"{len(MUTATIONS)} mutations against {TESTS.name}\n")
-    for path, old, new, desc in MUTATIONS:
-        src = path.read_text()
-        if old not in src:
-            print(f"  STALE   {desc}\n          (pattern no longer in {path.name})")
-            missed.append(desc)
-            continue
-        try:
-            path.write_text(src.replace(old, new, 1))
-            _purge_pyc(path)
-            r = _run_suite()
-        finally:
-            path.write_text(src)          # always restore, even on Ctrl-C
-            _purge_pyc(path)              # and never leave a mutant in bytecode
-        caught = r.returncode != 0
-        if not caught:
-            missed.append(desc)
-        print(f"  {'CAUGHT' if caught else 'MISSED'}  {desc}")
+      missed = []
+      print(f"{len(MUTATIONS)} mutations against the test suite\n")
+      for path, old, new, desc, target in MUTATIONS:
+          src = path.read_text()
+          if old not in src:
+              print(f"  STALE   {desc}\n          (pattern no longer in {path.name})")
+              missed.append(desc)
+              continue
+          try:
+              path.write_text(src.replace(old, new, 1))
+              _purge_pyc(path)
+              if path in NEEDS_REBUILD:
+                  _rebuild_page()
+              r = _run_suite(target)
+          finally:
+              path.write_text(src)          # always restore, even on Ctrl-C
+              _purge_pyc(path)              # and never leave a mutant in bytecode
+              if path in NEEDS_REBUILD:
+                  _rebuild_page()
+          caught = r.returncode != 0
+          if not caught:
+              missed.append(desc)
+          print(f"  {'CAUGHT' if caught else 'MISSED'}  [{target.name}] {desc}")
 
-    print()
-    if missed:
-        print(f"{len(missed)} mutation(s) NOT caught -- the suite has a hole:")
-        for d in missed:
-            print(f"  - {d}")
-        return 1
-    after = _run_suite()
-    if after.returncode != 0:
-        print("MUTATIONS RESTORED BADLY -- the suite no longer passes clean:\n")
-        print(after.stdout[-2000:])
-        return 3
+      print()
+      if missed:
+          print(f"{len(missed)} mutation(s) NOT caught -- the suite has a hole:")
+          for d in missed:
+              print(f"  - {d}")
+          return 1
+      _rebuild_page()
+      after = _run_suite()
+      if after.returncode != 0:
+          print("MUTATIONS RESTORED BADLY -- the suite no longer passes clean:\n")
+          print(after.stdout[-2000:])
+          return 3
 
-    print(f"all {len(MUTATIONS)} mutations caught, and the suite passes clean afterwards")
-    return 0
+      print(f"all {len(MUTATIONS)} mutations caught, and the suite passes clean afterwards")
+      return 0
 
 
 if __name__ == "__main__":

@@ -43,3 +43,4 @@ Thumbs.db
 trading_app/.web/
 trading_app/.states/
 trading_app/assets/external/
+.mutation_check.lock
