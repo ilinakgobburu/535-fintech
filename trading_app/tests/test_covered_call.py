@@ -602,3 +602,311 @@ class TestBarSizeStudy:
         out = bar_size_study(m.iloc[:0].copy(), m)
         assert out["matched_cells"] == 0
         assert out["hourly"]["quoted_bars"] == 0
+
+
+# --------------------------------------------------------------------------
+# 9. the loaders
+# --------------------------------------------------------------------------
+# HW1's lesson was that loader bugs produce ZERO ROWS AND NO ERROR MESSAGE,
+# which is the worst outcome because an empty panel looks like a quiet market.
+# Every case below has a known answer by construction.
+
+OPT_FIELDS = ["BID", "ASK", "TRDPRC_1", "OPEN_PRC", "HIGH_1", "LOW_1",
+              "ACVOL_UNS", "NUM_MOVES"]
+CALL_RIC = "AAPLI042632000.U^I26"      # AAPL 4-Sep-26 320 CALL
+PUT_RIC = "AAPLU042632000.U^I26"       # the same contract's PUT
+
+
+def opt_frame(ric=CALL_RIC, bid=(1.0, 1.1), ask=(1.2, 1.3),
+              hours=("15:00", "16:00"), trd=None):
+    idx = pd.DatetimeIndex([f"2026-08-31 {h}" for h in hours])
+    cols = pd.MultiIndex.from_product([[ric], OPT_FIELDS], names=["RIC", "Field"])
+    df = pd.DataFrame(np.nan, index=idx, columns=cols)
+    df.loc[:, (ric, "BID")] = list(bid)
+    df.loc[:, (ric, "ASK")] = list(ask)
+    if trd is not None:
+        df.loc[:, (ric, "TRDPRC_1")] = list(trd)
+    return df
+
+
+class TestStockPanel:
+    def _raw(self, cols, rows, hours=("15:00", "16:00")):
+        from trading_app.lib.covered_call import stock_panel
+        idx = pd.DatetimeIndex([f"2026-08-31 {h}" for h in hours])
+        return stock_panel({"stock": pd.DataFrame(rows, index=idx, columns=cols)})
+
+    def test_keeps_only_the_regular_session(self):
+        from trading_app.lib.covered_call import (SESSION_END_UTC,
+                                                  SESSION_START_UTC, stock_panel)
+        hours = [8, 12, 13, 15, 20, 21, 23]
+        idx = pd.DatetimeIndex([f"2026-08-31 {h:02d}:00" for h in hours])
+        raw = pd.DataFrame({"TRDPRC_1": range(len(hours))}, index=idx)
+        got = stock_panel({"stock": raw})
+        assert list(got.index.hour) == [h for h in hours
+                                        if SESSION_START_UTC <= h <= SESSION_END_UTC]
+
+    def test_resolves_a_ric_field_multiindex(self):
+        got = self._raw(pd.MultiIndex.from_product([["AAPL.O"], ["TRDPRC_1", "HIGH_1"]]),
+                        [[300.0, 301.0], [302.0, 303.0]])
+        assert set(got.columns) >= {"TRDPRC_1", "HIGH_1"}
+        assert got["TRDPRC_1"].iloc[0] == pytest.approx(300.0)
+
+    def test_resolves_a_field_ric_multiindex_too(self):
+        """
+        Taking the LAST level assumes (RIC, Field). Handed (Field, RIC) it used
+        to name every column after the RIC, producing duplicates and then
+        dying inside pd.to_numeric with a TypeError about its argument -- a
+        failure a long way from its cause. Membership decides, not position.
+        """
+        got = self._raw(pd.MultiIndex.from_product([["TRDPRC_1", "HIGH_1"], ["AAPL.O"]]),
+                        [[300.0, 301.0], [302.0, 303.0]])
+        assert set(got.columns) >= {"TRDPRC_1", "HIGH_1"}
+        assert got["TRDPRC_1"].iloc[0] == pytest.approx(300.0)
+        assert got["HIGH_1"].iloc[0] == pytest.approx(301.0)
+
+    def test_refuses_a_multiindex_it_cannot_resolve(self):
+        with pytest.raises(ValueError, match="recognisable field"):
+            self._raw(pd.MultiIndex.from_product([["a", "b"], ["c", "d"]]),
+                      [[1.0, 2.0, 3.0, 4.0], [1.0, 2.0, 3.0, 4.0]])
+
+    def test_refuses_duplicate_columns_rather_than_silently_picking_one(self):
+        with pytest.raises(ValueError, match="duplicate stock columns"):
+            self._raw(["TRDPRC_1", "TRDPRC_1"], [[300.0, 301.0], [302.0, 303.0]])
+
+    def test_deduplicates_repeated_timestamps_keeping_the_last(self):
+        """A frame stitched from weekly chunks repeats a bar at every seam."""
+        got = self._raw(["TRDPRC_1"], [[300.0], [999.0]], hours=("15:00", "15:00"))
+        assert len(got) == 1
+        assert got["TRDPRC_1"].iloc[0] == pytest.approx(999.0)
+
+    def test_coerces_text_to_numbers(self):
+        got = self._raw(["TRDPRC_1"], [["300.5"], ["n/a"]])
+        assert got["TRDPRC_1"].iloc[0] == pytest.approx(300.5)
+        assert np.isnan(got["TRDPRC_1"].iloc[1])
+
+    def test_adds_a_date_column_the_calendar_depends_on(self):
+        got = self._raw(["TRDPRC_1"], [[300.0], [301.0]])
+        assert list(got["date"]) == [dt.date(2026, 8, 31)] * 2
+
+
+class TestOptionPanel:
+    def test_mid_is_the_quote_midpoint(self):
+        from trading_app.lib.covered_call import option_panel
+        p = option_panel({"options": opt_frame(bid=(1.0, 1.1), ask=(1.2, 1.3))})
+        assert list(p["mid"]) == pytest.approx([1.1, 1.2])
+        assert list(p["spread"]) == pytest.approx([0.2, 0.2])
+
+    def test_a_one_sided_quote_has_no_mid(self):
+        """'No bid/ask -> no fill', expressed once in the data."""
+        from trading_app.lib.covered_call import option_panel
+        f = opt_frame()
+        f.loc[f.index[0], (CALL_RIC, "ASK")] = np.nan
+        p = option_panel({"options": f}).sort_values("ts")
+        assert np.isnan(p["mid"].iloc[0])
+        assert not np.isnan(p["mid"].iloc[1])
+
+    def test_a_crossed_quote_has_no_mid(self):
+        """ask < bid is bad data, and its midpoint is not a price."""
+        from trading_app.lib.covered_call import option_panel
+        p = option_panel({"options": opt_frame(bid=(1.0, 1.1), ask=(0.5, 1.3))})
+        p = p.sort_values("ts")
+        assert np.isnan(p["mid"].iloc[0])
+        assert p["mid"].iloc[1] == pytest.approx(1.2)
+
+    def test_puts_are_dropped_because_this_book_is_calls_only(self):
+        from trading_app.lib.covered_call import option_panel
+        assert len(option_panel({"options": opt_frame(ric=PUT_RIC)})) == 0
+
+    def test_unparseable_rics_are_skipped_not_fatal(self):
+        from trading_app.lib.covered_call import option_panel
+        good = opt_frame()
+        bad = opt_frame(ric="NOT-A-RIC")
+        p = option_panel({"options": pd.concat([good, bad], axis=1)})
+        assert set(p["ric"]) == {CALL_RIC}
+
+    def test_strike_and_expiry_come_off_the_ric(self):
+        from trading_app.lib.covered_call import option_panel
+        p = option_panel({"options": opt_frame()})
+        assert p["strike"].iloc[0] == pytest.approx(320.0)
+        assert p["expiry"].iloc[0] == dt.date(2026, 9, 4)
+
+    def test_an_all_nan_field_does_not_delete_the_contract(self):
+        """TRDPRC_1 is absent whenever nothing traded, which is most bars."""
+        from trading_app.lib.covered_call import option_panel
+        p = option_panel({"options": opt_frame()})
+        assert len(p) == 2
+        assert p["trdprc_1"].isna().all()
+
+    def test_keeps_only_session_hours(self):
+        from trading_app.lib.covered_call import option_panel
+        p = option_panel({"options": opt_frame(bid=(1.0, 1.1), ask=(1.2, 1.3),
+                                               hours=("09:00", "15:00"))})
+        assert list(p["ts"].dt.hour) == [15]
+
+    def test_requires_a_multiindex_rather_than_guessing(self):
+        from trading_app.lib.covered_call import option_panel
+        flat = pd.DataFrame({CALL_RIC: [1.0]},
+                            index=pd.DatetimeIndex(["2026-08-31 15:00"]))
+        with pytest.raises(ValueError, match="MultiIndex"):
+            option_panel({"options": flat})
+
+
+class TestMidVsPrint:
+    def test_survives_duplicate_stock_timestamps(self):
+        """
+        reindex refuses to work against duplicate labels. stock_panel already
+        de-duplicates so the build never hit this, but a public function should
+        not crash on a raw frame with a ValueError naming neither cause nor
+        caller.
+        """
+        from trading_app.lib.cc_analysis import mid_vs_print
+        from trading_app.lib.covered_call import option_panel
+        idx = pd.DatetimeIndex(["2026-08-31 15:00", "2026-08-31 15:00",
+                                "2026-08-31 16:00"])
+        stock = pd.DataFrame({"TRDPRC_1": [300.0, 301.0, 302.0]}, index=idx)
+        opts = option_panel({"options": opt_frame(trd=(1.15, 1.25))})
+        out = mid_vs_print(opts, stock)
+        assert out["resid"]["n"] == 2
+
+    def test_needs_both_a_quote_and_a_print(self):
+        from trading_app.lib.cc_analysis import mid_vs_print
+        from trading_app.lib.covered_call import option_panel
+        stock = pd.DataFrame({"TRDPRC_1": [300.0, 300.0]},
+                             index=pd.DatetimeIndex(["2026-08-31 15:00",
+                                                     "2026-08-31 16:00"]))
+        opts = option_panel({"options": opt_frame()})       # never printed
+        assert mid_vs_print(opts, stock)["resid"] == {}
+
+    def test_in_spread_locates_the_print_inside_the_quote(self):
+        from trading_app.lib.cc_analysis import mid_vs_print
+        from trading_app.lib.covered_call import option_panel
+        stock = pd.DataFrame({"TRDPRC_1": [300.0, 300.0]},
+                             index=pd.DatetimeIndex(["2026-08-31 15:00",
+                                                     "2026-08-31 16:00"]))
+        # bid 1.00/ask 1.20: one print at the bid, one at the ask
+        opts = option_panel({"options": opt_frame(bid=(1.0, 1.0), ask=(1.2, 1.2),
+                                                  trd=(1.0, 1.2))})
+        r = mid_vs_print(opts, stock)["resid"]
+        assert r["at_bid_pct"] == pytest.approx(50.0)
+        assert r["at_ask_pct"] == pytest.approx(50.0)
+        assert r["at_mid_pct"] == pytest.approx(0.0)
+        assert r["outside_pct"] == pytest.approx(0.0)
+
+
+class TestOtherStrikeRules:
+    CHAIN = pd.DataFrame({"strike": [295.0, 297.5, 300.0, 302.5, 305.0, 310.0],
+                          "mid": [8.0, 6.0, 4.0, 2.5, 1.5, 0.30]})
+
+    def test_offset_rule_clears_the_offset(self):
+        from trading_app.lib.covered_call import otm_by_offset
+        assert otm_by_offset(self.CHAIN, 300.0, offset_pct=0.01) == 305.0
+        assert otm_by_offset(self.CHAIN, 300.0, offset_pct=0.0) == 300.0
+
+    def test_premium_floor_takes_the_furthest_strike_still_paid_for(self):
+        from trading_app.lib.covered_call import by_premium_floor
+        assert by_premium_floor(self.CHAIN, 300.0, floor=0.50) == 305.0
+        assert by_premium_floor(self.CHAIN, 300.0, floor=2.00) == 302.5
+
+    def test_premium_floor_never_goes_below_spot(self):
+        from trading_app.lib.covered_call import by_premium_floor
+        assert by_premium_floor(self.CHAIN, 300.0, floor=0.01) >= 300.0
+
+    def test_premium_floor_declines_when_nothing_pays_enough(self):
+        from trading_app.lib.covered_call import by_premium_floor
+        assert by_premium_floor(self.CHAIN, 300.0, floor=99.0) is None
+
+
+class TestSweepsAndBenchmark:
+    def test_rule_sweep_labels_and_calibrates_every_rule(self):
+        from trading_app.lib.cc_analysis import rule_sweep
+        from trading_app.lib.covered_call import STRIKE_RULE_META
+        stock = make_stock({MON: 300.0, TUE: 300.0, WED: 300.0, THU: 300.0,
+                            FRI: 295.0})
+        opts = make_options(FRI, [MON, TUE, WED, THU, FRI], STRIKES)
+        rows = rule_sweep(stock, opts, trading_weeks(stock), order_hour=15)
+        assert {r["rule"] for r in rows} == set(STRIKE_RULE_META)
+        for r in rows:
+            assert r["label"] and r["label"] != r["rule"]
+            if r["target_prob"] is None:
+                assert r["realised_prob"] is None
+            else:
+                assert r["prob_gap"] == pytest.approx(
+                    r["realised_prob"] - r["target_prob"])
+
+    def test_buy_and_hold_starts_where_the_book_started(self):
+        from trading_app.lib.cc_analysis import buy_and_hold
+        run, led, stock, opts = one_week(settle=295.0)
+        bh = buy_and_hold(stock, led, run["start_cash"])
+        first = led.index[led["shares"] > 0][0]
+        px0 = float(led.at[first, "stock_mark"])
+        # same entry price, no premium, no cap
+        assert bh["nav"].iloc[0] == pytest.approx(run["start_cash"])
+        assert bh["nav"].iloc[-1] == pytest.approx(
+            run["start_cash"] - 100 * px0 + 100 * 295.0)
+
+    def test_buy_and_hold_is_uncapped_where_the_book_is_not(self):
+        from trading_app.lib.cc_analysis import buy_and_hold
+        lo, hi = [], []
+        for settle in (310.0, 360.0):
+            run, led, stock, opts = one_week(settle=settle)
+            lo.append(led["nav"].iloc[-1])
+            hi.append(buy_and_hold(stock, led, run["start_cash"])["nav"].iloc[-1])
+        assert lo[0] == pytest.approx(lo[1]), "the covered call must be capped"
+        assert hi[1] > hi[0], "buy and hold must not be"
+
+
+# --------------------------------------------------------------------------
+# 10. picking the order bar, and refusing to guess when the cache is absent
+# --------------------------------------------------------------------------
+
+class TestOrderBarSelection:
+    @staticmethod
+    def day_frame(hours):
+        idx = pd.DatetimeIndex([f"2026-08-31 {h:02d}:00" for h in hours])
+        df = pd.DataFrame({"TRDPRC_1": range(len(hours))}, index=idx)
+        df["date"] = [t.date() for t in df.index]
+        return df
+
+    def test_takes_the_bar_stamped_at_the_requested_hour(self):
+        from trading_app.lib.covered_call import _bar_at
+        f = self.day_frame([13, 14, 15, 16])
+        assert _bar_at(f, dt.date(2026, 8, 31), 15).hour == 15
+
+    def test_falls_back_to_the_last_bar_before_the_requested_hour(self):
+        from trading_app.lib.covered_call import _bar_at
+        f = self.day_frame([13, 14, 16])          # no 15:00 bar
+        assert _bar_at(f, dt.date(2026, 8, 31), 15).hour == 14
+
+    def test_when_the_day_starts_late_it_takes_the_first_bar_it_has(self):
+        """
+        Documented rather than assumed: asking for 10:00 on a day whose first
+        bar is 13:00 returns the 13:00 bar, which is AFTER the hour requested.
+        That is the only sensible answer, but it means the order timestamp is
+        not always the hour asked for, and the blotter records the bar it
+        actually used rather than the one requested.
+        """
+        from trading_app.lib.covered_call import _bar_at
+        f = self.day_frame([13, 14, 15])
+        assert _bar_at(f, dt.date(2026, 8, 31), 10).hour == 13
+
+    def test_a_day_with_no_bars_has_no_order_bar(self):
+        from trading_app.lib.covered_call import _bar_at, _last_bar
+        f = self.day_frame([13, 14])
+        assert _bar_at(f, dt.date(2026, 9, 1), 15) is None
+        assert _last_bar(f, dt.date(2026, 9, 1)) is None
+
+    def test_settlement_uses_the_last_bar_of_the_day(self):
+        from trading_app.lib.covered_call import _last_bar
+        f = self.day_frame([13, 14, 15, 16, 20])
+        assert _last_bar(f, dt.date(2026, 8, 31)).hour == 20
+
+
+class TestLoadCache:
+    def test_a_missing_cache_says_how_to_build_it(self):
+        """
+        The failure mode worth avoiding is a bare FileNotFoundError on a
+        pickle path, which tells a reader nothing about needing LSEG.
+        """
+        from trading_app.lib.covered_call import load_cache
+        with pytest.raises(FileNotFoundError, match="fetch_hw2.py"):
+            load_cache("/nonexistent/covered_call_NOPE.pkl")
