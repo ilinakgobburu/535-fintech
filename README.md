@@ -23,15 +23,17 @@ trading_app/
   scripts/build_hw2.py              -> docs/hw2.html
   scripts/hw2_app.js                the page's figures and computed prose
   scripts/bar_size_study.py         hourly vs a 1-minute re-pull -> a <1 KB committed JSON
-  scripts/mutation_check.py         re-introduces 16 bugs, asserts the suite catches each
-  tests/test_covered_call.py        47 tests
+  scripts/mutation_check.py         re-introduces 31 bugs, asserts the suite catches each
+  tests/test_covered_call.py        the engine, the loaders, the strike rules
+  tests/test_fetch_shapes.py        LSEG response shapes, bisection, the dry run
+  tests/test_page.py                the payload, the built page, the prose, this README
 docs/hw2.html                       <- the graded artefact
 ```
 
 ```bash
 cd trading_app
-python3 -m pytest tests -q             # 171 tests (124 from 1.1, 47 here)
-python3 scripts/mutation_check.py      # 16 mutations, all caught
+python3 -m pytest tests -q             # 281 cases; 154 test functions for this assignment
+python3 scripts/mutation_check.py      # 31 mutations, all caught (needs node + chromium)
 python3 scripts/build_hw2.py           # rebuild the page from the cached pull
 ```
 
@@ -48,7 +50,7 @@ the stock closed **$7,289** above the strikes sold — $3,567 of certain income 
 not pay for $7,289 of surrendered upside. Every counterfactual strike rule beat
 the booked one, and **none of them beat buy-and-hold**, monotonically in distance
 from spot. None of that is a discovery about covered calls; it is a description
-of what a cap does to a stock that rose 16% through the window, and a flat or
+of what a cap does to a stock that rose 16.0% through the window, and a flat or
 falling tape would invert the ordering.
 
 ### Two things the handout gets wrong
@@ -100,9 +102,9 @@ it did not ask for.
 ### The bar extremes carry bad prints; the last-trade series does not
 
 `HIGH_1` runs more than 1% above the bar's own open/close body on **12.8%** of
-the 400 hourly bars and `LOW_1` more than 1% below on **21.2%**, reaching +10.6%
+the 400 hourly bars and `LOW_1` more than 1% below on **21.3%**, reaching +10.6%
 and −18.0% — one hour that opened and closed near $301 reports a high of $333.
-`TRDPRC_1` shows nothing of the kind (median hourly move 0.26%, p99 2.05%).
+`TRDPRC_1` shows nothing of the kind (median hourly move 0.256%, p99 2.05%).
 
 So entry and settlement read **TRDPRC_1 and never HIGH_1/LOW_1**. Any rule phrased
 as *"did the stock touch the strike"* would have booked assignments against trades
@@ -121,7 +123,7 @@ expectation rather than because it flattered it.
 
 What it does not establish is fillability, and the spread is what separates the
 two claims. The median print missed the mid by **$0.035** on a median spread of
-**$0.20** — 30% of the spread — only **27.4%** landed within a quarter-spread of
+**$0.20** — 30.0% of the spread — only **27.4%** landed within a quarter-spread of
 the mid, and **16.2% landed outside the quote entirely**. That last number is the
 hourly bar, not an arbitrage: BID/ASK is the quote at the end of the hour while
 TRDPRC_1 is the last trade inside it. R² near 0.999 and a mid that is the actual
@@ -165,7 +167,7 @@ weeks is noise. The valuable output was the calibration:
 
 Both under-predicted, and they were supposed to. **The probability an option
 price implies is risk-neutral, and the risk-neutral measure has zero drift by
-construction.** This tape had +16%. A cap 25% likely to be breached by a
+construction.** This tape had +16.0%. A cap 25% likely to be breached by a
 driftless stock is a good deal more likely to be breached by one marching
 upward. Anyone reading an option-implied probability as a forecast should read
 those two rows first.
@@ -202,12 +204,67 @@ stay checkable.
 
 ### The tests, and a bug in the thing that checks the tests
 
-47 tests, split by failure mode: the RIC and calendar tests pin bugs that produce
-*silence*, the blotter/ledger/Reg T tests pin bugs that produce a *plausible wrong
-number*. `scripts/mutation_check.py` re-introduces 16 specific bugs one at a time
-and asserts the suite fails on each. One of them was not caught on the first run
-— the bar-size study could have compared unmatched contracts and no test would
-have noticed — which is the entire reason the harness exists.
+154 test functions for this assignment (281 cases with parametrisation), split by
+failure mode: the RIC and calendar tests pin bugs that produce *silence*, the
+blotter/ledger/Reg T tests pin bugs that produce a *plausible wrong number*.
+`scripts/mutation_check.py` re-introduces **31** specific bugs one at a time,
+each aimed at the test file that should notice, and asserts the suite fails on
+every one.
+
+### What a coverage audit turned up afterwards
+
+The tests above were written alongside the code. Auditing which functions had
+*no* test then found three live bugs, all in untested code:
+
+- **`stock_panel` crashed on a `(Field, RIC)` MultiIndex.** It took the last
+  level blindly, produced duplicate column names, and died inside
+  `pd.to_numeric` with a `TypeError` about its argument — a failure a long way
+  from its cause. This is exactly the level-ordering ambiguity 1.1 solved by
+  *counting which level parses*, and the lesson had not been carried across.
+- **`mid_vs_print` raised on duplicate stock timestamps.** A frame stitched
+  from weekly chunks repeats a bar at every seam, and `reindex` refuses to work
+  against duplicate labels. `stock_panel` de-duplicates, so the build never hit
+  it — but a public function crashed with a `ValueError` naming neither cause
+  nor caller.
+- **`bar_size_study` died on an empty panel**, because `df[[]]` is *column*
+  selection, not row selection.
+
+It also found **two copies of `trading_weeks`** — the fetcher carried its own,
+with the guard spelled `entry == expiry` instead of `len(sess) < 2`. The two
+agreed, which is how a duplicate survives long enough to drift. Now one
+function accepting either call shape, with a test asserting the fetcher does
+not define its own.
+
+And a hole in the *verification itself*: the earlier check compared the README
+against the **payload**, which is right by construction. It therefore missed
+the page rendering `21.3%` where the README said `21.2%` — 85/400 is exactly
+21.25%, Python rounds that tie to even and JavaScript rounds it away from zero.
+The check now compares every figure in this write-up against the **rendered
+page**, which is the artefact being graded; it found six divergences the first
+time it ran, and all 51 figures now appear on the page verbatim.
+
+Four hardcoded numbers were removed from the page's prose for the same reason —
+a bad-print example, the implied-vol target, the fixed-rule distance, and a
+margin legend asserting `50%` rather than reading the rate it was handed. A
+test now fails on any new numeric literal in the prose unless it is added to an
+allowlist with a justification, which forces the question "would this go
+stale?" every time.
+
+### The harness had two blind spots of its own
+
+**It replaced only the first occurrence of a pattern.** The chart-title style
+was spelled out twice, so mutating one copy let the other repair the damage,
+and a real bug — titles clipped off the top of the canvas, charts drawing
+perfectly and silently unlabelled — came back marked as unreachable. The style
+is now defined once and the harness refuses any pattern that appears more than
+once.
+
+**And its first title test counted DOM nodes.** Plotly emits the `<text>`
+element whether or not it is on screen, so the test passed against the bug.
+It measures geometry now.
+
+Separately, it mutates source files in place, so running `pytest` beside it
+reports failures that describe nothing — which happened. There is a lock file.
 
 That harness had a bug worth recording. CPython validates a `.pyc` against the
 source's *(mtime, size)*. Every mutation here is a same-length edit (`< 2` →

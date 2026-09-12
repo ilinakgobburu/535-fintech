@@ -92,8 +92,6 @@ def suite_facts() -> dict:
     hazard in miniature, so it is derived rather than asserted.
     """
     import ast as _ast
-    tests = ROOT / "tests" / "test_covered_call.py"
-    tree = _ast.parse(tests.read_text(encoding="utf-8"))
 
     def count(node):
         return sum(
@@ -101,13 +99,34 @@ def suite_facts() -> dict:
              and c.name.startswith("test_")) + (count(c) if isinstance(c, _ast.ClassDef) else 0)
             for c in _ast.iter_child_nodes(node))
 
+    # Every test file, discovered rather than listed. Naming one file meant the
+    # page under-reported itself the moment a second and third were added --
+    # the same staleness this function exists to prevent, one level up.
+    per_file = {}
+    for f in sorted((ROOT / "tests").glob("test_*.py")):
+        per_file[f.name] = count(_ast.parse(f.read_text(encoding="utf-8")))
+
     mut = ROOT / "scripts" / "mutation_check.py"
     n_mut = 0
     for node in _ast.walk(_ast.parse(mut.read_text(encoding="utf-8"))):
         if isinstance(node, _ast.Assign) and any(
                 getattr(t, "id", "") == "MUTATIONS" for t in node.targets):
             n_mut = len(node.value.elts)
-    return {"tests": count(tree), "mutations": n_mut}
+    # This assignment's own test files, distinguished from Assignment 1.1's,
+    # because the section on the page is about THIS book's coverage and
+    # quietly absorbing 1.1's numbers would overstate it.
+    mine = {"test_covered_call.py", "test_fetch_shapes.py", "test_page.py"}
+    return {
+        # "functions", not "tests": parametrised ones expand into several
+        # cases each, so this is a floor and never an overstatement. pytest
+        # collects more than this number, not fewer.
+        "functions": sum(per_file.values()),
+        "hw2_functions": sum(n for f, n in per_file.items() if f in mine),
+        "hw2_files": sorted(f for f in per_file if f in mine),
+        "per_file": per_file,
+        "files": len(per_file),
+        "mutations": n_mut,
+    }
 
 
 def build_payload(cache: Path) -> dict:
@@ -227,6 +246,8 @@ def build_payload(cache: Path) -> dict:
         "bar_study": bar_study,
         "ohlc": {
             "bars": ohlc["bars"],
+            "thresholds_pct": jlist(ohlc["thresholds_pct"]),
+            "worst_high": jrec(ohlc["worst_high"]) if ohlc["worst_high"] else None,
             "high": jrec(ohlc["high"]),
             "low": jrec(ohlc["low"]),
             "close_move": jrec(ohlc["close_move"]),

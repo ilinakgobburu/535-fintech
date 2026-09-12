@@ -155,6 +155,13 @@
   // `extra.title` is merged rather than assigned: passing {text: "..."} through
   // Object.assign would replace the whole title object and silently drop the
   // left alignment, the font and the padding that keeps it clear of the legend.
+  // Defined once. It used to be spelled out twice -- in the defaults and
+  // again in the merge below -- and the duplication was invisible until a
+  // mutation test changed one copy and the other quietly repaired it, making
+  // a real bug (titles clipped off the canvas) look impossible to reach.
+  const TITLE_STYLE = { font: { size: 15, color: TH.text }, x: 0,
+    xanchor: "left", y: 0.985, yanchor: "top" };
+
   const baseLayout = extra => {
     const out = Object.assign({
     paper_bgcolor: TH.base, plot_bgcolor: TH.panel,
@@ -173,12 +180,10 @@
     legend: { bgcolor: "rgba(11,16,32,0.78)", bordercolor: TH.line, borderwidth: 1,
       font: { size: 11, color: TH.text }, orientation: "h",
       y: 1.02, yanchor: "bottom", x: 0 },
-    title: { font: { size: 15, color: TH.text }, x: 0, xanchor: "left",
-      y: 0.985, yanchor: "top" },
+    title: { ...TITLE_STYLE },
     }, extra || {});
     if (extra && extra.title) {
-      out.title = Object.assign({ font: { size: 15, color: TH.text }, x: 0,
-        xanchor: "left", y: 0.985, yanchor: "top" }, extra.title);
+      out.title = Object.assign({ ...TITLE_STYLE }, extra.title);
     }
     return out;
   };
@@ -215,10 +220,10 @@
       // Margin requirements sit near $15k while NAV sits near $50k. On a shared
       // axis the NAV line flattens into a straight stripe and the whole point
       // of plotting it is lost, so the requirements get their own scale.
-      { x: L.ts, y: L.initial_margin, name: "Initial (50% LMV)", type: "scatter",
+      { x: L.ts, y: L.initial_margin, name: `Initial (${(M.initial_rate * 100).toFixed(0)}% LMV)`, type: "scatter",
         mode: "lines", yaxis: "y2", line: { color: TH.both, width: 1.4, dash: "dash" },
         hovertemplate: "initial %{y:$,.0f}<extra></extra>" },
-      { x: L.ts, y: L.maintenance_margin, name: "Maintenance (25% LMV)", type: "scatter",
+      { x: L.ts, y: L.maintenance_margin, name: `Maintenance (${(M.maint_rate * 100).toFixed(0)}% LMV)`, type: "scatter",
         mode: "lines", yaxis: "y2", line: { color: TH.faint, width: 1.2, dash: "dot" },
         hovertemplate: "maint %{y:$,.0f}<extra></extra>" },
     ];
@@ -515,20 +520,24 @@
         ${pct(100 * Math.min(...R.map(r => (r.iv_range || [NaN])[0])))}–${pct(100 * Math.max(...R.map(r => (r.iv_range || [NaN, NaN])[1])))}).
         They came in ${calib}. That gap is not a broken rule: the probability an option price
         implies is a <em>risk-neutral</em> one, and the risk-neutral measure has zero drift by
-        construction. This tape had a ${pct(STOCK.ret)} drift. A cap that is 25% likely to be
-        breached by a driftless stock is a good deal more likely to be breached by one marching
-        upward, and that is the entire discrepancy. Anyone reading an option-implied probability
+        construction. This tape had a ${pct(STOCK.ret)} drift. A cap that is
+        ${pct(100 * probRules[0].target_prob, 0)} likely to be breached by a driftless stock is a
+        good deal more likely to be breached by one marching upward, and that is the entire
+        discrepancy. Anyone reading an option-implied probability
         as a forecast should read these two rows first.</li>
-      <li><strong>Adapting to volatility did not beat a fixed distance here.</strong> The 25%
+      <li><strong>Adapting to volatility did not beat a fixed distance here.</strong> The
+        ${pct(100 * R.find(r => r.rule === "iv_prob_25").target_prob, 0)}
         rule wrote a median ${pct(R.find(r => r.rule === "iv_prob_25").median_otm_pct, 2)} out
-        against the fixed 2% rule's
+        against the fixed rule at
         ${pct(R.find(r => r.rule === "otm_2pct").median_otm_pct, 2)} — nearly the same place on
         average — and finished
         ${money(Math.abs(R.find(r => r.rule === "iv_prob_25").pnl - R.find(r => r.rule === "otm_2pct").pnl))}
         ${R.find(r => r.rule === "iv_prob_25").pnl > R.find(r => r.rule === "otm_2pct").pnl ? "ahead" : "behind"}.
         The adaptivity is real — in the week priced at
         ${pct(100 * Math.max(...D.cycles.filter(c => c.atm_iv).map(c => c.atm_iv)))} implied vol it
-        pushed the strike to its widest — but over ten weeks that difference is well inside noise.
+        pushed the strike out to
+        ${pct(R.find(r => r.rule === "iv_prob_25").max_otm_pct, 2)}, its widest of the
+        ${M.weeks} — but over ten weeks that difference is well inside noise.
         The theoretical motivation is sound and this window cannot confirm it.</li>
       <li><strong>Every rule lost to simply holding the stock.</strong> ${beatBH === 0
         ? `None of the ${R.length} beat buy-and-hold's ${signed(H.bh_pnl)}`
@@ -763,14 +772,17 @@
       <div class="qa"><p class="q">The bar extremes carry bad prints. The last-trade series does not.</p>
         <p class="a">A bar's open and close are both real, sequenced trades, so anything the bar
         genuinely traded through should sit near that body. On this pull it does not:
-        <strong>HIGH_1 runs more than 1% above the bar's own body on ${pct(O.high.over_1pct_share)}
-        of the ${O.bars} bars, and LOW_1 more than 1% below on ${pct(O.low.over_1pct_share)}</strong>,
-        with excursions reaching +${num(O.high.max_pct, 1)}% and −${num(O.low.max_pct, 1)}%. One
-        hour that opened and closed near $301 reports a high of $333. Those are odd-lot,
-        out-of-sequence and cross prints surviving into the extremes.
+        <strong>HIGH_1 runs more than ${pct(O.thresholds_pct[0], 0)} above the bar's own body on ${pct(O.high.over_1pct_share)}
+        of the ${O.bars} bars, and LOW_1 more than ${pct(O.thresholds_pct[0], 0)} below on ${pct(O.low.over_1pct_share)}</strong>,
+        with excursions reaching +${num(O.high.max_pct, 1)}% and −${num(O.low.max_pct, 1)}%. ${O.worst_high
+          ? `The worst single bar opened at ${money(O.worst_high.open, 2)} and closed at
+             ${money(O.worst_high.close, 2)}, and reports a high of
+             <strong>${money(O.worst_high.high, 2)}</strong>.`
+          : ""} Those are odd-lot, out-of-sequence and cross prints surviving into the
+        extremes.
         TRDPRC_1 shows nothing of the kind — its hour-to-hour move has a median of
         ${num(O.close_move.median_pct, 3)}%, a 99th percentile of ${num(O.close_move.p99_pct, 2)}%,
-        and only ${O.close_move.over_3pct} bar(s) in the whole window move more than 3%.
+        and only ${O.close_move.over_3pct} bar(s) in the whole window move more than ${pct(O.thresholds_pct[1], 0)}.
         <br><br>This is why entry and settlement here read <strong>TRDPRC_1 and never
         HIGH_1/LOW_1</strong>. Any rule phrased as "did the stock touch the strike" — a
         barrier, a stop, an intraday assignment test — would have booked trades against prints
@@ -798,7 +810,11 @@
         comparison of decisions rather than of two code paths that drifted.</p></div>
 
       <div class="qa"><p class="q">What is tested?</p>
-        <p class="a">${M.suite.tests} tests in <code>tests/test_covered_call.py</code>, split by failure mode.
+        <p class="a">${M.suite.hw2_functions} test functions for this assignment, across
+        ${M.suite.hw2_files.map(f => `<code>${esc(f)}</code>`).join(", ")} — inside a repository
+        suite of ${M.suite.functions} across ${M.suite.files} files. ("Functions", because the
+        parametrised ones expand into several cases each, so pytest collects more than that
+        number and never fewer.) They are split by failure mode.
         The RIC and calendar tests pin bugs that produce <em>silence</em> — a strike that never
         resolves, a week that never happens. The blotter, ledger and Reg T tests pin bugs that
         produce a <em>plausible wrong number</em>: an assignment credited at the settle instead of
@@ -808,7 +824,7 @@
         <code>scripts/mutation_check.py</code>: it re-introduces ${M.suite.mutations} specific
         bugs one at a time, runs the suite against each, and restores the file afterwards.
         All ${M.suite.mutations} are caught. A suite that passes proves nothing on its own —
-        it is entirely possible to write ${M.suite.tests} tests that assert whatever the code
+        it is entirely possible to write ${M.suite.hw2_functions} tests that assert whatever the code
         already happens to do — so the reproducible version of "these tests have teeth" is a
         harness anyone can re-run.</p>
         <p class="a" style="margin-top:14px">That harness had a bug of its own worth recording,
