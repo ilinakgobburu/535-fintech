@@ -70,6 +70,13 @@ MAINT_RATE = 0.25     # FINRA maintenance
 
 SESSION_START_UTC = 13
 SESSION_END_UTC = 20
+
+# Used to work out which level of a MultiIndex holds field names. See
+# stock_panel: guessing by position is what HW1's loaders got wrong.
+KNOWN_FIELDS = {
+    "TRDPRC_1", "OPEN_PRC", "HIGH_1", "LOW_1", "BID", "ASK",
+    "ACVOL_UNS", "NUM_MOVES", "MID_PRICE", "SETTLE", "CLOSE",
+}
 # 20:00 is a one-trade stub bar; it marks fine but is not a place to send an order.
 TRADEABLE_HOURS = tuple(range(SESSION_START_UTC, SESSION_END_UTC))
 
@@ -96,9 +103,28 @@ def stock_panel(payload: dict) -> pd.DataFrame:
     df = payload["stock"].copy()
     df.index = pd.DatetimeIndex(df.index)
     if isinstance(df.columns, pd.MultiIndex):
-        # single-RIC pull: drop the RIC level
-        df.columns = [c[-1] for c in df.columns]
+        # Which level holds the FIELD names? Decided by counting how many
+        # labels on each level are fields we know, not by taking the last one.
+        # Taking the last level assumes a (RIC, Field) ordering; handed the
+        # (Field, RIC) ordering LSEG also emits, it collapsed every column to
+        # the same RIC name and then died inside pd.to_numeric with a TypeError
+        # about its argument -- a failure a long way from its cause. This is
+        # HW1's loaders lesson, which this module had not applied.
+        scores = [
+            sum(str(v).upper() in KNOWN_FIELDS
+                for v in pd.unique(df.columns.get_level_values(i)))
+            for i in range(df.columns.nlevels)
+        ]
+        if max(scores) == 0:
+            raise ValueError(
+                f"no level of {list(df.columns)[:3]}... holds recognisable field "
+                f"names; refusing to guess which is the RIC")
+        lvl = int(np.argmax(scores))
+        df.columns = [str(c[lvl]) for c in df.columns]
     df.columns = [str(c).upper() for c in df.columns]
+    if df.columns.duplicated().any():
+        dupes = sorted({c for c in df.columns[df.columns.duplicated()]})
+        raise ValueError(f"duplicate stock columns after flattening: {dupes}")
     for c in df.columns:
         df[c] = pd.to_numeric(df[c], errors="coerce")
     hrs = df.index.hour
@@ -157,9 +183,16 @@ def option_panel(payload: dict) -> pd.DataFrame:
     return panel.sort_values(["ts", "expiry", "strike"]).reset_index(drop=True)
 
 
-def trading_weeks(stock: pd.DataFrame) -> list[dict]:
+def trading_weeks(stock) -> list[dict]:
     """
     Weeks read off the underlying's own session calendar.
+
+    Accepts either the panel this module builds or a bare DatetimeIndex,
+    because the fetcher needs the same calendar before a panel exists and this
+    logic must not be written twice. It was, briefly: scripts/fetch_hw2.py
+    carried a second copy whose guard was spelled `entry == expiry` instead of
+    `len(sess) < 2`. The two happened to agree, which is exactly how a
+    duplicate survives long enough to drift.
 
     "Buy Monday, expire Friday" is a description, not a rule. Jun 19 2026
     (Juneteenth) and Jul 3 2026 (Jul 4 observed) are closed, and those weeks
@@ -167,7 +200,10 @@ def trading_weeks(stock: pd.DataFrame) -> list[dict]:
     Friday one does not. Taking the first and last session the stock actually
     printed makes a holiday shift the cycle instead of deleting it.
     """
-    days = sorted({d for d in stock["date"]})
+    if isinstance(stock, pd.DataFrame):
+        days = sorted({d for d in stock["date"]})
+    else:
+        days = sorted({t.date() for t in pd.DatetimeIndex(stock)})
     out = []
     for key, grp in pd.Series(days).groupby(
             pd.Series(days).map(lambda d: (d.isocalendar().year, d.isocalendar().week))):

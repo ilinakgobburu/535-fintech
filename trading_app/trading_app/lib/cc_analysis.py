@@ -67,7 +67,13 @@ def mid_vs_print(options: pd.DataFrame, stock: pd.DataFrame) -> dict:
       - the residual in DOLLARS and as a fraction of the quoted spread, which
         is the only scale on which "close to the mid" means anything
     """
+    # reindex refuses to work against duplicate labels, and a stock frame
+    # assembled from weekly chunks can carry a repeated timestamp at every
+    # seam. stock_panel already de-duplicates, so this never fired in the
+    # build -- but it made a public function crash on a raw frame, with a
+    # ValueError naming neither the caller nor the cause.
     px = pd.to_numeric(stock["TRDPRC_1"], errors="coerce")
+    px = px[~px.index.duplicated(keep="last")]
     spot = px.reindex(options["ts"].values).to_numpy(dtype=float)
 
     d = options.copy()
@@ -231,6 +237,9 @@ def rule_sweep(stock, options, weeks, *, order_hour=15,
         booked = cyc[cyc["status"].isin(["assigned", "expired"])] if len(cyc) else cyc
         h["median_otm_pct"] = float(booked["otm_pct"].median()) if len(booked) else np.nan
         h["median_premium"] = float(booked["mid"].median()) if len(booked) else np.nan
+        # The furthest the rule ever wrote. For the vol-aware rules this is the
+        # adaptivity made concrete, and the write-up quotes it.
+        h["max_otm_pct"] = float(booked["otm_pct"].max()) if len(booked) else np.nan
 
         meta = STRIKE_RULE_META.get(name, {})
         h["label"] = meta.get("label", name)
@@ -327,8 +336,22 @@ def ohlc_integrity(stock: pd.DataFrame) -> dict:
             "over_3pct_share": float(100 * (ex > 0.03).mean()),
         }
 
+    # The single worst HIGH_1 excursion, with the bar it happened on. The page
+    # quotes a concrete example ("an hour that opened and closed near $301
+    # reports a high of $333"), and a hardcoded example goes stale the moment
+    # the cache is re-pulled -- while still reading as a fact.
+    worst = {}
+    if hi_ex.notna().any():
+        i = hi_ex.idxmax()
+        worst = {
+            "ts": str(i), "open": float(o[i]), "close": float(c[i]),
+            "high": float(hi[i]), "excess_pct": float(100 * hi_ex[i]),
+        }
+
     return {
         "bars": int(len(stock)),
+        "thresholds_pct": [1.0, 3.0],
+        "worst_high": worst,
         "high": band(hi_ex),
         "low": band(lo_ex),
         "close_move": {

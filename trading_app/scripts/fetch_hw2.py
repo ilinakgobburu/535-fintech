@@ -55,6 +55,9 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from trading_app.lib.covered_call import (  # noqa: E402
+    SESSION_END_UTC, SESSION_START_UTC, trading_weeks,
+)
 from trading_app.lib.ric import build_option_ric  # noqa: E402
 
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -69,34 +72,9 @@ STOCK_FIELDS = ["TRDPRC_1", "OPEN_PRC", "HIGH_1", "LOW_1", "BID", "ASK",
 # Options quote only during the regular session. Probed on AAPL: option bars
 # run 13:00-20:00 UTC while the stock carries 08:00-23:00, and the 20:00 option
 # bar is a one-trade closing stub (ACVOL_UNS=4, NUM_MOVES=1 on 2026-08-31).
-SESSION_START_UTC = 13
-SESSION_END_UTC = 20
-
-
-def trading_weeks(stock_index: pd.DatetimeIndex) -> list[dict]:
-    """
-    Split the underlying's own session calendar into (entry, expiry) weeks.
-
-    Entry is the first session of the ISO week, expiry the last. This is the
-    whole holiday story: no hardcoded Friday, no assumption that a week has
-    five days.
-    """
-    days = pd.Series(sorted({d.date() for d in stock_index}))
-    iso = days.map(lambda d: (d.isocalendar().year, d.isocalendar().week))
-    weeks = []
-    for key, grp in days.groupby(iso):
-        sessions = list(grp)
-        entry, expiry = sessions[0], sessions[-1]
-        if entry == expiry:
-            continue  # a one-session week cannot hold a Monday->Friday cycle
-        weeks.append({
-            "iso": f"{key[0]}-W{key[1]:02d}",
-            "entry": entry,
-            "expiry": expiry,
-            "sessions": len(sessions),
-            "short_week": len(sessions) < 5,
-        })
-    return weeks
+# SESSION_START_UTC / SESSION_END_UTC and the week calendar are imported from
+# lib.covered_call so the fetcher and the backtest cannot disagree about which
+# bars exist or where a week begins.
 
 
 def chain_rics(root: str, expiry: dt.date, lo: float, hi: float,
@@ -274,12 +252,12 @@ def main() -> int:
     if args.dry_run:
         days = pd.bdate_range(args.start, args.end)
         weeks = trading_weeks(pd.DatetimeIndex(days))
-        n = sum(len(chain_rics(args.root, w["expiry"], 290, 320,
+        n = sum(len(chain_rics(args.root, w["expiry_date"], 290, 320,
                                args.strike_step, args.band)) for w in weeks)
         print(f"{len(weeks)} weeks, ~{n} call RICs "
               f"(~{-(-n // args.batch_size)} batches) using an assumed $290-320 range")
         for w in weeks:
-            print(f"  {w['iso']}  {w['entry']} -> {w['expiry']}")
+            print(f"  {w['iso']}  {w['entry_date']} -> {w['expiry_date']}")
         return 0
 
     try:
@@ -338,8 +316,8 @@ def main() -> int:
     print(f"\n{len(weeks)} trading weeks:")
     for w in weeks:
         flag = "  <- SHORT WEEK" if w["short_week"] else ""
-        print(f"  {w['iso']}  {w['entry']} ({w['entry'].strftime('%a')})"
-              f" -> {w['expiry']} ({w['expiry'].strftime('%a')})"
+        print(f"  {w['iso']}  {w['entry_date']} ({w['entry_date'].strftime('%a')})"
+              f" -> {w['expiry_date']} ({w['expiry_date'].strftime('%a')})"
               f"  {w['sessions']} sessions{flag}")
 
     # Band on the LAST-TRADE series, not on HIGH_1/LOW_1. The extremes carry
@@ -356,7 +334,7 @@ def main() -> int:
     stats = {"threw": 0, "collapsed": 0, "unresolved": 0, "dead_rics": []}
     all_frames, per_expiry = [], {}
     for w in weeks:
-        expiry = w["expiry"]
+        expiry = w["expiry_date"]
         first = expiry - dt.timedelta(days=args.lookback_days)
         mask = (idx_dates >= first) & (idx_dates <= expiry)
         if not mask.any():
