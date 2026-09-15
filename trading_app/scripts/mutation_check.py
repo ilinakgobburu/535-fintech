@@ -186,6 +186,10 @@ MUTATIONS = [
     (CC, '"side": ASSIGN, "qty": contracts, "limit": None,\n                "fill": float(strike), "cash_delta": 0.0,',
          '"side": ASSIGN, "qty": contracts, "limit": None,\n                "fill": float(strike), "cash_delta": qty * float(strike),',
      "assignment cash is booked on BOTH rows, double-counting the strike", TESTS),
+    (BUILD, '    start_cash = first_combo_cost(stock, options, weeks)',
+            '    start_cash = 50_000.0',
+     "starting cash goes back to a flat $50,000 and Jun 29's NAV to about $50k",
+     TESTS_PAGE),
     # --- the off-by-one found in class: bar stamps and the close -----------
     (CC, '    return keep, end\n', '    return keep, start\n',
      "bars keep LSEG's START stamps, so every price is labelled one period "

@@ -37,7 +37,13 @@ DEFAULT_CACHE = ROOT / "trading_app" / "data" / "covered_call_AAPL.pkl"
 DEFAULT_OUT = ROOT.parent / "docs" / "hw2.html"
 
 ORDER_HOUR = 16      # the bar ENDING 16:00 UTC, noon ET; stamps are as-of, see covered_call
-START_CASH = 50_000.0
+# Starting cash is not a constant. It is the cost of the first covered-call
+# combo -- 100 shares at the first entry print, less the first premium -- so
+# the account holds no idle cash on day one and NAV tracks the position rather
+# than a cash cushion. It was a flat $50,000, which put Jun 29's NAV near $50k
+# where the professor expected roughly $27k; with this rule it is $27,886.50.
+# Later entries at higher prices are then partly financed on margin, which
+# Reg T allows and the page discloses. No margin interest is charged.
 RULE = "nearest_otm"
 SCATTER_CAP = 4000   # points drawn; every statistic uses the full sample
 
@@ -94,6 +100,21 @@ def _strike_step(options: pd.DataFrame, cycles: list[dict]) -> float:
     return float(np.median(steps)) if steps else float("nan")
 
 
+def first_combo_cost(stock, options, weeks) -> float:
+    """
+    100 x the first entry print, less 100 x the first premium: exactly enough
+    cash to put the first covered call on. Found by running the book with no
+    cash at all, since the first trade's prices do not depend on how much
+    cash is behind them.
+    """
+    probe = run_backtest(stock, options, weeks, rule=RULE,
+                         order_hour=ORDER_HOUR, start_cash=0.0)
+    buy = next(e for e in probe["blotter"] if e["kind"] == "stock" and e["side"] == "BUY")
+    sell = next(e for e in probe["blotter"]
+                if e["kind"] == "call" and e["side"] == "SELL" and e["ts"] == buy["ts"])
+    return -(buy["cash_delta"] + sell["cash_delta"])
+
+
 def suite_facts() -> dict:
     """
     Count the tests and the mutations by parsing the source.
@@ -146,15 +167,16 @@ def build_payload(cache: Path) -> dict:
     stock = stock_panel(payload)
     options = option_panel(payload)
     weeks = trading_weeks(stock)
+    start_cash = first_combo_cost(stock, options, weeks)
 
     run = run_backtest(stock, options, weeks, rule=RULE,
-                       order_hour=ORDER_HOUR, start_cash=START_CASH)
+                       order_hour=ORDER_HOUR, start_cash=start_cash)
     ledger = build_ledger(run, stock, options)
-    bh = A.buy_and_hold(stock, ledger, START_CASH)
+    bh = A.buy_and_hold(stock, ledger, start_cash)
     fit = A.mid_vs_print(options, stock)
-    hours = A.fill_hour_sweep(stock, options, weeks, rule=RULE, start_cash=START_CASH)
+    hours = A.fill_hour_sweep(stock, options, weeks, rule=RULE, start_cash=start_cash)
     rules = A.rule_sweep(stock, options, weeks, order_hour=ORDER_HOUR,
-                         start_cash=START_CASH)
+                         start_cash=start_cash)
     floor = min_start_cash(run, stock, options)
     ohlc = A.ohlc_integrity(stock)
 
@@ -194,7 +216,8 @@ def build_payload(cache: Path) -> dict:
         "strike_step": _strike_step(options, run["cycles"]),
         "weeks": len(weeks),
         "order_hour": ORDER_HOUR,
-        "start_cash": START_CASH,
+        "start_cash": start_cash,
+        "start_cash_rule": "cost of the first combo: 100 x first entry print less the first premium",
         "rule": RULE,
         "initial_rate": INITIAL_RATE,
         "maint_rate": MAINT_RATE,
@@ -207,16 +230,18 @@ def build_payload(cache: Path) -> dict:
         "meta": meta,
         "headline": {
             "final_nav": jnum(final_nav),
-            "pnl": jnum(final_nav - START_CASH),
-            "pnl_pct": jnum(100.0 * (final_nav / START_CASH - 1.0)),
+            "pnl": jnum(final_nav - start_cash),
+            "pnl_pct": jnum(100.0 * (final_nav / start_cash - 1.0)),
             "premium": jnum(premium),
             "weeks_booked": int(len(booked)),
             "weeks_skipped": int(len(cyc) - len(booked)) if len(cyc) else 0,
             "assignments": int((booked["status"] == "assigned").sum()) if len(booked) else 0,
             "bh_final": jnum(bh_final),
-            "bh_pnl": jnum(bh_final - START_CASH),
+            "bh_pnl": jnum(bh_final - start_cash),
             "gap": jnum(final_nav - bh_final),
             "min_available": jnum(float(ledger["available_funds"].min())),
+            # Most negative cash balance: the largest margin loan the book ran.
+            "min_cash": jnum(float(ledger["cash"].min())),
             "min_excess": jnum(float(ledger["excess_liquidity"].min())),
             "ever_infeasible": bool((~ledger["feasible"]).any()),
         },

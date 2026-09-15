@@ -410,6 +410,8 @@ class TestReadmeMatchesThePage:
         "21.25%": "the exact tie, 85/400, that produced that disagreement",
         "21.3%":  "what the page rendered before the after-hours bar was removed",
         "$50,006.50": "Jun 29's close NAV as the off-by-one bug computed it",
+        "$50,036": "Jun 29's corrected close NAV at the old $50,000 starting cash",
+        "$50,000": "the flat starting cash the book used before it was sized to the first combo",
         "$0.31": "median miss of the after-hours 'close' against the official close",
         "$15.27": "worst miss of the after-hours 'close' against the official close",
         "$320.05": "the after-hours print that wrongly assigned the 2% rule's call",
@@ -831,3 +833,58 @@ class TestNewSectionsRender:
         assert not errors
         assert "Data connection required" in text
         assert sw <= cw + 1, "data page scrolls sideways at phone width"
+
+
+# --------------------------------------------------------------------------
+# starting cash: the cost of the first combo, as the professor's figure implies
+# --------------------------------------------------------------------------
+# The book started with a flat $50,000, which put Jun 29's NAV near $50k where
+# the professor expected about $27k. His reference code uses the same NAV,
+# initial and available-funds formulas; the gap was the idle cash. Starting
+# cash is now derived: exactly enough to put the first covered call on.
+
+class TestStartingCash:
+    def test_is_the_cost_of_the_first_combo(self, payload):
+        b = payload["blotter"]
+        buy = next(e for e in b if e["kind"] == "stock" and e["side"] == "BUY")
+        sell = next(e for e in b if e["kind"] == "call" and e["side"] == "SELL"
+                    and e["ts"] == buy["ts"])
+        assert payload["meta"]["start_cash"] == pytest.approx(
+            100 * buy["fill"] - 100 * sell["fill"])
+        assert payload["meta"]["start_cash"] != pytest.approx(50_000.0)
+
+    def test_leaves_exactly_zero_cash_after_the_first_trade(self, payload):
+        L = payload["ledger"]
+        first = next(i for i, sh in enumerate(L["shares"]) if sh > 0)
+        assert L["cash"][first] == pytest.approx(0.0, abs=0.005)
+
+    def test_jun_29_close_nav_is_about_27k(self, payload):
+        """
+        The figure the professor gave. Starting cash 27,850.50, plus the $36
+        the position gained by the close: 27,886.50.
+        """
+        L = payload["ledger"]
+        i = L["ts"].index("2026-06-29 20:00:00")
+        assert L["nav"][i] == pytest.approx(27_886.50)
+        assert L["nav"][i] == pytest.approx(payload["meta"]["start_cash"] + 36.0)
+
+    def test_the_book_never_becomes_unfundable(self, payload):
+        """Less cash means margin, and Reg T must still permit every trade."""
+        assert payload["headline"]["ever_infeasible"] is False
+        assert payload["headline"]["min_available"] > 0
+        assert payload["meta"]["start_cash"] > payload["min_cash"]["min_cash"]
+
+    def test_pnl_does_not_depend_on_starting_cash(self, payload):
+        """Cash is not an input to any trade, so only the NAV level may move."""
+        assert payload["headline"]["pnl"] == pytest.approx(681.82, abs=0.01)
+
+
+@needs_browser
+class TestMarginIsDisclosed:
+    def test_the_page_says_later_entries_are_bought_on_margin(self, rendered, payload):
+        if payload["headline"]["min_cash"] >= 0:
+            pytest.skip("the book never borrowed")
+        t = rendered["text"]
+        assert "bought on margin" in t
+        assert "No margin interest is charged" in t
+        assert B.money(abs(payload["headline"]["min_cash"])) in t

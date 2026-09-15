@@ -44,6 +44,12 @@
   el("r-hour").textContent =
     `hourly bar ending ${String(M.order_hour).padStart(2, "0")}:00 UTC (${M.order_hour - 4}:00 ET)`;
   el("l-bars").textContent = M.bars.toLocaleString();
+  el("r-capital").textContent = money(M.start_cash, 2);
+  el("r-margin").innerHTML = H.min_cash < 0
+    ? `Later entries happen at higher prices, so they are partly <strong>bought on margin</strong>:
+       cash goes as low as ${money(H.min_cash)}, a loan Reg T permits as long as available funds
+       stay positive. No margin interest is charged.`
+    : "";
   el("f-n").textContent = D.fit.resid.n.toLocaleString();
   el("prov").innerHTML =
     `${esc(M.stock_ric)} · ${M.interval} bars · ${esc(M.window[0])} → ${esc(M.window[1])} · `
@@ -329,7 +335,9 @@
         + `${money(M.start_cash)} of starting cash, and the honest reading of the `
         + `NAV path above is that it describes a position the account could not have held.`
       : `<strong>Available funds never went negative.</strong> The low was `
-        + `${money(H.min_available)}, on ${money(M.start_cash)} of starting cash — so `
+        + `${money(H.min_available)}, on ${money(M.start_cash)} of starting cash`
+        + (H.min_cash < 0 ? `, even with cash borrowed down to ${money(H.min_cash)} on margin` : "")
+        + ` — so `
         + `every trade on the blotter was fundable at the moment it was booked. That is `
         + `not a free pass: the same book at ${money(D.min_cash.min_cash)} of starting `
         + `cash would have breached${D.min_cash.worst_ts ? " around " + esc(dateOf(D.min_cash.worst_ts)) : ""}, `

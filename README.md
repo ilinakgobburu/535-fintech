@@ -160,7 +160,7 @@ for a stated breach probability `p`. Implied vol ran **24.4%–47.4%**, and the
 rule did widen when the week was priced to move: in the 47.4% week it pushed the
 strike to its furthest, 3.83% out.
 
-**It edged out the fixed 2% rule** — $53,191 against $52,800 — but most of that gap is
+**It edged out the fixed 2% rule** — +$3,191 against +$2,800 — but most of that gap is
 a single week, and over ten weeks it is noise. The valuable output was the calibration:
 
 | target breach probability | realised assignment |
@@ -338,8 +338,18 @@ observed. That did two things:
 
 The fix relabels every bar to the end of its window, drops the after-hours bar,
 and settles and marks each close at the **official closing price**. Jun 29's
-close NAV moves from $50,006.50 to **$50,036**, and a test now rebuilds that
-figure by hand from LSEG's raw frames, without going through the pipeline.
+close NAV moved from $50,006.50 to $50,036 at the $50,000 starting cash the book
+then used, and a test rebuilds that figure by hand from LSEG's raw frames,
+without going through the pipeline.
+
+The other half of the professor's comment was the level: he expected Jun 29 near
+$27k. His reference code uses the same NAV, initial-margin and available-funds
+formulas, so the gap was the idle cash. Starting cash is now **the cost of the
+first covered call** — 100 shares at the first entry price less the first premium
+— which leaves cash at exactly zero after the first trade and puts Jun 29's close
+NAV at **$27,887**. Later entries at higher prices are partly bought on margin, which
+Reg T allows and the page discloses; P&L does not change, because cash is not an
+input to any trade.
 
 **The booked strategy's result did not change** — assignment pays the strike,
 so final NAV is still +$682, with the same 8 assignments. But one counterfactual
