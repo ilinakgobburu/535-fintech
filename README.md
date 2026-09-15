@@ -28,6 +28,7 @@ trading_app/
   tests/test_fetch_shapes.py        LSEG response shapes, bisection, the dry run
   tests/test_page.py                the payload, the built page, the prose, this README
 docs/hw2.html                       <- the graded artefact
+docs/data.html                      <- "Data connection required", as Pages must show
 ```
 
 ```bash
@@ -53,7 +54,7 @@ from spot. None of that is a discovery about covered calls; it is a description
 of what a cap does to a stock that rose 16.0% through the window, and a flat or
 falling tape would invert the ordering.
 
-### Two things the handout gets wrong
+### One correction to the RIC scheme, and why the calendar instruction matters
 
 **The expiry day is zero-padded.** The scheme says *"DAY not zero-padded"*. Two
 of the three AAPL sample RICs it prints do not resolve:
@@ -68,16 +69,19 @@ AAPLH072620500.U^H26   zero-padded     478 observations
 The third example expires on the 17th, so the rule never bites. Every testable
 case fails; every padded correction works. **Aug 7 and Sep 4 are single-digit
 Fridays in this very window**, so a literal reading silently drops 2 of 10
-cycles — the strikes come back empty and the weeks look quiet. Same shape as the
-1.1 put-wing finding: "no data came back" and "I asked the wrong question" are
-indistinguishable from the outside.
+cycles — the strikes come back empty and the weeks look quiet. The assignment
+says its description matches the course's Helios Python, which builds the day as
+`expiry.day` — the unpadded form — so the reference builder inherits the same two
+empty weeks. Same shape as the 1.1 put-wing finding: "no data came back" and "I
+asked the wrong question" are indistinguishable from the outside.
 
-**"Buy Monday, expire Friday" is a description, not a rule.** Jun 19 (Juneteenth)
-and Jul 3 (Jul 4 observed) are closed, and those weeks expire on the *Thursday* —
-the Thursday RIC resolves and the Friday one does not. The loop reads the
-underlying's own session calendar and takes the first and last session of each
-ISO week, so a holiday shifts the cycle instead of deleting it. It fires once
-here, on **2026-W27 → Thu Jul 2**.
+**The calendar instruction is right, and this window shows why.** The assignment
+says to *"take the last session in each week from the stock tape so you do not
+invent holiday expiries."* Jun 19 (Juneteenth) and Jul 3 (Jul 4 observed) are
+closed, and those weeks expire on the *Thursday* — the Thursday RIC resolves and
+the Friday one does not. The loop follows the instruction, reading the
+underlying's own session calendar, so a holiday shifts the cycle instead of
+deleting it. It fires once here, on **2026-W27 → Thu Jul 2**.
 
 ### A flat LSEG response means the opposite thing depending on what you asked for
 
@@ -265,6 +269,38 @@ It measures geometry now.
 
 Separately, it mutates source files in place, so running `pytest` beside it
 reports failures that describe nothing — which happened. There is a lock file.
+
+### Checked against the assignment page itself
+
+Reading `assignment.html` in full, rather than the rubric summary, turned up
+requirements the book did not yet meet:
+
+- **Assignment is two blotter rows** — *"ASSIGN on the call and a stock SELL at
+  the strike."* It had been one ASSIGN row carrying the cash: arithmetically
+  right, and still a blotter in which the shares never visibly left. The ledger
+  was unaffected, which the suite confirmed — every cash, share and NAV test
+  passed unchanged through the split.
+- **The OCC symbol** as a subtitle under each option RIC.
+- **The Reg T columns in the ledger table** (initial, maintenance, available),
+  not only in the charts, plus a table of every contract written.
+- **A Data *page***, not a section, reading *"Data connection required."*
+- **Why this name, and why wait rather than buy back at a profit** — both asked
+  directly. The second has a data-backed answer: a buy-to-close limit fills
+  whenever the ask first touches it inside an hour, and the minute re-pull
+  showed an hourly ASK is only the final minute's quote, so simulating that fill
+  from hourly bars would mean inventing a print.
+
+And one correction to this write-up's own claims. It used to say the handout got
+the week calendar wrong. It does not — the assignment explicitly says to take the
+last session of each week from the stock tape. The zero-padding finding stands,
+and is sharper than first stated: the assignment says its scheme matches the
+course's Helios Python, which builds the day as `expiry.day`, so the reference
+builder hits the same empty weeks.
+
+Adding the rationale section also briefly **blanked the whole page**: it read a
+shared value before the script had declared it, a `ReferenceError` in the
+temporal dead zone that killed every section. `node --check` passed it — it is
+not a syntax error. The render test caught it on the next run.
 
 That harness had a bug worth recording. CPython validates a `.pyc` against the
 source's *(mtime, size)*. Every mutation here is a same-length edit (`< 2` →

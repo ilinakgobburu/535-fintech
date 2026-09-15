@@ -82,6 +82,18 @@ def jlist(xs) -> list:
     return [jnum(x) for x in xs]
 
 
+def _strike_step(options: pd.DataFrame, cycles: list[dict]) -> float:
+    booked = [c for c in cycles if c.get("strike") is not None]
+    steps = []
+    for c in booked:
+        ks = np.sort(options.loc[options["expiry"] == c["expiry_date"], "strike"].unique())
+        near = ks[np.abs(ks - c["strike"]) <= 10.0]
+        d = np.diff(near)
+        if len(d):
+            steps.append(float(d[d > 0].min()))
+    return float(np.median(steps)) if steps else float("nan")
+
+
 def suite_facts() -> dict:
     """
     Count the tests and the mutations by parsing the source.
@@ -177,6 +189,9 @@ def build_payload(cache: Path) -> dict:
         "bars": int(len(stock)),
         "option_series": int(options["ric"].nunique()) if len(options) else 0,
         "option_obs": int(len(options)),
+        # Strike spacing near the money, measured rather than assumed: the
+        # smallest gap between listed strikes on the contracts actually written.
+        "strike_step": _strike_step(options, run["cycles"]),
         "weeks": len(weeks),
         "order_hour": ORDER_HOUR,
         "start_cash": START_CASH,
@@ -266,6 +281,64 @@ def build_payload(cache: Path) -> dict:
     }
 
 
+def render_data_page(css: str, meta: dict) -> str:
+    """
+    Static by construction. Pages cannot reach LSEG, and a page that pretended
+    to would be the defect the assignment names ("Live LSEG on Pages is a
+    defect"). It says what is baked into the book and how to rebuild it.
+    """
+    from html import escape as e
+    fetched = e(str(meta.get("fetched_at", "?")))
+    window = " \u2192 ".join(e(str(x)) for x in meta.get("window", []))
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Covered Call \u00b7 Data</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>{css}
+  .callout{{border-left:3px solid var(--print);background:rgba(201,133,0,.07);
+    padding:16px 20px;border-radius:0 8px 8px 0;margin:22px 0;line-height:1.65}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav>
+  <div class="brand">Covered <span>Call</span></div>
+  <a href="hw2.html">Blotter</a>
+  <a class="on" href="data.html">Data</a>
+  <a class="ticker-link" href="index.html">\u2190 Assignment 1.1 \u00b7 Surface Lab</a>
+</nav>
+<header>
+  <div class="eyebrow">MEng FinTech \u00b7 Algorithmic Trading II \u00b7 Assignment 2</div>
+  <h1>Data connection required</h1>
+  <p class="lede">This page cannot reach LSEG from GitHub Pages.</p>
+</header>
+<div class="callout" id="data-state"><strong>Data connection required.</strong> Pages is static
+hosting. LSEG Workspace and the Python desktop session exist only on a local machine, so nothing
+here fetches data at view time. The book at <a href="hw2.html" style="color:var(--both)">hw2.html</a>
+still works \u2014 that is what gets graded.</div>
+<h2>What is baked into the book</h2>
+<ul class="notes">
+  <li>{e(str(meta.get("stock_ric", "")))} and its call chain, {e(str(meta.get("interval", "")))}
+      bars, {window}.</li>
+  <li>{meta.get("option_series", 0)} call series, {meta.get("option_obs", 0):,} option bars,
+      {meta.get("bars", 0)} underlying bars. LSEG pull of {fetched}.</li>
+</ul>
+<h2>How to re-pull it</h2>
+<p class="notes">With LSEG Workspace running, from a local checkout:</p>
+<pre class="eqn" style="font-family:var(--mono);background:var(--panel-hi);border:1px solid var(--line);border-radius:8px;padding:14px 18px;overflow-x:auto">cd trading_app
+python3 scripts/fetch_hw2.py --dry-run    # counts candidates, no session needed
+python3 scripts/fetch_hw2.py              # the real pull, writes the cache
+python3 scripts/build_hw2.py              # bakes it into docs/hw2.html</pre>
+<p class="notes"><a href="hw2.html" style="color:var(--both)">\u2190 Back to the blotter</a></p>
+</div>
+</body>
+</html>
+"""
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--cache", type=Path, default=DEFAULT_CACHE)
@@ -299,6 +372,15 @@ def main() -> int:
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(html, encoding="utf-8")
     print(f"wrote {args.out} ({args.out.stat().st_size/1e6:.2f} MB)")
+
+    # The assignment: "A Data page on github.io must show Data connection
+    # required." A section inside the book is not a page, so this writes one,
+    # beside the book, in the same stylesheet. Only on the default output:
+    # a build to a scratch path (the staleness test) must not touch docs/.
+    if args.out.resolve() == DEFAULT_OUT.resolve():
+        data_page = args.out.parent / "data.html"
+        data_page.write_text(render_data_page(css.group(1), p["meta"]), encoding="utf-8")
+        print(f"wrote {data_page}")
 
     m, h = p["meta"], p["headline"]
     print(f"  {m['ticker']}  {m['weeks']} weeks  {m['bars']} bars  "

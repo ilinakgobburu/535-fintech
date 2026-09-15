@@ -20,6 +20,23 @@
   const hourOf = s => String(s).slice(11, 16);
   const esc = s => String(s).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
 
+  // Shared by several sections, so declared before any of them run. The
+  // rationale block was added above these definitions once and referenced
+  // STOCK inside its temporal dead zone: a ReferenceError that killed the
+  // entire script and left every section of the page empty. `node --check`
+  // passed it, because it is not a syntax error; only the render test saw it.
+  const L = D.ledger;
+  // The underlying's own path, computed once. Several sections quote it and
+  // they must not each derive it slightly differently.
+  const MARKS = L.stock_mark.filter(x => x !== null && isFinite(x));
+  const STOCK = {
+    first: MARKS[0], last: MARKS[MARKS.length - 1],
+    lo: Math.min(...MARKS), hi: Math.max(...MARKS),
+    ret: 100 * (MARKS[MARKS.length - 1] / MARKS[0] - 1),
+  };
+
+
+
   document.title = `Covered Call · ${M.ticker}`;
   el("h-ticker").textContent = M.ticker;
   el("r-hour").textContent = `${String(M.order_hour).padStart(2, "0")}:00 UTC`;
@@ -29,6 +46,40 @@
     `${esc(M.stock_ric)} · ${M.interval} bars · ${esc(M.window[0])} → ${esc(M.window[1])} · `
     + `${M.weeks} weekly cycles · ${M.option_series} call series, `
     + `${M.option_obs.toLocaleString()} option bars · LSEG pull ${esc(M.fetched_at)}`;
+
+  // ---- the two decisions the assignment asks to see argued ----------------
+  (function why() {
+    const R = D.fit.resid, B = D.bar_study;
+    el("why").innerHTML = `
+      <div class="qa"><p class="q">Why ${esc(M.ticker)}?</p>
+        <p class="a">Because the fill assumption is only as defensible as the chain is liquid, and
+        that was checked before any backtest was run, not after. ${esc(M.ticker)} lists weeklies every
+        week of the window with strikes ${money(M.strike_step, 2)} apart near the money, so "nearest
+        OTM" is a fine-grained choice rather than a coarse one. Its calls actually print:
+        <strong>${D.fit.pooled.n.toLocaleString()}</strong> hourly bars carried both a two-sided
+        quote and a trade, which is what makes the mid-versus-trade test below possible at all. And
+        the quote is tight — a median spread of ${money(R.median_spread, 2)} — so the gap between
+        "filled at mid" and "filled at the bid" is small in dollars. A thin name would have made the
+        midpoint a guess. One more consideration, stated honestly: the name was chosen after
+        probing that data exists end to end, but before seeing a single result, so the
+        ${pct(STOCK.ret)} run it turned in was not picked for.</p></div>
+
+      <div class="qa"><p class="q">Why wait through expiry instead of buying the call back at a profit?</p>
+        <p class="a">The assignment raises this directly, and there are three reasons to wait. First,
+        it is the baseline the assignment specifies, and a book should earn complexity rather than
+        start with it. Second, a buy-back rule is a <em>second</em> free parameter — the X% target —
+        and a parameter swept over ten weeks mostly fits noise; the order-hour sweep below shows how
+        much one undeclared parameter can move a result. Third, and decisive on this data: a
+        buy-to-close limit fills <em>whenever the ask first touches it</em>, somewhere inside an hour.
+        ${B ? `An hourly ASK is not a record of that — checked against a one-minute re-pull, it is the
+        final minute's quote in ${pct(B.snapshot.ask_is_last_pct)} of
+        ${B.snapshot.matched_hours.toLocaleString()} contract-hours, a snapshot at the close of the
+        bar.` : `An hourly ASK is the quote standing at the end of the hour.`} Simulating that fill
+        from hourly bars means choosing a moment the data does not contain, which is inventing a
+        print. Waiting needs only the closing stock print on expiry day, which the data does have.
+        The cost is visible in the result: in a rally, the cap binds and the premium is all the
+        upside there is.</p></div>`;
+  })();
 
   // ---- tiles ------------------------------------------------------------
   const tiles = [
@@ -60,7 +111,11 @@
     const rows = D.blotter;
     let html = `<thead><tr>
       <th>Time (UTC)</th><th>Instrument</th><th>Side</th><th>Qty</th>
-      <th>Limit</th><th>Fill</th><th>Cash Δ</th><th>Rule</th></tr></thead><tbody>`;
+      <th>Limit</th><th>Fill</th><th>Cash Δ</th><th>Notes — the rule that fired</th></tr></thead><tbody>`;
+    // Quantity as a change in POSITION. Stock rows store an unsigned 100 and
+    // take their direction from the side, so a stock SELL would otherwise
+    // print as +100 -- a sale displayed as a purchase.
+    const qtyOf = r => (r.kind === "stock" && r.side === "SELL") ? -r.qty : r.qty;
     let prev = null, cash = M.start_cash;
     rows.forEach(r => {
       const d = dateOf(r.ts);
@@ -69,9 +124,11 @@
       cash += r.cash_delta;
       html += `<tr${sep}>
         <td>${esc(dateOf(r.ts))} ${esc(hourOf(r.ts))}</td>
-        <td style="text-align:left">${esc(r.instrument)}</td>
+        <td style="text-align:left">${esc(r.instrument)}${r.occ
+          ? `<br><span style="color:var(--faint);font-size:var(--fs-xs)">OCC ${esc(r.occ)}</span>`
+          : ""}</td>
         <td class="side s-${r.side}">${r.side}</td>
-        <td>${r.qty > 0 ? "+" : ""}${r.qty}</td>
+        <td>${qtyOf(r) > 0 ? "+" : ""}${qtyOf(r)}</td>
         <td>${r.limit === null ? "—" : num(r.limit)}</td>
         <td>${num(r.fill)}</td>
         <td class="${cls(r.cash_delta)}">${signed(r.cash_delta, 2)}</td>
@@ -86,9 +143,12 @@
     const skipped = D.cycles.filter(c => String(c.status).startsWith("skipped"));
     const parts = [
       `<li><strong>${rows.length} rows, ${H.weeks_booked} cycles.</strong> `
-      + `Each cycle is a stock buy (only when flat), one call written, and one `
-      + `terminal event — ${H.assignments} assignment(s) and `
-      + `${H.weeks_booked - H.assignments} expiry(ies).</li>`,
+      + `Each cycle is a stock BUY (only when flat) and one call SELL, then a `
+      + `terminal event. ${H.weeks_booked - H.assignments} week(s) ended in an `
+      + `EXPIRE row. ${H.assignments} ended in assignment, which is booked as the `
+      + `assignment specifies — <strong>two rows</strong>: ASSIGN on the call, which `
+      + `closes the short and moves no cash, and a stock SELL of 100 at the strike, `
+      + `which carries it. The shares visibly leave the book.</li>`,
       `<li><strong>Cash Δ is the whole accounting.</strong> Buying stock debits `
       + `100 × print; writing debits nothing and credits 100 × mid; an expiry `
       + `moves $0; an assignment credits 100 × <em>strike</em> — never 100 × settle. `
@@ -109,7 +169,6 @@
   })();
 
   // ---- ledger (session closes) ------------------------------------------
-  const L = D.ledger;
   const closes = (() => {
     const idx = [];
     for (let i = 0; i < L.ts.length; i++) {
@@ -122,7 +181,8 @@
     let html = `<thead><tr>
       <th>Session close</th><th>Shares</th><th>Stock mark</th><th>Stock MV</th>
       <th>Short call</th><th>Call mark</th><th>Option MV</th>
-      <th>Cash</th><th>NAV</th></tr></thead><tbody>`;
+      <th>Cash</th><th>NAV</th><th>Initial</th><th>Maint</th>
+      <th>Available</th></tr></thead><tbody>`;
     closes.forEach(i => {
       const k = L.call_strike[i];
       const callTxt = k === null ? "—"
@@ -136,19 +196,29 @@
         <td>${L.option_mark[i] === null ? "—" : num(L.option_mark[i])}</td>
         <td class="${L.option_mv[i] ? "neg" : ""}">${L.option_mv[i] ? money(L.option_mv[i]) : "—"}</td>
         <td>${money(L.cash[i])}</td>
-        <td>${money(L.nav[i])}</td></tr>`;
+        <td>${money(L.nav[i])}</td>
+        <td>${money(L.initial_margin[i])}</td>
+        <td>${money(L.maintenance_margin[i])}</td>
+        <td class="${L.available_funds[i] < 0 ? "neg" : ""}">${money(L.available_funds[i])}</td></tr>`;
     });
     el("tbl-ledger").innerHTML = html + "</tbody>";
-  })();
 
-  // The underlying's own path, computed once. Several sections quote it and
-  // they must not each derive it slightly differently.
-  const MARKS = L.stock_mark.filter(x => x !== null && isFinite(x));
-  const STOCK = {
-    first: MARKS[0], last: MARKS[MARKS.length - 1],
-    lo: Math.min(...MARKS), hi: Math.max(...MARKS),
-    ret: 100 * (MARKS[MARKS.length - 1] / MARKS[0] - 1),
-  };
+    // Every contract the book actually wrote -- the RICs that were queried
+    // for a fill, with the OCC symbol a broker statement would print.
+    const written = D.blotter.filter(b => b.kind === "call" && b.side === "SELL");
+    const outcome = ric => {
+      const t = D.blotter.find(b => b.instrument === ric && (b.side === "ASSIGN" || b.side === "EXPIRE"));
+      return t ? t.side : "—";
+    };
+    el("tbl-contracts").innerHTML = `<thead><tr><th>Written</th><th>RIC</th>
+      <th>OCC</th><th>Strike</th><th>Expiry</th><th>Premium (mid)</th><th>Outcome</th>
+      </tr></thead><tbody>` + written.map(b => `<tr>
+        <td>${esc(dateOf(b.ts))}</td><td style="text-align:left">${esc(b.instrument)}</td>
+        <td style="text-align:left">${esc(b.occ || "—")}</td><td>${num(b.strike)}</td>
+        <td>${esc(String(b.expiry))}</td><td>${num(b.fill)}</td>
+        <td class="side s-${outcome(b.instrument)}">${outcome(b.instrument)}</td></tr>`).join("")
+      + "</tbody>";
+  })();
 
   // ---- plots ------------------------------------------------------------
   const failed = window.__plotlyFailed;
@@ -738,15 +808,21 @@
         resolves either way. Every testable case fails; every padded correction works. The body is
         always nine digits — DD + YY + SSSSS — and a single-digit day must not shorten it to eight.
         This is not cosmetic here: <strong>Aug 7 and Sep 4 are single-digit Fridays in this very
-        window</strong>, so following the handout literally drops 2 of ${M.weeks} cycles with no
-        error message at all — the strikes simply come back empty and the weeks look quiet.</p></div>
+        window</strong>, so following the scheme literally drops 2 of ${M.weeks} cycles with no
+        error message at all — the strikes simply come back empty and the weeks look quiet. The
+        assignment notes that its description matches the course's Helios Python, which builds the
+        day as <code>expiry.day</code>; that is the unpadded form, so the reference builder would
+        hit the same two empty weeks. Worth knowing before anyone else trusts an empty response.</p></div>
 
-      <div class="qa"><p class="q">"Buy Monday, expire Friday" is a description, not a rule.</p>
-        <p class="a">Jun 19 2026 is Juneteenth and Jul 3 2026 is the observed Fourth of July; both
-        are closed. Those weeks expire on the <strong>Thursday</strong>, and the Thursday RIC
-        resolves against LSEG while the Friday one does not. Rather than hardcode a weekday, the
-        loop reads the underlying's own session calendar and takes the first and last session of
-        each ISO week, so a holiday <em>shifts</em> the cycle instead of deleting it.
+      <div class="qa"><p class="q">Why the assignment says to read expiries off the stock tape.</p>
+        <p class="a">The assignment instructs: <em>"take the last session in each week from the stock
+        tape so you do not invent holiday expiries."</em> This window shows exactly why. Jun 19 2026
+        is Juneteenth and Jul 3 2026 is the observed Fourth of July; both are closed. Those weeks
+        expire on the <strong>Thursday</strong>, and the Thursday RIC resolves against LSEG while
+        the Friday one does not. A loop that hardcoded Friday would have asked for contracts that
+        never existed. This one follows the instruction — it takes the first and last session the
+        stock actually printed in each ISO week, so a holiday <em>shifts</em> the cycle instead of
+        deleting it.
         ${shortWeeks.length ? `In this window that fired on ${shortWeeks.length} week(s)
         (${shortWeeks.map(w => esc(w.iso) + " → " + esc(String(w.expiry_date))).join(", ")}).`
         : `In this window no cycle needed shifting, but the rule is what makes that a finding rather than an assumption.`}

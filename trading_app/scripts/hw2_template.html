@@ -40,6 +40,11 @@
   .eqn{font-family:var(--mono);font-size:var(--fs-sm);color:var(--muted);
     background:var(--panel-hi);border:1px solid var(--line);border-radius:8px;
     padding:14px 18px;margin:14px 0;white-space:pre;overflow-x:auto;line-height:1.7}
+  /* An inline grid-template-columns would outrank the shared stylesheet's
+     phone-width media query and keep two cramped columns on a 390px screen,
+     so the two-up layout is a class with its own breakpoint. */
+  .reading.qa-grid.qa-two{grid-template-columns:repeat(2,1fr)}
+  @media(max-width:1000px){.reading.qa-grid.qa-two{grid-template-columns:1fr}}
   .lead-in{color:var(--muted);font-size:var(--fs-lede);line-height:1.62;
     max-width:92ch;margin:0 0 6px}
 </style>
@@ -59,7 +64,7 @@
   <a href="#sec-analysis">Analysis</a>
   <a href="#sec-bars">Bar size</a>
   <a href="#sec-methods">Methods</a>
-  <a href="#sec-data">Data</a>
+  <a href="data.html">Data</a>
   <a class="ticker-link" href="index.html">← Assignment 1.1 · Surface Lab</a>
 </nav>
 
@@ -121,6 +126,8 @@
   accident. <code>tests/test_covered_call.py</code> pins both sides of it.
 </div>
 
+<div id="why" class="reading qa-grid qa-two"></div>
+
 <div class="tiles" id="tiles"></div>
 
 <h2 id="sec-blotter">Blotter</h2>
@@ -141,6 +148,10 @@
   <span id="l-bars">—</span> bars.
 </p>
 <div class="card"><div class="tbl-wrap"><table class="tbl" id="tbl-ledger"></table></div></div>
+
+<h3 style="font-size:var(--fs-sub);margin:26px 0 8px">Contracts written</h3>
+<p class="lead-in" style="margin-top:0">Every expired contract this book queried for a fill.</p>
+<div class="card"><div class="tbl-wrap"><table class="tbl" id="tbl-contracts"></table></div></div>
 
 <h2 id="sec-regt">Reg T, used like an account</h2>
 <p class="lead-in">
@@ -234,9 +245,10 @@ excess    = NAV − maint</div>
 
 <h2 id="sec-methods">Methods, and the things that had to be checked</h2>
 <p class="lead-in">
-  Two of these are corrections to the handout. The rest are assumptions this
-  page would otherwise have been resting on quietly — including two bugs of my
-  own, which are here because of how they were caught rather than despite it.
+  One of these is a correction to the assignment's RIC scheme, and one shows
+  why an instruction in it matters. The rest are assumptions this page would
+  otherwise have been resting on quietly — including bugs of my own, which are
+  here because of how they were caught rather than despite it.
 </p>
 <div id="methods" class="reading"></div>
 
