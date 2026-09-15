@@ -56,7 +56,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from trading_app.lib.covered_call import (  # noqa: E402
-    SESSION_END_UTC, SESSION_START_UTC, trading_weeks,
+    SESSION_CLOSE, SESSION_OPEN, stock_panel, trading_weeks,
 )
 from trading_app.lib.ric import build_option_ric  # noqa: E402
 
@@ -72,7 +72,7 @@ STOCK_FIELDS = ["TRDPRC_1", "OPEN_PRC", "HIGH_1", "LOW_1", "BID", "ASK",
 # Options quote only during the regular session. Probed on AAPL: option bars
 # run 13:00-20:00 UTC while the stock carries 08:00-23:00, and the 20:00 option
 # bar is a one-trade closing stub (ACVOL_UNS=4, NUM_MOVES=1 on 2026-08-31).
-# SESSION_START_UTC / SESSION_END_UTC and the week calendar are imported from
+# The session bounds, the bar relabelling and the week calendar are imported from
 # lib.covered_call so the fetcher and the backtest cannot disagree about which
 # bars exist or where a week begins.
 
@@ -228,6 +228,53 @@ def pull_batch(ld, batch: list[str], fields: list[str],
     return norm
 
 
+def fetch_official_closes(ld, stock_ric: str, start: str, end: str) -> dict:
+    """
+    The exchange's official daily close, as {date-iso: price}.
+
+    Settlement and end-of-day marks use this, and deliberately not any hourly
+    bar. LSEG stamps an hourly bar with its START, so the bar labelled 20:00
+    UTC is 4-5pm ET -- after-hours trading. The first version of this book
+    treated that bar as the close. Checked against these official closes it
+    matched on 0 of 49 days, by a median of $0.31 and by as much as $15.27.
+    The last in-session bar is much closer (median $0.06) but is still the
+    last trade before the closing auction, not the auction itself.
+    """
+    got = ld.get_history(universe=[stock_ric], fields=["TRDPRC_1"],
+                         start=start, end=end, interval="daily")
+    if got is None or got.empty:
+        return {}
+    px = pd.to_numeric(got["TRDPRC_1"], errors="coerce").dropna()
+    return {str(pd.Timestamp(t).date()): float(v) for t, v in px.items()}
+
+
+def backfill_closes(paths: list[Path]) -> int:
+    """
+    Add official closes to caches that already exist, without re-pulling
+    anything else. A full re-pull would return a fresh LSEG snapshot and could
+    move every number on the page; this touches one key.
+    """
+    import lseg.data as ld
+    ld.open_session()
+    try:
+        for path in paths:
+            with path.open("rb") as fh:
+                payload = pickle.load(fh)
+            start, end = payload["window"]
+            closes = fetch_official_closes(ld, payload.get("stock_ric", "AAPL.O"), start, end)
+            if not closes:
+                print(f"{path.name}: no closes came back; cache left unchanged")
+                continue
+            payload["stock_official_close"] = closes
+            with path.open("wb") as fh:
+                pickle.dump(payload, fh)
+            print(f"{path.name}: {len(closes)} official closes, "
+                  f"{min(closes)} -> {max(closes)}")
+    finally:
+        ld.close_session()
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", default="AAPL")
@@ -245,9 +292,15 @@ def main() -> int:
     ap.add_argument("--interval", default="1h",
                     help="LSEG bar size: 1h (default) or 1min")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--backfill-closes", nargs="+", type=Path, default=None,
+                    metavar="CACHE",
+                    help="add official daily closes to existing caches and exit")
     args = ap.parse_args()
 
     print(f"window {args.start} -> {args.end}  root={args.root}  stock={args.stock}")
+
+    if args.backfill_closes:
+        return backfill_closes(args.backfill_closes)
 
     if args.dry_run:
         days = pd.bdate_range(args.start, args.end)
@@ -308,9 +361,10 @@ def main() -> int:
           f"{df_stock.index.min()} -> {df_stock.index.max()}")
 
     # Regular session only, matched to the option bars.
-    hrs = df_stock.index.hour
-    rth = df_stock[(hrs >= SESSION_START_UTC) & (hrs <= SESSION_END_UTC)]
-    print(f"  {len(rth)} bars inside {SESSION_START_UTC}:00-{SESSION_END_UTC}:00 UTC")
+    # The same session filter and as-of relabelling the backtest uses, so the
+    # fetcher cannot band strikes on bars the book will never see.
+    rth = stock_panel({"stock": df_stock, "interval": args.interval})
+    print(f"  {len(rth)} regular-session bars, stamped as-of")
 
     weeks = trading_weeks(pd.DatetimeIndex(rth.index))
     print(f"\n{len(weeks)} trading weeks:")
@@ -329,7 +383,7 @@ def main() -> int:
     # "where the stock actually traded" should mean what it says.
     prints = pd.to_numeric(rth["TRDPRC_1"], errors="coerce")
     highs, lows = prints, prints
-    idx_dates = pd.Series([d.date() for d in rth.index], index=rth.index)
+    idx_dates = rth["date"]
 
     stats = {"threw": 0, "collapsed": 0, "unresolved": 0, "dead_rics": []}
     all_frames, per_expiry = [], {}
@@ -371,6 +425,7 @@ def main() -> int:
                 time.sleep(args.pause)
         per_expiry[str(expiry)] = got_series
 
+    official = fetch_official_closes(ld, args.stock, args.start, args.end)
     ld.close_session()
 
     if not all_frames:
@@ -389,13 +444,15 @@ def main() -> int:
         "fetched_at": dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "window": [args.start, args.end],
         "interval": args.interval,
-        "session_utc": [SESSION_START_UTC, SESSION_END_UTC],
+        "session_utc": [str(SESSION_OPEN), str(SESSION_CLOSE)],
+        "bar_stamp": "LSEG raw = bar start; loaders relabel to as-of (bar end)",
         "weeks": weeks,
         "series_per_expiry": per_expiry,
         "fetch_stats": {k: (v if k != "dead_rics" else sorted(set(v)))
                         for k, v in stats.items()},
         "option_fields": OPTION_FIELDS,
         "stock_fields": STOCK_FIELDS,
+        "stock_official_close": official,
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with args.out.open("wb") as f:

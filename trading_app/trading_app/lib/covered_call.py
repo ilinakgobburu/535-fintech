@@ -72,6 +72,10 @@ MAINT_RATE = 0.25     # FINRA maintenance
 
 SESSION_START_UTC = 13
 SESSION_END_UTC = 20
+# The regular session in UTC. The whole backtest window is inside US daylight
+# saving time (EDT, UTC-4), so 9:30-16:00 ET is 13:30-20:00 UTC throughout.
+SESSION_OPEN = dt.time(13, 30)
+SESSION_CLOSE = dt.time(20, 0)
 
 # Used to work out which level of a MultiIndex holds field names. See
 # stock_panel: guessing by position is what HW1's loaders got wrong.
@@ -79,8 +83,34 @@ KNOWN_FIELDS = {
     "TRDPRC_1", "OPEN_PRC", "HIGH_1", "LOW_1", "BID", "ASK",
     "ACVOL_UNS", "NUM_MOVES", "MID_PRICE", "SETTLE", "CLOSE",
 }
-# 20:00 is a one-trade stub bar; it marks fine but is not a place to send an order.
-TRADEABLE_HOURS = tuple(range(SESSION_START_UTC, SESSION_END_UTC))
+
+# BAR TIMESTAMPS ARE AS-OF, NOT LSEG'S.
+#
+# LSEG stamps an intraday bar with its START: the bar it calls 15:00 covers
+# 15:00-16:00, its TRDPRC_1 is the last trade before 16:00 and its BID/ASK is
+# the quote standing at 15:59. Proved against a one-minute pull of the same
+# data: the hourly price equals the last minute of [H, H+1) on 300 of 300
+# bars, and of [H-1, H) on 1.
+#
+# The first version of this book used LSEG's labels as if they were the
+# moment the prices were observed, which put everything one period early and,
+# worse, treated LSEG's "20:00" bar -- 4 to 5pm ET, after-hours trading -- as
+# the session close. Every end-of-day mark and every expiry settlement came
+# from after-hours prints: 0 of 49 days matched the official close, median
+# miss $0.31, worst $15.27.
+#
+# So the loaders relabel each bar to the END of its window, the instant its
+# prices are as of, and keep only bars whose window closes inside the regular
+# session. The bar that ends at 20:00 is then genuinely the closing hour, and
+# the after-hours bar is gone.
+BAR_STEP = {
+    "1h": pd.Timedelta(hours=1), "hourly": pd.Timedelta(hours=1),
+    "1min": pd.Timedelta(minutes=1), "minute": pd.Timedelta(minutes=1),
+}
+
+# Order bars, stamped as-of: the seven hourly bars that close inside the
+# session, 14:00 through 20:00 UTC.
+TRADEABLE_HOURS = tuple(range(SESSION_START_UTC + 1, SESSION_END_UTC + 1))
 
 BUY, SELL, EXPIRE, ASSIGN = "BUY", "SELL", "EXPIRE", "ASSIGN"
 
@@ -88,6 +118,36 @@ BUY, SELL, EXPIRE, ASSIGN = "BUY", "SELL", "EXPIRE", "ASSIGN"
 # --------------------------------------------------------------------------
 # loading
 # --------------------------------------------------------------------------
+
+def bar_step(payload: dict) -> pd.Timedelta:
+    """The bar width the cache was pulled at. Caches without a label are hourly."""
+    iv = str(payload.get("interval", "1h")).lower()
+    if iv not in BAR_STEP:
+        raise ValueError(f"unknown bar interval {iv!r}; expected one of {sorted(BAR_STEP)}")
+    return BAR_STEP[iv]
+
+
+def in_session_as_of(start: pd.DatetimeIndex, step: pd.Timedelta):
+    """
+    From LSEG's START stamps, return (keep-mask, as-of stamps).
+
+    A bar is kept when its window ENDS inside the regular session: after the
+    open, and no later than the close. That admits the bar that contains the
+    opening trades and the bar that ends at the closing bell, and it excludes
+    premarket bars and the after-hours bar LSEG labels 20:00.
+    """
+    start = pd.DatetimeIndex(start)
+    end = start + step
+    day = start.normalize()
+    open_ = day + pd.Timedelta(hours=SESSION_OPEN.hour, minutes=SESSION_OPEN.minute)
+    close = day + pd.Timedelta(hours=SESSION_CLOSE.hour, minutes=SESSION_CLOSE.minute)
+    keep = np.asarray((end > open_) & (end <= close))
+    return keep, end
+
+
+def is_close_bar(ts) -> bool:
+    return pd.Timestamp(ts).time() == SESSION_CLOSE
+
 
 def load_cache(path: str | Path) -> dict:
     path = Path(path)
@@ -101,7 +161,11 @@ def load_cache(path: str | Path) -> dict:
 
 
 def stock_panel(payload: dict) -> pd.DataFrame:
-    """Hourly underlying bars, regular session only, one row per timestamp."""
+    """
+    Underlying bars, regular session only, stamped AS-OF (end of bar), one row
+    per timestamp, with the exchange's official close attached to every row of
+    its date as OFFICIAL_CLOSE (NaN where the cache has none).
+    """
     df = payload["stock"].copy()
     df.index = pd.DatetimeIndex(df.index)
     if isinstance(df.columns, pd.MultiIndex):
@@ -129,11 +193,31 @@ def stock_panel(payload: dict) -> pd.DataFrame:
         raise ValueError(f"duplicate stock columns after flattening: {dupes}")
     for c in df.columns:
         df[c] = pd.to_numeric(df[c], errors="coerce")
-    hrs = df.index.hour
-    df = df[(hrs >= SESSION_START_UTC) & (hrs <= SESSION_END_UTC)]
+    keep, as_of = in_session_as_of(df.index, bar_step(payload))
+    df = df[keep]
+    df.index = pd.DatetimeIndex(as_of[keep])
     df = df[~df.index.duplicated(keep="last")].sort_index()
     df["date"] = [t.date() for t in df.index]
+    closes = payload.get("stock_official_close") or {}
+    df["OFFICIAL_CLOSE"] = [closes.get(str(d), np.nan) for d in df["date"]]
     return df
+
+
+def stock_marks(stock: pd.DataFrame) -> pd.Series:
+    """
+    The price each bar is marked at: the last trade, except that the bar ending
+    at the closing bell is marked at the official close when one is known.
+
+    The closing auction prints at 16:00:00 ET, after the last trade in the
+    final hourly bar, and it is the price the market settles on.
+    """
+    px = pd.to_numeric(stock["TRDPRC_1"], errors="coerce").astype(float)
+    if "OFFICIAL_CLOSE" not in stock.columns:
+        return px
+    official = pd.to_numeric(stock["OFFICIAL_CLOSE"], errors="coerce").astype(float)
+    at_close = np.array([is_close_bar(t) for t in stock.index])
+    use = at_close & official.notna().to_numpy()
+    return px.where(~use, official)
 
 
 def option_panel(payload: dict) -> pd.DataFrame:
@@ -173,9 +257,9 @@ def option_panel(payload: dict) -> pd.DataFrame:
 
     panel = pd.concat(blocks, ignore_index=True)
     panel = panel.rename(columns={panel.columns[0]: "ts"}) if panel.columns[0] != "ts" else panel
-    panel["ts"] = pd.DatetimeIndex(panel["ts"])
-    hrs = panel["ts"].dt.hour
-    panel = panel[(hrs >= SESSION_START_UTC) & (hrs <= SESSION_END_UTC)]
+    keep, as_of = in_session_as_of(pd.DatetimeIndex(panel["ts"]), bar_step(payload))
+    panel = panel[keep].copy()
+    panel["ts"] = pd.DatetimeIndex(as_of[keep])
 
     ok = panel["bid"].notna() & panel["ask"].notna() & (panel["ask"] >= panel["bid"])
     panel["mid"] = np.where(ok, (panel["bid"] + panel["ask"]) / 2.0, np.nan)
@@ -376,13 +460,31 @@ def _last_bar(frame: pd.DataFrame, day: dt.date) -> pd.Timestamp | None:
     return same_day[-1] if len(same_day) else None
 
 
+def settlement(stock: pd.DataFrame, day: dt.date) -> tuple[pd.Timestamp | None, float, str]:
+    """
+    (bar, price, source) for settling on `day`.
+
+    The official close when the cache has it; otherwise the last trade in the
+    session's final bar, and the source says so rather than passing one off as
+    the other.
+    """
+    ts = _last_bar(stock, day)
+    if ts is None:
+        return None, float("nan"), "no bar"
+    if "OFFICIAL_CLOSE" in stock.columns:
+        oc = stock.at[ts, "OFFICIAL_CLOSE"]
+        if pd.notna(oc) and np.isfinite(float(oc)):
+            return ts, float(oc), "official close"
+    return ts, float(stock.at[ts, "TRDPRC_1"]), "last trade"
+
+
 def run_backtest(
     stock: pd.DataFrame,
     options: pd.DataFrame,
     weeks: list[dict],
     *,
     rule: str = "nearest_otm",
-    order_hour: int = 15,
+    order_hour: int = 16,
     start_cash: float = 50_000.0,
     contracts: int = 1,
 ) -> dict:
@@ -448,8 +550,7 @@ def run_backtest(
         })
 
         # ---- wait through expiry -------------------------------------------
-        ets = _last_bar(stock, expiry_day)
-        s_t = float(stock.at[ets, "TRDPRC_1"]) if ets is not None else np.nan
+        ets, s_t, settle_source = settlement(stock, expiry_day)
         if not np.isfinite(s_t):
             cycles.append({**w, "status": "no expiry print", "strike": float(strike)})
             continue
@@ -466,8 +567,8 @@ def run_backtest(
                 "side": ASSIGN, "qty": contracts, "limit": None,
                 "fill": float(strike), "cash_delta": 0.0,
                 "strike": float(strike), "expiry": expiry_day,
-                "note": f"assigned: settle {s_t:.2f} > strike {strike:.2f}; "
-                        f"short call closed by assignment",
+                "note": f"assigned: {settle_source} {s_t:.2f} > strike "
+                        f"{strike:.2f}; short call closed by assignment",
             })
             blotter.append({
                 "ts": ets, "instrument": stock.attrs.get("ric", "AAPL.O"),
@@ -483,15 +584,16 @@ def run_backtest(
                 "side": EXPIRE,
                 "qty": contracts, "limit": None, "fill": 0.0, "cash_delta": 0.0,
                 "strike": float(strike), "expiry": expiry_day,
-                "note": f"expired: settle {s_t:.2f} <= strike {strike:.2f}; "
-                        f"keep shares, keep premium",
+                "note": f"expired: {settle_source} {s_t:.2f} <= strike "
+                        f"{strike:.2f}; keep shares, keep premium",
             })
 
         cycles.append({
             **w, "status": "assigned" if itm else "expired",
             "order_ts": str(ts), "spot": float(spot), "strike": float(strike),
             "mid": float(mid), "bid": float(r["bid"]), "ask": float(r["ask"]),
-            "settle": s_t, "premium": qty * float(mid),
+            "settle": s_t, "settle_source": settle_source,
+            "premium": qty * float(mid),
             "otm_pct": 100.0 * (strike / spot - 1.0),
             "T_years": T,
             "atm_iv": atm_iv(chain, float(spot), T),
@@ -521,6 +623,8 @@ def build_ledger(run: dict, stock: pd.DataFrame, options: pd.DataFrame) -> pd.Da
 
     # Fast lookup of a short call's mid at a given bar.
     mid_by = {(r.ric, r.ts): r.mid for r in options.itertuples()}
+    # End-of-day bars mark the stock at the official close; see stock_marks.
+    marks = stock_marks(stock)
 
     rows = []
     last_stock = np.nan
@@ -543,7 +647,7 @@ def build_ledger(run: dict, stock: pd.DataFrame, options: pd.DataFrame) -> pd.Da
                 last_opt = np.nan
             bi += 1
 
-        px = stock.at[ts, "TRDPRC_1"]
+        px = marks.at[ts]
         if np.isfinite(px):
             last_stock = float(px)
         stock_mark = last_stock

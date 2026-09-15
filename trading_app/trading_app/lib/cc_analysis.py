@@ -224,7 +224,7 @@ def fill_hour_sweep(stock, options, weeks, *, rule="nearest_otm",
     return out
 
 
-def rule_sweep(stock, options, weeks, *, order_hour=15,
+def rule_sweep(stock, options, weeks, *, order_hour=16,
                start_cash=50_000.0) -> list[dict]:
     """Every strike rule through the identical engine."""
     out = []
@@ -429,7 +429,11 @@ def bar_size_study(opt_h: pd.DataFrame, opt_m: pd.DataFrame) -> dict:
 
     # (1) is the hourly quote the last minute's quote?
     mm = opt_m.copy()
-    mm["hour"] = mm["ts"].dt.floor("h")
+    # Both panels are stamped AS-OF (end of bar), so the hourly bar as of H
+    # holds the minutes as of (H-1h, H] -- ceil, not floor. With LSEG's raw
+    # start stamps this was a floor; relabelling one side and not the other
+    # would pair every hour with the wrong sixty minutes.
+    mm["hour"] = mm["ts"].dt.ceil("h")
     agg = (mm.groupby(["ric", "hour"])
              .agg(last_bid=("bid", "last"), last_ask=("ask", "last"),
                   min_bid=("bid", "min"), max_ask=("ask", "max"),
