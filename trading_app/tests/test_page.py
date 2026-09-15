@@ -421,8 +421,8 @@ class TestReadmeMatchesThePage:
     @staticmethod
     def _readme_section() -> str:
         text = README.read_text(encoding="utf-8")
-        assert "## Assignment 2" in text
-        return text.split("## Assignment 2")[1].split("## Assignment 1.1")[0]
+        assert "## Assignment 1.2" in text
+        return text.split("## Assignment 1.2")[1].split("## Assignment 1.1")[0]
 
     def _regions(self):
         body = self._readme_section()
@@ -874,9 +874,14 @@ class TestStartingCash:
         assert payload["headline"]["min_available"] > 0
         assert payload["meta"]["start_cash"] > payload["min_cash"]["min_cash"]
 
-    def test_pnl_does_not_depend_on_starting_cash(self, payload):
-        """Cash is not an input to any trade, so only the NAV level may move."""
-        assert payload["headline"]["pnl"] == pytest.approx(681.82, abs=0.01)
+    def test_trading_pnl_does_not_depend_on_starting_cash(self, payload):
+        """
+        Cash is not an input to any TRADE, so trading P&L is the +$681.82 it was
+        at $50,000. What the smaller account adds is the cost of borrowing.
+        """
+        H = payload["headline"]
+        assert H["pnl"] + H["margin_interest"] == pytest.approx(681.82, abs=0.01)
+        assert H["margin_interest"] > 0, "the book borrows, so it must pay"
 
 
 @needs_browser
@@ -886,5 +891,44 @@ class TestMarginIsDisclosed:
             pytest.skip("the book never borrowed")
         t = rendered["text"]
         assert "bought on margin" in t
-        assert "No margin interest is charged" in t
+        assert "a year" in t and "actual/360" in t and "assumed broker rate" in t
         assert B.money(abs(payload["headline"]["min_cash"])) in t
+
+    def test_the_bid_fill_cost_is_on_the_page(self, rendered, payload):
+        t = rendered["text"]
+        cost = payload["headline"]["bid_fill_cost"]
+        assert f"${cost:,.2f}" in t
+        assert "filled at the" in t and "bid" in t
+
+
+
+class TestInterestAndFillSensitivity:
+    def test_interest_matches_an_independent_recomputation(self, payload):
+        """
+        Rebuilt from the ledger's own cash column and dates, without calling
+        the accrual code: each session's last row accrues its debit balance at
+        the stated rate for the calendar days to the next session.
+        """
+        import datetime as _dt
+        L, rate = payload["ledger"], payload["meta"]["margin_rate"]
+        last = {}
+        for i, ts in enumerate(L["ts"]):
+            last[ts[:10]] = i
+        dates = sorted(last)
+        total = 0.0
+        for d, n in zip(dates, dates[1:]):
+            cash = L["cash"][last[d]]
+            if cash < 0:
+                days = (_dt.date.fromisoformat(n) - _dt.date.fromisoformat(d)).days
+                total += -cash * rate * days / 360
+        assert payload["headline"]["margin_interest"] == pytest.approx(total)
+        assert L["accrued_interest"][-1] == pytest.approx(total)
+
+    def test_the_rate_is_stated_not_hidden(self, payload):
+        assert payload["meta"]["margin_rate"] == pytest.approx(0.07)
+
+    def test_bid_fill_cost_is_half_the_spread_on_every_call_written(self, payload):
+        booked = [c for c in payload["cycles"] if c["status"] in ("assigned", "expired")]
+        assert payload["headline"]["bid_fill_cost"] == pytest.approx(
+            sum((c["mid"] - c["bid"]) * 100 for c in booked))
+        assert 0 < payload["headline"]["bid_fill_cost"] < payload["headline"]["premium"]

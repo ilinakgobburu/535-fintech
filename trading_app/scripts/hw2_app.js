@@ -48,7 +48,11 @@
   el("r-margin").innerHTML = H.min_cash < 0
     ? `Later entries happen at higher prices, so they are partly <strong>bought on margin</strong>:
        cash goes as low as ${money(H.min_cash)}, a loan Reg T permits as long as available funds
-       stay positive. No margin interest is charged.`
+       stay positive. Interest on that loan accrues at ${pct(100 * M.margin_rate, 0)} a year
+       (actual/360, an assumed broker rate) and comes out of NAV:
+       ${money(H.margin_interest, 2)} over the whole backtest, taking trading P&L of
+       ${signed(H.pnl + H.margin_interest)} to ${signed(H.pnl)}. Buy-and-hold borrows on the same
+       terms.`
     : "";
   el("f-n").textContent = D.fit.resid.n.toLocaleString();
   el("prov").innerHTML =
@@ -79,7 +83,8 @@
   // ---- tiles ------------------------------------------------------------
   const tiles = [
     { label: "Final NAV", value: money(H.final_nav), hero: 1,
-      sub: `${signed(H.pnl)} on ${money(M.start_cash)} starting cash (${pct(H.pnl_pct)})` },
+      sub: `${signed(H.pnl)} on ${money(M.start_cash)} starting cash (${pct(H.pnl_pct)})`
+        + (H.margin_interest > 0 ? `, after ${money(H.margin_interest, 2)} of margin interest` : "") },
     { label: "Buy & hold, same 100 shares", value: money(H.bh_final), hero: 2,
       sub: `the covered call finished ${signed(H.gap)} against simply holding` },
     { label: "Premium collected", value: money(H.premium),
@@ -177,7 +182,7 @@
       <th>Session close</th><th>Shares</th><th>Stock mark</th><th>Stock MV</th>
       <th>Short call</th><th>Call mark</th><th>Option MV</th>
       <th>Cash</th><th>NAV</th><th>Initial</th><th>Maint</th>
-      <th>Available</th></tr></thead><tbody>`;
+      <th>Available</th><th>Accrued interest</th></tr></thead><tbody>`;
     closes.forEach(i => {
       const k = L.call_strike[i];
       const callTxt = k === null ? "—"
@@ -194,7 +199,8 @@
         <td>${money(L.nav[i])}</td>
         <td>${money(L.initial_margin[i])}</td>
         <td>${money(L.maintenance_margin[i])}</td>
-        <td class="${L.available_funds[i] < 0 ? "neg" : ""}">${money(L.available_funds[i])}</td></tr>`;
+        <td class="${L.available_funds[i] < 0 ? "neg" : ""}">${money(L.available_funds[i])}</td>
+        <td>${L.accrued_interest[i] ? money(L.accrued_interest[i], 2) : "—"}</td></tr>`;
     });
     el("tbl-ledger").innerHTML = html + "</tbody>";
 
@@ -455,7 +461,11 @@
         money on one of the most liquid chains listed, mid is a defensible fill and the numbers
         above support it. It is not a claim that would survive size, and it is not what a market
         order would have gotten — that is the ${money(R.median_spread / 2, 2)} half-spread, every
-        week, against ${money(H.premium / Math.max(1, H.weeks_booked))} of median premium.</li>
+        week, against ${money(H.premium / Math.max(1, H.weeks_booked))} of average premium.
+        <strong>And it barely matters here:</strong> had every call been filled at the
+        <em>bid</em> instead of the mid, the book would have collected
+        ${money(H.bid_fill_cost, 2)} less premium over all ${H.weeks_booked} weeks, taking P&L from
+        ${signed(H.pnl)} to ${signed(H.pnl - H.bid_fill_cost)}. The conclusion does not move.</li>
     </ul>`;
   })();
 
@@ -754,7 +764,8 @@
         quarter-spread of it. For one contract a week on a chain this liquid, mid is a
         reasonable fill. It would not survive size, and it is not what a market order would
         have gotten — that is the ${money(D.fit.resid.median_spread / 2, 2)} half-spread, every
-        week.${D.bar_study
+        week. Even so, filling every call at the bid would have cost only
+        ${money(H.bid_fill_cost, 2)} in total.${D.bar_study
           ? ` And the hourly quote it uses is a genuine end-of-hour quote, not an aggregate:
               re-pulling the same contracts at one minute matched the hourly bid and ask to the
               final minute of every one of ${D.bar_study.snapshot.matched_hours.toLocaleString()}

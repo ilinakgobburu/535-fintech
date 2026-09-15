@@ -487,6 +487,7 @@ def run_backtest(
     order_hour: int = 16,
     start_cash: float = 50_000.0,
     contracts: int = 1,
+    margin_rate: float = 0.0,
 ) -> dict:
     """
     Walk the weeks and book what the rules say. Returns the blotter and the
@@ -600,12 +601,29 @@ def run_backtest(
         })
 
     return {"blotter": blotter, "cycles": cycles,
-            "rule": rule, "order_hour": order_hour, "start_cash": start_cash}
+            "rule": rule, "order_hour": order_hour, "start_cash": start_cash,
+            "margin_rate": margin_rate}
 
 
 # --------------------------------------------------------------------------
 # ledger + Reg T
 # --------------------------------------------------------------------------
+
+MARGIN_DAY_COUNT = 360.0   # actual/360, the convention brokers use for margin loans
+
+
+def margin_interest_schedule(stock: pd.DataFrame):
+    """
+    For each session's last bar, the calendar days until the next session's
+    last bar. A debit balance standing at Friday's close accrues three days.
+    """
+    last_bar = {}
+    for t in stock.index:
+        last_bar[t.date()] = t
+    dates = sorted(last_bar)
+    days = {last_bar[d]: (n - d).days for d, n in zip(dates, dates[1:])}
+    return days
+
 
 def build_ledger(run: dict, stock: pd.DataFrame, options: pd.DataFrame) -> pd.DataFrame:
     """
@@ -614,6 +632,15 @@ def build_ledger(run: dict, stock: pd.DataFrame, options: pd.DataFrame) -> pd.Da
     The ledger is DERIVED from the blotter rather than accumulated alongside
     it, so the two cannot drift. Cash only ever moves on a blotter event;
     marks move NAV and never touch cash.
+
+    MARGIN INTEREST. When cash is negative the account is borrowing, and a
+    broker charges for that. Interest accrues daily at each session's close on
+    the debit balance, at run["margin_rate"] a year, actual/360, for the
+    calendar days until the next close. It is carried as an ACCRUED LIABILITY
+    that reduces NAV rather than as a cash movement: the assignment is explicit
+    that cash moves only on blotter events (buy, premium, expire, assign), and
+    a broker debits accrued interest periodically, not bar by bar. The default
+    rate is zero, so a run that never borrows is unaffected.
     """
     blotter = sorted(run["blotter"], key=lambda b: (b["ts"], b["side"] != BUY))
     cash = float(run["start_cash"])
@@ -625,6 +652,9 @@ def build_ledger(run: dict, stock: pd.DataFrame, options: pd.DataFrame) -> pd.Da
     mid_by = {(r.ric, r.ts): r.mid for r in options.itertuples()}
     # End-of-day bars mark the stock at the official close; see stock_marks.
     marks = stock_marks(stock)
+    rate = float(run.get("margin_rate", 0.0) or 0.0)
+    accrual_days = margin_interest_schedule(stock) if rate else {}
+    accrued = 0.0
 
     rows = []
     last_stock = np.nan
@@ -666,7 +696,7 @@ def build_ledger(run: dict, stock: pd.DataFrame, options: pd.DataFrame) -> pd.Da
 
         stock_mv = shares * stock_mark
         option_mv = -SHARES_PER_CONTRACT * opt_mark if call is not None else 0.0
-        nav = cash + stock_mv + option_mv
+        nav = cash + stock_mv + option_mv - accrued
         lmv = shares * stock_mark
         im = INITIAL_RATE * lmv
         mm = MAINT_RATE * lmv
@@ -682,7 +712,13 @@ def build_ledger(run: dict, stock: pd.DataFrame, options: pd.DataFrame) -> pd.Da
             "nav": nav, "lmv": lmv,
             "initial_margin": im, "maintenance_margin": mm,
             "available_funds": nav - im, "excess_liquidity": nav - mm,
+            "accrued_interest": accrued,
         })
+
+        # Accrue on the balance standing at this close; it reaches NAV from the
+        # next bar on, so a close's own row reflects only earlier accruals.
+        if rate and cash < 0 and ts in accrual_days:
+            accrued += -cash * rate * accrual_days[ts] / MARGIN_DAY_COUNT
 
     led = pd.DataFrame(rows)
     led["feasible"] = led["available_funds"] >= 0

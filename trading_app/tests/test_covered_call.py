@@ -1190,3 +1190,75 @@ class TestLsegStampsTheStartOfTheBar:
         assert n > 50
         assert start_hits / n > 0.95, f"start-stamped on only {start_hits}/{n} bars"
         assert end_hits / n < 0.05
+
+
+# --------------------------------------------------------------------------
+# 12. margin interest: an accrued liability, never a cash movement
+# --------------------------------------------------------------------------
+
+class TestMarginInterest:
+    @staticmethod
+    def two_weeks(start_cash, rate):
+        """Mon-Fri, then the following Monday, so a weekend sits inside."""
+        days = {MON: 300.0, TUE: 300.0, WED: 300.0, THU: 300.0, FRI: 295.0,
+                dt.date(2026, 7, 13): 295.0, dt.date(2026, 7, 14): 295.0}
+        stock = make_stock(days)
+        opts = make_options(FRI, list(days)[:5], STRIKES)
+        run = run_backtest(stock, opts, trading_weeks(stock)[:1], order_hour=15,
+                           start_cash=start_cash, margin_rate=rate)
+        return run, build_ledger(run, stock, opts)
+
+    def test_no_borrowing_means_no_interest(self):
+        _, led = self.two_weeks(50_000.0, 0.07)
+        assert (led["accrued_interest"] == 0).all()
+
+    def test_a_zero_rate_charges_nothing_even_when_borrowing(self):
+        _, led = self.two_weeks(20_000.0, 0.0)
+        assert (led["cash"] < 0).any()
+        assert (led["accrued_interest"] == 0).all()
+
+    def test_accrues_actual_over_360_on_the_debit_balance(self):
+        """
+        Start 20,000; buy 100 at 300 (-30,000), collect 100 at the 1.00 mid:
+        cash -9,900 from Monday on. Each close accrues 9,900 x 7% x days/360.
+        Mon->Tue, Tue->Wed, Wed->Thu, Thu->Fri are one day each; Fri->Mon is
+        three. The row on Monday the 13th has seen all five closes: 7 days.
+        """
+        _, led = self.two_weeks(20_000.0, 0.07)
+        mon13 = led[led["ts"] == pd.Timestamp("2026-07-13 20:00")].iloc[0]
+        assert mon13["cash"] == pytest.approx(-9_900.0)
+        assert mon13["accrued_interest"] == pytest.approx(9_900 * 0.07 * 7 / 360)
+
+    def test_the_weekend_counts_three_days(self):
+        _, led = self.two_weeks(20_000.0, 0.07)
+        fri = led[led["ts"] == pd.Timestamp("2026-07-10 20:00")].iloc[0]["accrued_interest"]
+        mon = led[led["ts"] == pd.Timestamp("2026-07-13 14:00")].iloc[0]["accrued_interest"]
+        assert mon - fri == pytest.approx(9_900 * 0.07 * 3 / 360)
+
+    def test_interest_never_touches_cash(self):
+        """Cash moves only on blotter events; interest is a liability in NAV."""
+        run, led = self.two_weeks(20_000.0, 0.07)
+        for _, row in led.iterrows():
+            due = run["start_cash"] + sum(e["cash_delta"] for e in run["blotter"]
+                                          if e["ts"] <= row["ts"])
+            assert row["cash"] == pytest.approx(due)
+
+    def test_interest_comes_out_of_nav_and_available_funds(self):
+        _, with_rate = self.two_weeks(20_000.0, 0.07)
+        _, without = self.two_weeks(20_000.0, 0.0)
+        last_a, last_b = with_rate.iloc[-1], without.iloc[-1]
+        assert last_a["nav"] == pytest.approx(last_b["nav"] - last_a["accrued_interest"])
+        assert last_a["available_funds"] == pytest.approx(
+            last_b["available_funds"] - last_a["accrued_interest"])
+
+    def test_buy_and_hold_borrows_on_the_same_terms(self):
+        from trading_app.lib.cc_analysis import buy_and_hold
+        days = {MON: 300.0, TUE: 300.0, WED: 300.0, THU: 300.0, FRI: 300.0}
+        stock = make_stock(days)
+        opts = make_options(FRI, list(days), STRIKES)
+        run = run_backtest(stock, opts, trading_weeks(stock), order_hour=15, start_cash=29_000.0)
+        led = build_ledger(run, stock, opts)
+        free = buy_and_hold(stock, led, 29_000.0, margin_rate=0.0)
+        paid = buy_and_hold(stock, led, 29_000.0, margin_rate=0.07)
+        # 100 x 300 against 29,000 cash: a 1,000 loan for Mon->Thu closes, 4 days
+        assert free["nav"].iloc[-1] - paid["nav"].iloc[-1] == pytest.approx(1_000 * 0.07 * 4 / 360)

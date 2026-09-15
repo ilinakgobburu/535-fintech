@@ -190,6 +190,23 @@ MUTATIONS = [
             '    start_cash = 50_000.0',
      "starting cash goes back to a flat $50,000 and Jun 29's NAV to about $50k",
      TESTS_PAGE),
+    # --- margin interest and the fill sensitivity --------------------------
+    (CC, '        if rate and cash < 0 and ts in accrual_days:',
+         '        if rate and ts in accrual_days:',
+     "interest is charged on a positive cash balance too", TESTS),
+    (CC, '            accrued += -cash * rate * accrual_days[ts] / MARGIN_DAY_COUNT',
+         '            accrued += -cash * rate / MARGIN_DAY_COUNT',
+     "the weekend accrues one day instead of three", TESTS),
+    (CC, '        nav = cash + stock_mv + option_mv - accrued',
+         '        nav = cash + stock_mv + option_mv',
+     "accrued interest is computed but never reaches NAV", TESTS),
+    (AN, '        if margin_rate and cash < 0 and t in accrual_days:',
+         '        if False:',
+     "the buy-and-hold benchmark borrows interest-free while the book pays", TESTS),
+    (BUILD, '                (c["mid"] - c["bid"]) * SHARES_PER_CONTRACT for c in run["cycles"]',
+            '                (c["ask"] - c["mid"]) * SHARES_PER_CONTRACT * 0 for c in run["cycles"]',
+     "the bid-fill cost reported on the page is not the half-spread given up",
+     TESTS_PAGE),
     # --- the off-by-one found in class: bar stamps and the close -----------
     (CC, '    return keep, end\n', '    return keep, start\n',
      "bars keep LSEG's START stamps, so every price is labelled one period "

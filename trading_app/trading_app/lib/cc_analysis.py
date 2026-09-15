@@ -13,8 +13,8 @@ import numpy as np
 import pandas as pd
 
 from .covered_call import (
-    SHARES_PER_CONTRACT, STRIKE_RULE_META, STRIKE_RULES, TRADEABLE_HOURS,
-    build_ledger, run_backtest,
+    MARGIN_DAY_COUNT, SHARES_PER_CONTRACT, STRIKE_RULE_META, STRIKE_RULES,
+    TRADEABLE_HOURS, build_ledger, margin_interest_schedule, run_backtest,
 )
 
 
@@ -194,6 +194,7 @@ def _headline(run: dict, ledger: pd.DataFrame) -> dict:
         "order_hour": run["order_hour"],
         "final_nav": float(ledger["nav"].iloc[-1]),
         "pnl": float(ledger["nav"].iloc[-1] - run["start_cash"]),
+        "margin_interest": float(ledger["accrued_interest"].iloc[-1]),
         "premium_collected": prem,
         "weeks_booked": int(len(booked)),
         "weeks_skipped": int(len(cyc) - len(booked)) if len(cyc) else 0,
@@ -205,7 +206,7 @@ def _headline(run: dict, ledger: pd.DataFrame) -> dict:
 
 
 def fill_hour_sweep(stock, options, weeks, *, rule="nearest_otm",
-                    start_cash=50_000.0) -> list[dict]:
+                    start_cash=50_000.0, margin_rate=0.0) -> list[dict]:
     """
     The same book written at each tradeable hour of the entry day.
 
@@ -218,19 +219,20 @@ def fill_hour_sweep(stock, options, weeks, *, rule="nearest_otm",
     out = []
     for h in TRADEABLE_HOURS:
         run = run_backtest(stock, options, weeks, rule=rule,
-                           order_hour=h, start_cash=start_cash)
+                           order_hour=h, start_cash=start_cash, margin_rate=margin_rate)
         led = build_ledger(run, stock, options)
         out.append(_headline(run, led))
     return out
 
 
 def rule_sweep(stock, options, weeks, *, order_hour=16,
-               start_cash=50_000.0) -> list[dict]:
+               start_cash=50_000.0, margin_rate=0.0) -> list[dict]:
     """Every strike rule through the identical engine."""
     out = []
     for name in STRIKE_RULES:
         run = run_backtest(stock, options, weeks, rule=name,
-                           order_hour=order_hour, start_cash=start_cash)
+                           order_hour=order_hour, start_cash=start_cash,
+                           margin_rate=margin_rate)
         led = build_ledger(run, stock, options)
         h = _headline(run, led)
         cyc = pd.DataFrame(run["cycles"])
@@ -269,7 +271,8 @@ def rule_sweep(stock, options, weeks, *, order_hour=16,
 # --------------------------------------------------------------------------
 
 def buy_and_hold(stock: pd.DataFrame, ledger: pd.DataFrame,
-                 start_cash: float, shares: int = SHARES_PER_CONTRACT) -> pd.DataFrame:
+                 start_cash: float, shares: int = SHARES_PER_CONTRACT,
+                 margin_rate: float = 0.0) -> pd.DataFrame:
     """
     100 shares bought at the first entry bar and simply held.
 
@@ -286,10 +289,17 @@ def buy_and_hold(stock: pd.DataFrame, ledger: pd.DataFrame,
     px0 = float(ledger.at[first[0], "stock_mark"])
     cash = start_cash - shares * px0
     sub = ledger[ledger["ts"] >= t0]
-    return pd.DataFrame({
-        "ts": sub["ts"].to_numpy(),
-        "nav": cash + shares * sub["stock_mark"].to_numpy(float),
-    })
+    # The benchmark borrows on the same terms as the book. With the account
+    # sized to the first covered call, the 100 shares alone cost more than the
+    # starting cash, so buy-and-hold carries a small loan the whole way; an
+    # interest-free benchmark against a charged book would tilt the comparison.
+    accrual_days = margin_interest_schedule(stock) if margin_rate else {}
+    accrued, navs = 0.0, []
+    for t, mark in zip(sub["ts"], sub["stock_mark"].to_numpy(float)):
+        navs.append(cash + shares * mark - accrued)
+        if margin_rate and cash < 0 and t in accrual_days:
+            accrued += -cash * margin_rate * accrual_days[t] / MARGIN_DAY_COUNT
+    return pd.DataFrame({"ts": sub["ts"].to_numpy(), "nav": navs})
 
 
 # --------------------------------------------------------------------------

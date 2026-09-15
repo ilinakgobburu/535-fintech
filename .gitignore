@@ -44,3 +44,6 @@ trading_app/.web/
 trading_app/.states/
 trading_app/assets/external/
 .mutation_check.lock
+
+# Personal presentation notes -- not part of the graded site
+notes/

@@ -6,7 +6,7 @@ MEng FinTech · Algorithmic Trading II. One app, grown one homework at a time.
 
 ---
 
-## Assignment 2 — Covered Call Backtest
+## Assignment 1.2 — Covered Call Backtest
 
 **Published page:** [`docs/hw2.html`](https://ilinakgobburu.github.io/535-fintech/hw2.html)
 
@@ -23,7 +23,7 @@ trading_app/
   scripts/build_hw2.py              -> docs/hw2.html
   scripts/hw2_app.js                the page's figures and computed prose
   scripts/bar_size_study.py         hourly vs a 1-minute re-pull -> a <1 KB committed JSON
-  scripts/mutation_check.py         re-introduces 38 bugs, asserts the suite catches each
+  scripts/mutation_check.py         re-introduces 44 bugs, asserts the suite catches each
   tests/test_covered_call.py        the engine, the loaders, the strike rules
   tests/test_fetch_shapes.py        LSEG response shapes, bisection, the dry run
   tests/test_page.py                the payload, the built page, the prose, this README
@@ -33,8 +33,8 @@ docs/data.html                      <- "Data connection required", as Pages must
 
 ```bash
 cd trading_app
-python3 -m pytest tests -q             # 320 cases; 193 test functions for this assignment
-python3 scripts/mutation_check.py      # 38 mutations, all caught (needs node + chromium)
+python3 -m pytest tests -q             # 337 cases; 210 test functions for this assignment
+python3 scripts/mutation_check.py      # 44 mutations, all caught (needs node + chromium)
 python3 scripts/build_hw2.py           # rebuild the page from the cached pull
 ```
 
@@ -42,7 +42,8 @@ python3 scripts/build_hw2.py           # rebuild the page from the cached pull
 
 AAPL ran **$275.73 → $319.97 (+16.0%)** over the ten weeks. The book wrote 10
 calls, collected **$3,567** of premium, and was **assigned 8 times**. It finished
-**+$682** against **+$3,847** for the same 100 shares simply held.
+**+$657** — +$682 from trading, less $24.56 of margin interest — against **+$3,843**
+for the same 100 shares simply held.
 
 That gap is the entire subject. Nearest-OTM sells a cap a median of **0.31%**
 above spot, and AAPL's weekly range is far wider than 0.31%, so assignment is
@@ -132,16 +133,19 @@ hourly bar, not an arbitrage: BID/ASK is the quote at the end of the hour while
 TRDPRC_1 is the last trade inside it. R² near 0.999 and a mid that is the actual
 trade price about a third of the time are both true at once, because R² is
 answering "how big is this option" and the fill question is "who paid the spread".
+It is also cheap to be wrong about here: had every call been filled at the *bid*
+instead of the mid, the book would have collected $61.50 less premium over the
+whole backtest.
 
 ### The parameter nobody declares
 
 Writing at a different hour of the same entry session moves final P&L from
-**+$682 to +$1,390** — a $708 spread around a booked result of $682. The
+**+$657 to +$1,367** — a $710 spread around a booked result of $657. The
 strategy is identical in every row; only the clock moves. The hour actually
 booked, the hour ending 16:00 UTC (noon ET), turned out to be **the worst of the seven**, and it is left
 standing because it was fixed before any of these numbers existed.
 
-It did *not* outrank the strike rule, which spans $2,509. I expected the reverse
+It did *not* outrank the strike rule, which spans $2,514. I expected the reverse
 after watching one Monday's mid move 2× intraday, and one vivid observation
 turned out to be a poor guide to the aggregate.
 
@@ -160,7 +164,7 @@ for a stated breach probability `p`. Implied vol ran **24.4%–47.4%**, and the
 rule did widen when the week was priced to move: in the 47.4% week it pushed the
 strike to its furthest, 3.83% out.
 
-**It edged out the fixed 2% rule** — +$3,191 against +$2,800 — but most of that gap is
+**It edged out the fixed 2% rule** — +$3,171 against +$2,780 — but most of that gap is
 a single week, and over ten weeks it is noise. The valuable output was the calibration:
 
 | target breach probability | realised assignment |
@@ -213,10 +217,10 @@ stay checkable.
 
 ### The tests, and a bug in the thing that checks the tests
 
-193 test functions for this assignment (320 cases with parametrisation), split by
+210 test functions for this assignment (337 cases with parametrisation), split by
 failure mode: the RIC and calendar tests pin bugs that produce *silence*, the
 blotter/ledger/Reg T tests pin bugs that produce a *plausible wrong number*.
-`scripts/mutation_check.py` re-introduces **38** specific bugs one at a time,
+`scripts/mutation_check.py` re-introduces **44** specific bugs one at a time,
 each aimed at the test file that should notice, and asserts the suite fails on
 every one.
 
@@ -348,11 +352,13 @@ formulas, so the gap was the idle cash. Starting cash is now **the cost of the
 first covered call** — 100 shares at the first entry price less the first premium
 — which leaves cash at exactly zero after the first trade and puts Jun 29's close
 NAV at **$27,887**. Later entries at higher prices are partly bought on margin, which
-Reg T allows and the page discloses; P&L does not change, because cash is not an
-input to any trade.
+Reg T allows and the page discloses. Trading P&L does not change, because cash is
+not an input to any trade, but borrowing is not free: margin interest, assumed at
+7% a year (actual/360), accrues on the debit balance and takes P&L from +$682 to
+**+$657**. Buy-and-hold borrows on the same terms.
 
 **The booked strategy's result did not change** — assignment pays the strike,
-so final NAV is still +$682, with the same 8 assignments. But one counterfactual
+so trading P&L is still +$682, with the same 8 assignments. But one counterfactual
 did. The 2%-OTM rule had been *assigned* on its Aug 28 call, strike 320, on an
 after-hours print of $320.05, when AAPL closed at $319.70. That is an impossible
 trade, and removing it reorders the strike-rule comparison: the implied-vol rule

@@ -43,7 +43,12 @@ ORDER_HOUR = 16      # the bar ENDING 16:00 UTC, noon ET; stamps are as-of, see 
 # than a cash cushion. It was a flat $50,000, which put Jun 29's NAV near $50k
 # where the professor expected roughly $27k; with this rule it is $27,886.50.
 # Later entries at higher prices are then partly financed on margin, which
-# Reg T allows and the page discloses. No margin interest is charged.
+# Reg T allows and the page discloses.
+
+# Margin interest on any debit balance: an ASSUMED broker margin rate, a year,
+# actual/360. Typical retail margin rates sit well above the policy rate; 7% is
+# a stated round assumption, not a quote from any broker, and the page says so.
+MARGIN_RATE = 0.07
 RULE = "nearest_otm"
 SCATTER_CAP = 4000   # points drawn; every statistic uses the full sample
 
@@ -169,14 +174,15 @@ def build_payload(cache: Path) -> dict:
     weeks = trading_weeks(stock)
     start_cash = first_combo_cost(stock, options, weeks)
 
-    run = run_backtest(stock, options, weeks, rule=RULE,
-                       order_hour=ORDER_HOUR, start_cash=start_cash)
+    run = run_backtest(stock, options, weeks, rule=RULE, order_hour=ORDER_HOUR,
+                       start_cash=start_cash, margin_rate=MARGIN_RATE)
     ledger = build_ledger(run, stock, options)
-    bh = A.buy_and_hold(stock, ledger, start_cash)
+    bh = A.buy_and_hold(stock, ledger, start_cash, margin_rate=MARGIN_RATE)
     fit = A.mid_vs_print(options, stock)
-    hours = A.fill_hour_sweep(stock, options, weeks, rule=RULE, start_cash=start_cash)
+    hours = A.fill_hour_sweep(stock, options, weeks, rule=RULE,
+                              start_cash=start_cash, margin_rate=MARGIN_RATE)
     rules = A.rule_sweep(stock, options, weeks, order_hour=ORDER_HOUR,
-                         start_cash=start_cash)
+                         start_cash=start_cash, margin_rate=MARGIN_RATE)
     floor = min_start_cash(run, stock, options)
     ohlc = A.ohlc_integrity(stock)
 
@@ -218,6 +224,7 @@ def build_payload(cache: Path) -> dict:
         "order_hour": ORDER_HOUR,
         "start_cash": start_cash,
         "start_cash_rule": "cost of the first combo: 100 x first entry print less the first premium",
+        "margin_rate": MARGIN_RATE,
         "rule": RULE,
         "initial_rate": INITIAL_RATE,
         "maint_rate": MAINT_RATE,
@@ -240,6 +247,13 @@ def build_payload(cache: Path) -> dict:
             "bh_pnl": jnum(bh_final - start_cash),
             "gap": jnum(final_nav - bh_final),
             "min_available": jnum(float(ledger["available_funds"].min())),
+            "margin_interest": jnum(float(ledger["accrued_interest"].iloc[-1])),
+            # What the fill assumption is worth: the premium given up had every
+            # call filled at the BID rather than the mid, i.e. half the quoted
+            # spread on each contract written.
+            "bid_fill_cost": jnum(float(sum(
+                (c["mid"] - c["bid"]) * SHARES_PER_CONTRACT for c in run["cycles"]
+                if c["status"] in ("assigned", "expired")))),
             # Most negative cash balance: the largest margin loan the book ran.
             "min_cash": jnum(float(ledger["cash"].min())),
             "min_excess": jnum(float(ledger["excess_liquidity"].min())),
@@ -257,6 +271,7 @@ def build_payload(cache: Path) -> dict:
             "option_mv": jlist(ledger["option_mv"]),
             "call_strike": jlist(ledger["call_strike"]),
             "call_expiry": [x if x else None for x in ledger["call_expiry"]],
+            "accrued_interest": jlist(ledger["accrued_interest"]),
             "nav": jlist(ledger["nav"]),
             "lmv": jlist(ledger["lmv"]),
             "initial_margin": jlist(ledger["initial_margin"]),
@@ -336,7 +351,7 @@ def render_data_page(css: str, meta: dict) -> str:
   <a class="ticker-link" href="index.html">\u2190 Assignment 1.1 \u00b7 Surface Lab</a>
 </nav>
 <header>
-  <div class="eyebrow">MEng FinTech \u00b7 Algorithmic Trading II \u00b7 Assignment 2</div>
+  <div class="eyebrow">MEng FinTech \u00b7 Algorithmic Trading II \u00b7 Assignment 1.2</div>
   <h1>Data connection required</h1>
   <p class="lede">This page cannot reach LSEG from GitHub Pages.</p>
 </header>
