@@ -29,7 +29,9 @@ no quote   no BID/ASK on the chosen strike at that bar -> no fill. If we are
            decision and half of it is unpriceable. If we already hold shares
            we hold them uncovered for the week and say so.
 expiry     last session of the week, at the closing print.
-             S_T >  K  assigned: deliver 100 shares, cash += 100 x K, flat.
+             S_T >  K  assigned. TWO blotter rows, as the assignment specifies:
+                       ASSIGN on the call (closes the short, no cash), and a
+                       stock SELL of 100 at the strike (cash += 100 x K). Flat.
              S_T <= K  expires worthless: keep shares, keep premium.
            No rolls. No buy-to-close. We wait through expiry.
 
@@ -61,7 +63,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .ric import parse_option_ric
+from .ric import occ_symbol, parse_option_ric
 from .vol import implied_vol
 
 SHARES_PER_CONTRACT = 100
@@ -423,6 +425,8 @@ def run_backtest(
             continue
 
         r = row.iloc[0]
+        occ = occ_symbol(parse_option_ric(r["ric"])["underlying"], expiry_day,
+                         float(strike), "C")
         if shares == 0:
             blotter.append({
                 "ts": ts, "instrument": stock.attrs.get("ric", "AAPL.O"),
@@ -434,7 +438,7 @@ def run_backtest(
             shares += qty
 
         blotter.append({
-            "ts": ts, "instrument": r["ric"], "kind": "call", "side": SELL,
+            "ts": ts, "instrument": r["ric"], "occ": occ, "kind": "call", "side": SELL,
             "qty": -contracts, "limit": round(float(mid), 4), "fill": round(float(mid), 4),
             "cash_delta": qty * float(mid),
             "strike": float(strike), "expiry": expiry_day,
@@ -452,18 +456,31 @@ def run_backtest(
 
         itm = s_t > strike  # ties expire: an ATM call has no intrinsic value
         if itm:
+            # Two rows, because two things happen and the assignment asks for
+            # both: the short call is closed by assignment, and the shares are
+            # delivered against it at the strike. Booking it as one row that
+            # carried the cash was arithmetically right and still hid the
+            # stock leg from anyone reading the blotter for share movements.
             blotter.append({
-                "ts": ets, "instrument": r["ric"], "kind": "call", "side": ASSIGN,
-                "qty": contracts, "limit": None, "fill": float(strike),
-                "cash_delta": qty * float(strike),
+                "ts": ets, "instrument": r["ric"], "occ": occ, "kind": "call",
+                "side": ASSIGN, "qty": contracts, "limit": None,
+                "fill": float(strike), "cash_delta": 0.0,
                 "strike": float(strike), "expiry": expiry_day,
                 "note": f"assigned: settle {s_t:.2f} > strike {strike:.2f}; "
-                        f"deliver {qty} shares at {strike:.2f}, flat",
+                        f"short call closed by assignment",
+            })
+            blotter.append({
+                "ts": ets, "instrument": stock.attrs.get("ric", "AAPL.O"),
+                "kind": "stock", "side": SELL, "qty": qty, "limit": None,
+                "fill": float(strike), "cash_delta": qty * float(strike),
+                "note": f"delivered against assignment: {qty} shares at the "
+                        f"strike {strike:.2f}, not the settle {s_t:.2f}; flat",
             })
             shares -= qty
         else:
             blotter.append({
-                "ts": ets, "instrument": r["ric"], "kind": "call", "side": EXPIRE,
+                "ts": ets, "instrument": r["ric"], "occ": occ, "kind": "call",
+                "side": EXPIRE,
                 "qty": contracts, "limit": None, "fill": 0.0, "cash_delta": 0.0,
                 "strike": float(strike), "expiry": expiry_day,
                 "note": f"expired: settle {s_t:.2f} <= strike {strike:.2f}; "
@@ -519,8 +536,9 @@ def build_ledger(run: dict, stock: pd.DataFrame, options: pd.DataFrame) -> pd.Da
                         "expiry": ev["expiry"]}
                 last_opt = ev["fill"]
             elif ev["side"] in (EXPIRE, ASSIGN):
-                if ev["side"] == ASSIGN:
-                    shares -= SHARES_PER_CONTRACT
+                # Shares leave on the stock SELL row that follows an ASSIGN,
+                # not here. Decrementing in both places would take the book to
+                # -100 shares on every assignment.
                 call = None
                 last_opt = np.nan
             bi += 1

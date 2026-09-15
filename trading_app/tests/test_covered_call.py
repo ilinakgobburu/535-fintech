@@ -230,9 +230,37 @@ class TestBlotter:
         the assignment.
         """
         run, _, _, _ = one_week(settle=310.0)
-        a = [e for e in run["blotter"] if e["side"] == ASSIGN][0]
-        assert a["cash_delta"] == pytest.approx(100 * 300.0)
-        assert a["cash_delta"] != pytest.approx(100 * 310.0)
+        delivered = [e for e in run["blotter"]
+                     if e["kind"] == "stock" and e["side"] == SELL][0]
+        assert delivered["fill"] == pytest.approx(300.0)
+        assert delivered["cash_delta"] == pytest.approx(100 * 300.0)
+        assert delivered["cash_delta"] != pytest.approx(100 * 310.0)
+
+    def test_assignment_is_two_rows_as_the_assignment_specifies(self):
+        """
+        "Friday ITM is ASSIGN on the call and a stock SELL at the strike."
+        It used to be one ASSIGN row carrying the cash: arithmetically right,
+        and still a blotter in which the shares never visibly left.
+        """
+        run, _, _, _ = one_week(settle=310.0)
+        tail = run["blotter"][-2:]
+        assert [(e["kind"], e["side"]) for e in tail] == [("call", ASSIGN),
+                                                         ("stock", SELL)]
+        assert tail[0]["ts"] == tail[1]["ts"], "both legs settle at one moment"
+        assert tail[0]["cash_delta"] == 0.0, "the cash belongs to the stock leg"
+        assert tail[1]["qty"] == SHARES_PER_CONTRACT
+
+    def test_assignment_moves_the_shares_exactly_once(self):
+        """Decrementing on both rows would leave the book at -100 shares."""
+        run, led, _, _ = one_week(settle=310.0)
+        assert led["shares"].iloc[-1] == 0
+        assert (led["shares"] >= 0).all()
+
+    def test_option_rows_carry_an_occ_symbol(self):
+        run, _, _, _ = one_week(settle=310.0)
+        for e in run["blotter"]:
+            if e["kind"] == "call":
+                assert e["occ"] == "AAPL  260710C00300000"
 
     def test_settle_equal_to_strike_expires(self):
         """An ATM call has no intrinsic value; the tie has to be decided."""
@@ -241,12 +269,13 @@ class TestBlotter:
 
     def test_a_penny_over_the_strike_assigns(self):
         run, _, _, _ = one_week(settle=300.01)
-        assert [e["side"] for e in run["blotter"]][-1] == ASSIGN
+        calls = [e["side"] for e in run["blotter"] if e["kind"] == "call"]
+        assert calls[-1] == ASSIGN
 
     def test_no_rolls_and_no_buy_to_close(self):
         run, _, _, _ = one_week(settle=310.0)
-        sides = [e["side"] for e in run["blotter"]]
-        assert sides.count(SELL) == 1
+        call_sides = [e["side"] for e in run["blotter"] if e["kind"] == "call"]
+        assert call_sides.count(SELL) == 1, "one call written per cycle, never rolled"
         assert BUY not in [e["side"] for e in run["blotter"] if e["kind"] == "call"]
 
 
@@ -899,6 +928,19 @@ class TestOrderBarSelection:
         from trading_app.lib.covered_call import _last_bar
         f = self.day_frame([13, 14, 15, 16, 20])
         assert _last_bar(f, dt.date(2026, 8, 31)).hour == 20
+
+
+class TestOccSymbol:
+    def test_matches_the_osi_layout(self):
+        from trading_app.lib.ric import occ_symbol
+        assert occ_symbol("AAPL", dt.date(2026, 9, 4), 320.0, "C") == "AAPL  260904C00320000"
+        assert occ_symbol("AAPL", dt.date(2026, 8, 7), 312.5, "C") == "AAPL  260807C00312500"
+        assert len(occ_symbol("SPY", dt.date(2026, 8, 7), 600.0, "P")) == 21
+
+    def test_rejects_a_bad_right(self):
+        from trading_app.lib.ric import occ_symbol
+        with pytest.raises(ValueError):
+            occ_symbol("AAPL", dt.date(2026, 9, 4), 320.0, "X")
 
 
 class TestLoadCache:

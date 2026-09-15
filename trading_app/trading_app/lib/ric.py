@@ -143,3 +143,22 @@ def build_option_ric(
         # emitting ^{put letter} returns no data at all.
         ric = f"{ric}^{expired_suffix_code(expiry.month)}{expiry.strftime('%y')}"
     return ric
+
+
+def occ_symbol(root: str, expiry: dt.date, strike: float, cp: str) -> str:
+    """
+    The OCC/OSI option symbol: root padded to six, YYMMDD, C or P, and the
+    strike times 1000 in eight digits.
+
+        AAPL 4-Sep-2026 320 call  ->  "AAPL  260904C00320000"
+
+    The assignment asks for this as a subtitle under the RIC in the blotter.
+    It is the identifier a broker statement would print, and unlike the RIC
+    it has no ambiguity about zero-padding the day -- which is exactly the
+    point on which the RIC scheme in the handout turned out to be wrong.
+    """
+    cp = cp.upper()
+    if cp not in ("C", "P"):
+        raise ValueError(f"cp must be 'C' or 'P', got {cp!r}")
+    return (f"{root.upper():<6}{expiry.strftime('%y%m%d')}{cp}"
+            f"{int(round(strike * 1000)):08d}")
