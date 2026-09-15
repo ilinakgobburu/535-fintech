@@ -99,8 +99,8 @@ MUTATIONS = [
     (RIC, 'f"{expiry.strftime(\'%d\')}{expiry.strftime(\'%y\')}"',
           'f"{expiry.day}{expiry.strftime(\'%y\')}"',
      "the handout's unpadded expiry day (loses single-digit Fridays silently)", TESTS),
-    (CC, 's_t = float(stock.at[ets, "TRDPRC_1"]) if ets is not None else np.nan',
-         's_t = float(stock.at[ets, "HIGH_1"]) if ets is not None else np.nan',
+    (CC, '    return ts, float(stock.at[ts, "TRDPRC_1"]), "last trade"',
+         '    return ts, float(stock.at[ts, "HIGH_1"]), "last trade"',
      "settlement read off HIGH_1, which carries bad prints, instead of the last trade", TESTS),
     (CC, 'spot = stock.at[ts, "TRDPRC_1"] if "TRDPRC_1" in stock.columns else np.nan',
          'spot = stock.at[ts, "LOW_1"] if "LOW_1" in stock.columns else np.nan',
@@ -168,7 +168,7 @@ MUTATIONS = [
      TESTS_PAGE),
     (TEMPLATE, '.grid2 > *{min-width:0}', '.grid2 > *{min-width:auto}',
      "tables inside a grid push the whole page sideways below ~420px", TESTS_PAGE),
-    (README, 'more than 1% below on **21.3%**', 'more than 1% below on **21.2%**',
+    (README, 'more than 1% below on **21.4%**', 'more than 1% below on **21.3%**',
      "a README figure drifts from the page by one rounding step", TESTS_PAGE),
 
     # --- the bisection, and the bar the order is sent on ------------------
@@ -186,6 +186,20 @@ MUTATIONS = [
     (CC, '"side": ASSIGN, "qty": contracts, "limit": None,\n                "fill": float(strike), "cash_delta": 0.0,',
          '"side": ASSIGN, "qty": contracts, "limit": None,\n                "fill": float(strike), "cash_delta": qty * float(strike),',
      "assignment cash is booked on BOTH rows, double-counting the strike", TESTS),
+    # --- the off-by-one found in class: bar stamps and the close -----------
+    (CC, '    return keep, end\n', '    return keep, start\n',
+     "bars keep LSEG's START stamps, so every price is labelled one period "
+     "early and no bar is the close", TESTS),
+    (CC, 'keep = np.asarray((end > open_) & (end <= close))',
+         'keep = np.asarray((end > open_) & (end <= close + pd.Timedelta(hours=1)))',
+     "the after-hours bar is admitted back into the session", TESTS),
+    (CC, '    return px.where(~use, official)', '    return px',
+     "end-of-day NAV is marked at the last trade instead of the official close "
+     "(Jun 29 reads 50,025, not 50,036)", TESTS),
+    (CC, '        if pd.notna(oc) and np.isfinite(float(oc)):',
+         '        if False:',
+     "expiries settle on the last trade before the bell rather than the "
+     "closing auction", TESTS),
     (CC, 'return upto[-1] if len(upto) else same_day[0]',
          'return same_day[0]',
      "the order always fills on the first bar of the day regardless of the "

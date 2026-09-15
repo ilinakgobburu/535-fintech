@@ -23,6 +23,7 @@ import datetime as dt
 import numpy as np
 import pandas as pd
 import pytest
+from pathlib import Path
 
 from trading_app.lib.covered_call import (
     ASSIGN, BUY, EXPIRE, INITIAL_RATE, MAINT_RATE, SELL, SHARES_PER_CONTRACT,
@@ -444,7 +445,7 @@ class TestSweeps:
         opts = make_options(FRI, [MON, TUE, WED, THU, FRI], STRIKES)
         rows = fill_hour_sweep(stock, opts, trading_weeks(stock))
         assert len({r["weeks_booked"] for r in rows}) == 1
-        assert {r["order_hour"] for r in rows} == set(range(13, 20))
+        assert {r["order_hour"] for r in rows} == set(range(14, 21)), "as-of bars 14:00-20:00"
 
     def test_ols_r2_is_one_on_a_perfect_line(self):
         from trading_app.lib.cc_analysis import ols
@@ -549,7 +550,7 @@ class TestBarSizeStudy:
     @staticmethod
     def minute_panel(n_hours=2, per_hour=60):
         rows = []
-        base = pd.Timestamp("2026-08-31 13:00:00")
+        base = pd.Timestamp("2026-08-31 13:01:00")   # as-of stamps: 13:01 .. 15:00
         rng = np.random.default_rng(0)
         for hh in range(n_hours):
             for i in range(per_hour):
@@ -570,7 +571,7 @@ class TestBarSizeStudy:
         """
         from trading_app.lib.cc_analysis import bar_size_study
         m = self.minute_panel()
-        m["hour"] = m["ts"].dt.floor("h")
+        m["hour"] = m["ts"].dt.ceil("h")   # as-of: (H-1h, H]
         last = m.groupby("hour").last().reset_index()
         h = pd.DataFrame({
             "ts": last["hour"], "ric": last["ric"], "strike": last["strike"],
@@ -587,7 +588,7 @@ class TestBarSizeStudy:
         """The same check must FAIL loudly if the hourly quote is aggregated."""
         from trading_app.lib.cc_analysis import bar_size_study
         m = self.minute_panel()
-        m["hour"] = m["ts"].dt.floor("h")
+        m["hour"] = m["ts"].dt.ceil("h")   # as-of: (H-1h, H]
         g = m.groupby("hour").agg(lo=("bid", "min"), hi=("ask", "max")).reset_index()
         h = pd.DataFrame({
             "ts": g["hour"], "ric": "AAPLI042632000.U^I26", "strike": 320.0,
@@ -664,15 +665,21 @@ class TestStockPanel:
         idx = pd.DatetimeIndex([f"2026-08-31 {h}" for h in hours])
         return stock_panel({"stock": pd.DataFrame(rows, index=idx, columns=cols)})
 
-    def test_keeps_only_the_regular_session(self):
-        from trading_app.lib.covered_call import (SESSION_END_UTC,
-                                                  SESSION_START_UTC, stock_panel)
-        hours = [8, 12, 13, 15, 20, 21, 23]
+    def test_relabels_to_bar_end_and_drops_premarket_and_after_hours(self):
+        """
+        LSEG stamps a bar with its START. Raw 12:00 is premarket (ends 13:00,
+        before the 13:30 open); raw 13:00 holds the open and becomes 14:00;
+        raw 19:00 is the closing hour and becomes 20:00; raw 20:00 is 4-5pm
+        ET after-hours trading and must not survive at all.
+        """
+        from trading_app.lib.covered_call import stock_panel
+        hours = [8, 12, 13, 15, 19, 20, 21, 23]
         idx = pd.DatetimeIndex([f"2026-08-31 {h:02d}:00" for h in hours])
-        raw = pd.DataFrame({"TRDPRC_1": range(len(hours))}, index=idx)
+        raw = pd.DataFrame({"TRDPRC_1": [float(h) for h in hours]}, index=idx)
         got = stock_panel({"stock": raw})
-        assert list(got.index.hour) == [h for h in hours
-                                        if SESSION_START_UTC <= h <= SESSION_END_UTC]
+        assert list(got.index.hour) == [14, 16, 20]
+        # the price moves with its bar: raw 19:00's print is now stamped 20:00
+        assert list(got["TRDPRC_1"]) == [13.0, 15.0, 19.0]
 
     def test_resolves_a_ric_field_multiindex(self):
         got = self._raw(pd.MultiIndex.from_product([["AAPL.O"], ["TRDPRC_1", "HIGH_1"]]),
@@ -770,7 +777,7 @@ class TestOptionPanel:
         from trading_app.lib.covered_call import option_panel
         p = option_panel({"options": opt_frame(bid=(1.0, 1.1), ask=(1.2, 1.3),
                                                hours=("09:00", "15:00"))})
-        assert list(p["ts"].dt.hour) == [15]
+        assert list(p["ts"].dt.hour) == [16], "raw 15:00 is the bar ending 16:00"
 
     def test_requires_a_multiindex_rather_than_guessing(self):
         from trading_app.lib.covered_call import option_panel
@@ -790,8 +797,9 @@ class TestMidVsPrint:
         """
         from trading_app.lib.cc_analysis import mid_vs_print
         from trading_app.lib.covered_call import option_panel
-        idx = pd.DatetimeIndex(["2026-08-31 15:00", "2026-08-31 15:00",
-                                "2026-08-31 16:00"])
+        # as-of stamps, to line up with option_panel's relabelled bars
+        idx = pd.DatetimeIndex(["2026-08-31 16:00", "2026-08-31 16:00",
+                                "2026-08-31 17:00"])
         stock = pd.DataFrame({"TRDPRC_1": [300.0, 301.0, 302.0]}, index=idx)
         opts = option_panel({"options": opt_frame(trd=(1.15, 1.25))})
         out = mid_vs_print(opts, stock)
@@ -801,8 +809,8 @@ class TestMidVsPrint:
         from trading_app.lib.cc_analysis import mid_vs_print
         from trading_app.lib.covered_call import option_panel
         stock = pd.DataFrame({"TRDPRC_1": [300.0, 300.0]},
-                             index=pd.DatetimeIndex(["2026-08-31 15:00",
-                                                     "2026-08-31 16:00"]))
+                             index=pd.DatetimeIndex(["2026-08-31 16:00",
+                                                     "2026-08-31 17:00"]))
         opts = option_panel({"options": opt_frame()})       # never printed
         assert mid_vs_print(opts, stock)["resid"] == {}
 
@@ -810,8 +818,8 @@ class TestMidVsPrint:
         from trading_app.lib.cc_analysis import mid_vs_print
         from trading_app.lib.covered_call import option_panel
         stock = pd.DataFrame({"TRDPRC_1": [300.0, 300.0]},
-                             index=pd.DatetimeIndex(["2026-08-31 15:00",
-                                                     "2026-08-31 16:00"]))
+                             index=pd.DatetimeIndex(["2026-08-31 16:00",
+                                                     "2026-08-31 17:00"]))
         # bid 1.00/ask 1.20: one print at the bid, one at the ask
         opts = option_panel({"options": opt_frame(bid=(1.0, 1.0), ask=(1.2, 1.2),
                                                   trd=(1.0, 1.2))})
@@ -952,3 +960,233 @@ class TestLoadCache:
         from trading_app.lib.covered_call import load_cache
         with pytest.raises(FileNotFoundError, match="fetch_hw2.py"):
             load_cache("/nonexistent/covered_call_NOPE.pkl")
+
+
+# --------------------------------------------------------------------------
+# 11. bar timestamps and the close -- the off-by-one found in class
+# --------------------------------------------------------------------------
+# LSEG stamps an intraday bar with its START; its prices are as of its END.
+# The book used LSEG's label as the observation time, which (a) stamped every
+# trade one period early and (b) treated LSEG's "20:00" bar -- 4 to 5pm ET,
+# after-hours -- as the session close. Every end-of-day NAV and every expiry
+# settlement came from after-hours prints. Jun 29 read $50,006.50; the true
+# close NAV is $50,036.00.
+
+class TestAsOfStamps:
+    def test_an_hourly_bar_is_restamped_to_its_end(self):
+        from trading_app.lib.covered_call import stock_panel
+        raw = pd.DataFrame({"TRDPRC_1": [281.505]},
+                           index=pd.DatetimeIndex(["2026-06-29 15:00"]))
+        got = stock_panel({"stock": raw, "interval": "1h"})
+        assert list(got.index) == [pd.Timestamp("2026-06-29 16:00")]
+
+    def test_the_after_hours_bar_is_dropped(self):
+        """LSEG's 20:00 bar is 4-5pm ET. It is not the close; it is gone."""
+        from trading_app.lib.covered_call import stock_panel
+        raw = pd.DataFrame({"TRDPRC_1": [281.63, 281.55]},
+                           index=pd.DatetimeIndex(["2026-06-29 19:00", "2026-06-29 20:00"]))
+        got = stock_panel({"stock": raw})
+        assert list(got.index) == [pd.Timestamp("2026-06-29 20:00")]
+        assert got["TRDPRC_1"].iloc[0] == pytest.approx(281.63), \
+            "the bar stamped 20:00 must carry the closing hour's print, not after-hours"
+
+    def test_minute_bars_restamp_by_one_minute(self):
+        from trading_app.lib.covered_call import stock_panel
+        t = ["2026-06-29 13:29", "2026-06-29 13:30", "2026-06-29 19:59", "2026-06-29 20:00"]
+        raw = pd.DataFrame({"TRDPRC_1": [1.0, 2.0, 3.0, 4.0]}, index=pd.DatetimeIndex(t))
+        got = stock_panel({"stock": raw, "interval": "1min"})
+        assert [str(x.time()) for x in got.index] == ["13:31:00", "20:00:00"]
+        assert list(got["TRDPRC_1"]) == [2.0, 3.0]
+
+    def test_option_bars_are_restamped_the_same_way(self):
+        """Stock and options must agree, or every combo is priced across two moments."""
+        from trading_app.lib.covered_call import option_panel, stock_panel
+        o = option_panel({"options": opt_frame(hours=("15:00", "19:00"), bid=(1.0, 1.1),
+                                               ask=(1.2, 1.3))})
+        s = stock_panel({"stock": pd.DataFrame(
+            {"TRDPRC_1": [1.0, 2.0]}, index=pd.DatetimeIndex(["2026-08-31 15:00", "2026-08-31 19:00"]))})
+        assert list(o["ts"]) == list(s.index)
+
+    def test_an_unknown_interval_is_refused(self):
+        from trading_app.lib.covered_call import stock_panel
+        raw = pd.DataFrame({"TRDPRC_1": [1.0]}, index=pd.DatetimeIndex(["2026-06-29 15:00"]))
+        with pytest.raises(ValueError, match="interval"):
+            stock_panel({"stock": raw, "interval": "7min"})
+
+    def test_tradeable_hours_are_bars_that_close_inside_the_session(self):
+        from trading_app.lib.covered_call import TRADEABLE_HOURS
+        assert TRADEABLE_HOURS == tuple(range(14, 21))
+
+
+class TestTheOfficialClose:
+    @staticmethod
+    def expiry_week(last_trade: float, official: float | None, strike_spot=300.0):
+        stock = make_stock({MON: strike_spot, TUE: strike_spot, WED: strike_spot,
+                            THU: strike_spot, FRI: last_trade})
+        stock["OFFICIAL_CLOSE"] = np.nan
+        if official is not None:
+            stock.loc[[t for t in stock.index if t.date() == FRI], "OFFICIAL_CLOSE"] = official
+        opts = make_options(FRI, [MON, TUE, WED, THU, FRI], STRIKES)
+        run = run_backtest(stock, opts, trading_weeks(stock), order_hour=15)
+        return run, build_ledger(run, stock, opts), stock
+
+    def test_the_panel_attaches_the_official_close_by_date(self):
+        from trading_app.lib.covered_call import stock_panel
+        raw = pd.DataFrame({"TRDPRC_1": [281.63, 289.09]},
+                           index=pd.DatetimeIndex(["2026-06-29 19:00", "2026-06-30 19:00"]))
+        got = stock_panel({"stock": raw, "stock_official_close": {"2026-06-29": 281.74}})
+        assert got["OFFICIAL_CLOSE"].iloc[0] == pytest.approx(281.74)
+        assert np.isnan(got["OFFICIAL_CLOSE"].iloc[1]), "no close known -> NaN, not a guess"
+
+    def test_assignment_is_decided_by_the_official_close(self):
+        """
+        The last trade before the bell was above the strike; the closing
+        auction was not. The call expires. Deciding on the last trade would
+        book an assignment that did not happen.
+        """
+        run, _, _ = self.expiry_week(last_trade=300.40, official=299.90)
+        assert [e["side"] for e in run["blotter"] if e["kind"] == "call"][-1] == EXPIRE
+        assert run["cycles"][0]["settle"] == pytest.approx(299.90)
+        assert run["cycles"][0]["settle_source"] == "official close"
+
+    def test_and_the_other_way_round(self):
+        run, _, _ = self.expiry_week(last_trade=299.90, official=300.40)
+        assert [e["side"] for e in run["blotter"] if e["kind"] == "call"][-1] == ASSIGN
+
+    def test_without_an_official_close_it_says_it_used_the_last_trade(self):
+        run, _, _ = self.expiry_week(last_trade=295.0, official=None)
+        assert run["cycles"][0]["settle_source"] == "last trade"
+        assert "last trade" in run["blotter"][-1]["note"]
+
+    def test_the_close_bar_is_marked_at_the_official_close(self):
+        _, led, _ = self.expiry_week(last_trade=295.0, official=296.25)
+        close_row = led[led["ts"] == pd.Timestamp(dt.datetime.combine(FRI, dt.time(20)))].iloc[0]
+        assert close_row["stock_mark"] == pytest.approx(296.25)
+        assert close_row["nav"] == pytest.approx(
+            close_row["cash"] + 100 * 296.25 + close_row["option_mv"])
+
+    def test_bars_before_the_close_keep_their_own_last_trade(self):
+        from trading_app.lib.covered_call import stock_marks
+        _, _, stock = self.expiry_week(last_trade=295.0, official=296.25)
+        marks = stock_marks(stock)
+        before = [t for t in stock.index if t.date() == FRI and t.hour < 20]
+        assert all(marks[t] == pytest.approx(295.0) for t in before)
+
+
+# ---------------------------------------------------------------------------
+# the real book: pin the numbers that were wrong, computed a second way
+# ---------------------------------------------------------------------------
+
+REAL_CACHE = Path(__file__).resolve().parents[1] / "trading_app" / "data" / "covered_call_AAPL.pkl"
+MINUTE_CACHE = REAL_CACHE.with_name("covered_call_AAPL_1min.pkl")
+
+
+@pytest.fixture(scope="module")
+def real_book():
+    if not REAL_CACHE.exists():
+        pytest.skip("no committed cache")
+    from trading_app.lib.covered_call import load_cache, option_panel, stock_panel
+    P = load_cache(REAL_CACHE)
+    if not P.get("stock_official_close"):
+        pytest.skip("cache predates official closes; run fetch_hw2.py --backfill-closes")
+    st, op = stock_panel(P), option_panel(P)
+    run = run_backtest(st, op, trading_weeks(st), order_hour=16, start_cash=50_000.0)
+    return P, st, op, run, build_ledger(run, st, op)
+
+
+class TestRealBookAtTheClose:
+    def test_jun_29_close_nav_matches_a_hand_calculation_from_raw_lseg_data(self, real_book):
+        """
+        The row flagged in class. Rebuilt WITHOUT the pipeline, straight from
+        LSEG's raw start-stamped frames, so a bug shared by the loaders and the
+        ledger cannot make both sides agree:
+
+            bought 100 at raw-15:00 print 281.505, sold the call at raw-15:00
+            mid 3.00  ->  cash 50,000 - 28,150.50 + 300 = 22,149.50
+            close: official 281.74, option mid in raw-19:00 bar 2.875
+            NAV = 22,149.50 + 28,174 - 287.50 = 50,036.00
+
+        It used to read 50,006.50, from after-hours prices.
+        """
+        P, _, _, _, led = real_book
+        raw_s = P["stock"].copy()
+        raw_s.index = pd.DatetimeIndex(raw_s.index)
+        ric = "AAPLG022628250.U^G26"
+        q_open = P["options"][ric].loc[pd.Timestamp("2026-06-29 15:00")]
+        q_close = P["options"][ric].loc[pd.Timestamp("2026-06-29 19:00")]
+        cash = (50_000 - 100 * float(raw_s.at[pd.Timestamp("2026-06-29 15:00"), "TRDPRC_1"])
+                + 100 * (float(q_open["BID"]) + float(q_open["ASK"])) / 2)
+        nav = (cash + 100 * P["stock_official_close"]["2026-06-29"]
+               - 100 * (float(q_close["BID"]) + float(q_close["ASK"])) / 2)
+
+        row = led[led["ts"] == pd.Timestamp("2026-06-29 20:00")].iloc[0]
+        assert row["nav"] == pytest.approx(nav)
+        assert row["nav"] == pytest.approx(50_036.00)
+        assert row["nav"] != pytest.approx(50_006.50), "the after-hours value is back"
+
+    def test_every_close_bar_is_marked_at_the_official_close(self, real_book):
+        P, _, _, _, led = real_book
+        closes = P["stock_official_close"]
+        n = 0
+        for _, row in led[led["ts"].dt.time == dt.time(20)].iterrows():
+            oc = closes.get(str(row["ts"].date()))
+            if oc is not None:
+                assert row["stock_mark"] == pytest.approx(oc), row["ts"]
+                n += 1
+        assert n >= 45
+
+    def test_every_expiry_settles_on_the_official_close(self, real_book):
+        P, _, _, run, _ = real_book
+        for c in run["cycles"]:
+            if c["status"] in ("assigned", "expired"):
+                assert c["settle_source"] == "official close", c["iso"]
+                assert c["settle"] == pytest.approx(P["stock_official_close"][str(c["expiry_date"])])
+
+    def test_no_bar_is_stamped_outside_the_session(self, real_book):
+        _, st, op, _, led = real_book
+        for stamps in (st.index, pd.DatetimeIndex(op["ts"]), pd.DatetimeIndex(led["ts"])):
+            t = stamps.time
+            assert all(dt.time(13, 30) < x <= dt.time(20, 0) for x in t), "a bar outside 13:30-20:00"
+
+    def test_trades_are_stamped_when_their_prices_were_observed(self, real_book):
+        """The entry fills on prices as of 16:00 UTC, so it is stamped 16:00, not 15:00."""
+        _, _, _, run, _ = real_book
+        assert run["blotter"][0]["ts"] == pd.Timestamp("2026-06-29 16:00")
+
+    def test_final_nav_did_not_move(self, real_book):
+        """Assignment pays the strike, so fixing the close cannot change where the book ends."""
+        _, _, _, _, led = real_book
+        assert led["nav"].iloc[-1] == pytest.approx(50_681.82, abs=0.01)
+
+
+class TestLsegStampsTheStartOfTheBar:
+    """
+    A contract with the data vendor, checked rather than assumed. If LSEG ever
+    starts stamping bar ends, every relabel above becomes the off-by-one.
+    Needs the one-minute cache, which is not committed, so it skips cleanly.
+    """
+
+    def test_hourly_price_is_the_last_minute_of_the_hour_it_is_labelled_with(self):
+        if not (REAL_CACHE.exists() and MINUTE_CACHE.exists()):
+            pytest.skip("needs both the hourly and the one-minute cache")
+        from trading_app.lib.covered_call import load_cache
+        h = load_cache(REAL_CACHE)["stock"]
+        m = load_cache(MINUTE_CACHE)["stock"]
+        h.index, m.index = pd.DatetimeIndex(h.index), pd.DatetimeIndex(m.index)
+        hp = pd.to_numeric(h["TRDPRC_1"], errors="coerce")
+        mp = pd.to_numeric(m["TRDPRC_1"], errors="coerce").dropna()
+        start_hits = end_hits = n = 0
+        for d in sorted(set(m.index.date))[:15]:
+            for H in range(14, 20):
+                t = pd.Timestamp(f"{d} {H:02d}:00")
+                if t not in hp.index or pd.isna(hp[t]):
+                    continue
+                inside = mp[(mp.index >= t) & (mp.index < t + pd.Timedelta(hours=1))]
+                before = mp[(mp.index >= t - pd.Timedelta(hours=1)) & (mp.index < t)]
+                if len(inside) and len(before):
+                    n += 1
+                    start_hits += abs(inside.iloc[-1] - hp[t]) < 1e-6
+                    end_hits += abs(before.iloc[-1] - hp[t]) < 1e-6
+        assert n > 50
+        assert start_hits / n > 0.95, f"start-stamped on only {start_hits}/{n} bars"
+        assert end_hits / n < 0.05

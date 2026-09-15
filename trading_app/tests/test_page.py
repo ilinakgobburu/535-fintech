@@ -408,6 +408,12 @@ class TestReadmeMatchesThePage:
     NARRATIVE = {
         "21.2%":  "the wrong value the README itself used to carry",
         "21.25%": "the exact tie, 85/400, that produced that disagreement",
+        "21.3%":  "what the page rendered before the after-hours bar was removed",
+        "$50,006.50": "Jun 29's close NAV as the off-by-one bug computed it",
+        "$0.31": "median miss of the after-hours 'close' against the official close",
+        "$15.27": "worst miss of the after-hours 'close' against the official close",
+        "$320.05": "the after-hours print that wrongly assigned the 2% rule's call",
+        "$319.70": "the official close that shows that assignment never happened",
     }
 
     @staticmethod
