@@ -119,11 +119,8 @@
 </div>
 
 <div class="callout">
-  <strong>The tie is decided on purpose.</strong> At S<sub>T</sub> exactly equal
-  to K the call has no intrinsic value and is not rationally exercised, so we
-  treat it as expiring. It is a measure-zero case on real prices, but it has to
-  be decided somewhere rather than falling out of a floating-point comparison by
-  accident. <code>tests/test_covered_call.py</code> pins both sides of it.
+  <strong>Ties expire.</strong> If the stock closes exactly at the strike, the
+  call has no intrinsic value and isn't exercised, so it is treated as expiring.
 </div>
 
 <div id="why" class="reading qa-grid qa-two"></div>

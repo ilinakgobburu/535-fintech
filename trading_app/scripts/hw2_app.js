@@ -52,33 +52,19 @@
     const R = D.fit.resid, B = D.bar_study;
     el("why").innerHTML = `
       <div class="qa"><p class="q">Why ${esc(M.ticker)}?</p>
-        <p class="a">Because the fill assumption is only as defensible as the chain is liquid, and
-        that was checked before any backtest was run, not after. ${esc(M.ticker)} lists weeklies every
-        week of the window with strikes ${money(M.strike_step, 2)} apart near the money, so "nearest
-        OTM" is a fine-grained choice rather than a coarse one. Its calls actually print:
-        <strong>${D.fit.pooled.n.toLocaleString()}</strong> hourly bars carried both a two-sided
-        quote and a trade, which is what makes the mid-versus-trade test below possible at all. And
-        the quote is tight — a median spread of ${money(R.median_spread, 2)} — so the gap between
-        "filled at mid" and "filled at the bid" is small in dollars. A thin name would have made the
-        midpoint a guess. One more consideration, stated honestly: the name was chosen after
-        probing that data exists end to end, but before seeing a single result, so the
-        ${pct(STOCK.ret)} run it turned in was not picked for.</p></div>
+        <p class="a">Filling at the mid is only believable on a liquid chain. ${esc(M.ticker)} has
+        weeklies every week with strikes ${money(M.strike_step, 2)} apart, a median spread of
+        ${money(R.median_spread, 2)}, and ${D.fit.pooled.n.toLocaleString()} hourly bars with both a
+        quote and a trade to test the mid against. I confirmed the data existed before running the
+        backtest, so the name wasn't picked for its result.</p></div>
 
       <div class="qa"><p class="q">Why wait through expiry instead of buying the call back at a profit?</p>
-        <p class="a">The assignment raises this directly, and there are three reasons to wait. First,
-        it is the baseline the assignment specifies, and a book should earn complexity rather than
-        start with it. Second, a buy-back rule is a <em>second</em> free parameter — the X% target —
-        and a parameter swept over ten weeks mostly fits noise; the order-hour sweep below shows how
-        much one undeclared parameter can move a result. Third, and decisive on this data: a
-        buy-to-close limit fills <em>whenever the ask first touches it</em>, somewhere inside an hour.
-        ${B ? `An hourly ASK is not a record of that — checked against a one-minute re-pull, it is the
-        final minute's quote in ${pct(B.snapshot.ask_is_last_pct)} of
-        ${B.snapshot.matched_hours.toLocaleString()} contract-hours, a snapshot at the close of the
-        bar.` : `An hourly ASK is the quote standing at the end of the hour.`} Simulating that fill
-        from hourly bars means choosing a moment the data does not contain, which is inventing a
-        print. Waiting needs only the closing stock print on expiry day, which the data does have.
-        The cost is visible in the result: in a rally, the cap binds and the premium is all the
-        upside there is.</p></div>`;
+        <p class="a">A buy-back limit fills at whatever moment the ask touches it inside an hour, but
+        ${B ? `an hourly quote is only the last minute's snapshot (checked on
+        ${B.snapshot.matched_hours.toLocaleString()} contract-hours)` : "an hourly quote is only an end-of-hour snapshot"},
+        so simulating that fill would mean inventing a price. Waiting needs only the closing stock
+        price on expiry day. The cost is real: in a rally the cap binds, and the premium is all
+        the upside there is.</p></div>`;
   })();
 
   // ---- tiles ------------------------------------------------------------
