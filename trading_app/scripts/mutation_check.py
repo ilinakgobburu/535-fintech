@@ -175,6 +175,17 @@ MUTATIONS = [
     (F, '        h = len(batch) // 2', '        return None',
      "a batch containing one dead RIC discards every live RIC with it",
      TESTS_FETCH),
+    (CC, '# -100 shares on every assignment.\n                call = None',
+         '# -100 shares on every assignment.\n                shares -= (SHARES_PER_CONTRACT if ev["side"] == ASSIGN else 0)\n                call = None',
+     "assignment removes the shares on the ASSIGN row as well as the stock "
+     "SELL, taking the book to -100", TESTS),
+    (APP_JS, 'r.side === "SELL") ? -r.qty : r.qty;',
+             'r.side === "SELL") ? r.qty : r.qty;',
+     "the stock delivered against assignment prints as +100, a sale shown as "
+     "a purchase", TESTS_PAGE),
+    (CC, '"side": ASSIGN, "qty": contracts, "limit": None,\n                "fill": float(strike), "cash_delta": 0.0,',
+         '"side": ASSIGN, "qty": contracts, "limit": None,\n                "fill": float(strike), "cash_delta": qty * float(strike),',
+     "assignment cash is booked on BOTH rows, double-counting the strike", TESTS),
     (CC, 'return upto[-1] if len(upto) else same_day[0]',
          'return same_day[0]',
      "the order always fills on the first bar of the day regardless of the "

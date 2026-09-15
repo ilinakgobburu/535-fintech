@@ -218,10 +218,19 @@ class TestPayload:
                 assert L["option_mv"][i] <= 0, "a short call is a liability"
 
     def test_assignments_credit_the_strike(self, payload):
+        """Each ASSIGN is followed by a stock SELL of 100 at that strike."""
         qty = payload["meta"]["shares"]
-        for b in payload["blotter"]:
+        rows = payload["blotter"]
+        n = 0
+        for i, b in enumerate(rows):
             if b["side"] == "ASSIGN":
-                assert b["cash_delta"] == pytest.approx(qty * b["strike"])
+                nxt = rows[i + 1]
+                assert (nxt["kind"], nxt["side"]) == ("stock", "SELL")
+                assert nxt["fill"] == pytest.approx(b["strike"])
+                assert nxt["cash_delta"] == pytest.approx(qty * b["strike"])
+                assert b["cash_delta"] == 0.0
+                n += 1
+        assert n == payload["headline"]["assignments"]
 
     def test_counts_are_ints_in_the_json(self, payload):
         assert isinstance(payload["fit"]["pooled"]["n"], int)
@@ -480,6 +489,26 @@ class TestReadmeMatchesThePage:
 # it has to actually render
 # --------------------------------------------------------------------------
 
+
+def _open(pg, target, charts: int = 0):
+    """
+    Load a page and wait for what the test actually needs.
+
+    These waited for `networkidle`, i.e. for the Plotly CDN to go quiet. On a
+    slow connection that timed out at 60s -- a failure about the network, not
+    the page, which surfaced as a red suite during the mutation run. A test
+    that fails on bad Wi-Fi teaches people to ignore red, so the wait is now on
+    the condition itself: the document loaded, and, where charts matter, that
+    many Plotly charts drawn.
+    """
+    pg.goto(f"file://{Path(target).resolve()}", wait_until="load", timeout=90000)
+    if charts:
+        pg.wait_for_function(
+            f"() => document.querySelectorAll('.js-plotly-plot').length >= {charts}"
+            f" || window.__plotlyFailed",
+            timeout=90000)
+    pg.wait_for_timeout(800)          # let Plotly finish laying out titles
+
 def _browser_ready() -> bool:
     try:
         from playwright.sync_api import sync_playwright
@@ -511,8 +540,7 @@ def rendered():
         pg = b.new_page(viewport={"width": 1280, "height": 1000})
         pg.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
         pg.on("pageerror", lambda e: errors.append(f"PAGEERROR: {e}"))
-        pg.goto(f"file://{PAGE.resolve()}", wait_until="networkidle", timeout=60000)
-        pg.wait_for_timeout(2500)
+        _open(pg, PAGE, charts=4)
         info = pg.evaluate("""() => {
           const ids = ['tiles','tbl-blotter','tbl-ledger','plot-nav','plot-margin',
             'plot-scatter','tbl-price','tbl-buckets','tbl-moves','plot-hours',
@@ -613,8 +641,7 @@ class TestRendersNarrow:
         with sync_playwright() as pw:
             b = pw.chromium.launch()
             pg = b.new_page(viewport={"width": width, "height": 900})
-            pg.goto(f"file://{PAGE.resolve()}", wait_until="networkidle", timeout=60000)
-            pg.wait_for_timeout(1200)
+            _open(pg, PAGE, charts=4)
             sw, cw = pg.evaluate(
                 "() => [document.documentElement.scrollWidth, document.documentElement.clientWidth]")
             b.close()
@@ -697,8 +724,7 @@ class TestAssignmentOnePagesStillRender:
             pg = b.new_page(viewport={"width": 1280, "height": 1000})
             pg.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
             pg.on("pageerror", lambda e: errors.append(f"PAGEERROR: {e}"))
-            pg.goto(f"file://{target.resolve()}", wait_until="networkidle", timeout=60000)
-            pg.wait_for_timeout(2500)
+            _open(pg, target, charts=1)
             info = pg.evaluate("""() => ({
               charts: document.querySelectorAll('.js-plotly-plot').length,
               text: document.body.innerText.length,
@@ -711,3 +737,91 @@ class TestAssignmentOnePagesStillRender:
         assert info["text"] > 5000, f"{name} rendered almost no text"
         assert info["junk"] == 0, f"{name} leaked undefined/NaN into the page"
         assert info["hw2link"], f"{name} lost its link to assignment 2"
+
+
+# --------------------------------------------------------------------------
+# requirements read off the professor's assignment page
+# --------------------------------------------------------------------------
+# Each of these was a gap found by reading assignment.html in full rather than
+# the rubric summary: a Data PAGE rather than a section, assignment booked as
+# two rows, the OCC symbol, the Reg T columns in the ledger itself.
+
+DATA_PAGE = DOCS / "data.html"
+
+
+class TestDataPage:
+    def test_exists_and_says_data_connection_required(self):
+        """'A Data page on github.io must show Data connection required.'"""
+        assert DATA_PAGE.exists(), "docs/data.html is missing"
+        assert "Data connection required" in DATA_PAGE.read_text(encoding="utf-8")
+
+    def test_links_back_to_the_graded_book(self):
+        assert 'href="hw2.html"' in DATA_PAGE.read_text(encoding="utf-8")
+
+    def test_the_book_links_to_it(self):
+        assert 'href="data.html"' in TEMPLATE.read_text(encoding="utf-8")
+
+    def test_makes_no_attempt_to_reach_lseg(self):
+        """'Live LSEG on Pages is a defect.' No script, so nothing to fetch."""
+        html = DATA_PAGE.read_text(encoding="utf-8")
+        assert "<script" not in html
+        assert "fetch(" not in html
+
+    def test_is_up_to_date_with_the_builder(self, payload):
+        css = re.search(r"<style>(.*?)</style>",
+                        (ROOT / "scripts" / "page_template.html").read_text(encoding="utf-8"),
+                        re.S).group(1)
+        assert B.render_data_page(css, payload["meta"]) == DATA_PAGE.read_text(encoding="utf-8"), \
+            "docs/data.html is stale; run scripts/build_hw2.py"
+
+
+class TestAssignmentSpecOnThePage:
+    def test_the_blotter_has_a_notes_column(self, html):
+        assert "Notes — the rule that fired" in html
+
+    def test_every_option_row_carries_its_occ_symbol(self, payload):
+        for b in payload["blotter"]:
+            if b["kind"] == "call":
+                assert re.fullmatch(r"[A-Z ]{6}\d{6}C\d{8}", b["occ"]), b
+
+    def test_ledger_payload_carries_the_reg_t_columns_the_table_shows(self, payload):
+        for k in ("initial_margin", "maintenance_margin", "available_funds"):
+            assert k in payload["ledger"]
+
+    def test_the_stock_leg_of_an_assignment_is_a_negative_quantity_on_the_page(self):
+        """
+        Stock rows store an unsigned 100 and take direction from the side, so
+        a naive renderer prints the delivery as +100 -- a sale shown as a buy.
+        """
+        src = APP_JS.read_text(encoding="utf-8")
+        assert 'r.kind === "stock" && r.side === "SELL") ? -r.qty' in src
+
+
+@needs_browser
+class TestNewSectionsRender:
+    def test_rationale_contracts_and_reg_t_columns_are_present(self, rendered):
+        t = rendered["text"]
+        assert "Why AAPL?" in t
+        assert "Why wait through expiry instead of buying the call back" in t
+        assert "Contracts written" in t
+        for col in ("Initial", "Maint", "Available"):
+            assert col in t
+
+    def test_the_assignment_delivery_shows_as_minus_one_hundred(self, rendered):
+        assert "delivered against assignment" in rendered["text"]
+        assert "-100" in rendered["text"]
+
+    def test_the_data_page_renders(self):
+        from playwright.sync_api import sync_playwright
+        errors = []
+        with sync_playwright() as pw:
+            b = pw.chromium.launch()
+            pg = b.new_page(viewport={"width": 390, "height": 900})
+            pg.on("pageerror", lambda e: errors.append(str(e)))
+            _open(pg, DATA_PAGE)
+            text = pg.evaluate("() => document.body.innerText")
+            sw, cw = pg.evaluate("() => [document.documentElement.scrollWidth, document.documentElement.clientWidth]")
+            b.close()
+        assert not errors
+        assert "Data connection required" in text
+        assert sw <= cw + 1, "data page scrolls sideways at phone width"
