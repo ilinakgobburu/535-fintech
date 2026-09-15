@@ -36,7 +36,7 @@ from trading_app.lib.covered_call import (  # noqa: E402
 DEFAULT_CACHE = ROOT / "trading_app" / "data" / "covered_call_AAPL.pkl"
 DEFAULT_OUT = ROOT.parent / "docs" / "hw2.html"
 
-ORDER_HOUR = 15      # 15:00-16:00 UTC = 11:00 ET. See note in build_payload.
+ORDER_HOUR = 16      # the bar ENDING 16:00 UTC, noon ET; stamps are as-of, see covered_call
 START_CASH = 50_000.0
 RULE = "nearest_otm"
 SCATTER_CAP = 4000   # points drawn; every statistic uses the full sample

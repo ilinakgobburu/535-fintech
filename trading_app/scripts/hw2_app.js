@@ -39,7 +39,10 @@
 
   document.title = `Covered Call · ${M.ticker}`;
   el("h-ticker").textContent = M.ticker;
-  el("r-hour").textContent = `${String(M.order_hour).padStart(2, "0")}:00 UTC`;
+  // Bar stamps are as-of: the order bar is named by the moment its prices are
+  // from, which is the END of the hour. ET is UTC-4 across this whole window.
+  el("r-hour").textContent =
+    `hourly bar ending ${String(M.order_hour).padStart(2, "0")}:00 UTC (${M.order_hour - 4}:00 ET)`;
   el("l-bars").textContent = M.bars.toLocaleString();
   el("f-n").textContent = D.fit.resid.n.toLocaleString();
   el("prov").innerHTML =
@@ -461,7 +464,7 @@
         marker: { size: 7 }, hovertemplate: "P&amp;L %{y:$,.0f}<extra></extra>" },
     ], baseLayout({
       title: { text: "The same book, written at each hour of the entry session" },
-      xaxis: ax("order bar (UTC)"),
+      xaxis: ax("order bar, UTC, labelled by the hour it ends"),
       yaxis: ax("premium collected", { tickformat: "$,.0f" }),
       yaxis2: { overlaying: "y", side: "right", tickformat: "$,.0f",
         gridcolor: "rgba(0,0,0,0)", zeroline: false, linecolor: TH.line,
@@ -469,7 +472,7 @@
         title: { text: "final P&L", font: { size: 11, color: TH.print } } },
     }));
 
-    let h = `<thead><tr><th>Order bar (UTC)</th><th>Premium</th><th>Final NAV</th>`
+    let h = `<thead><tr><th>Order bar (UTC, bar end)</th><th>Premium</th><th>Final NAV</th>`
       + `<th>P&L</th><th>Calls written</th><th>Assigned</th><th>Skipped</th></tr></thead><tbody>`;
     S.forEach(s => {
       const on = s.order_hour === M.order_hour;
@@ -504,8 +507,8 @@
       <li><strong>The hour actually booked was the worst of the ${S.length}.</strong>
         ${String(M.order_hour).padStart(2, "0")}:00 ranks ${bookedRank} of ${S.length} by P&L.
         That is luck running against us and it is left standing, because the hour was fixed
-        before any of these numbers existed — 11:00 ET, chosen to sit clear of the opening
-        auction and the closing stub bar. Re-picking it now, knowing the table, would be the
+        before any of these numbers existed — the hour ending at noon ET, chosen to sit clear of
+        both the open and the close. Re-picking it now, knowing the table, would be the
         exact mistake this page is built to avoid, and the honest version of a sensitivity
         analysis is the one you publish when the sensitivity embarrasses you.</li>
       <li><strong>But it did not outrank the strike rule.</strong> The
@@ -581,7 +584,9 @@
         good deal more likely to be breached by one marching upward, and that is the entire
         discrepancy. Anyone reading an option-implied probability
         as a forecast should read these two rows first.</li>
-      <li><strong>Adapting to volatility did not beat a fixed distance here.</strong> The
+      <li><strong>Adapting to volatility ${
+          R.find(r => r.rule === "iv_prob_25").pnl > R.find(r => r.rule === "otm_2pct").pnl
+            ? "edged out" : "did not beat"} a fixed distance here.</strong> The
         ${pct(100 * R.find(r => r.rule === "iv_prob_25").target_prob, 0)}
         rule wrote a median ${pct(R.find(r => r.rule === "iv_prob_25").median_otm_pct, 2)} out
         against the fixed rule at
@@ -594,7 +599,8 @@
         pushed the strike out to
         ${pct(R.find(r => r.rule === "iv_prob_25").max_otm_pct, 2)}, its widest of the
         ${M.weeks} — but over ten weeks that difference is well inside noise.
-        The theoretical motivation is sound and this window cannot confirm it.</li>
+        The theoretical motivation is sound; ten weeks on one price path cannot confirm it
+        in either direction.</li>
       <li><strong>Every rule lost to simply holding the stock.</strong> ${beatBH === 0
         ? `None of the ${R.length} beat buy-and-hold's ${signed(H.bh_pnl)}`
         : `${beatBH} of ${R.length} beat buy-and-hold's ${signed(H.bh_pnl)}`}, and the closer
@@ -602,7 +608,7 @@
         ${signed(H.pnl)} while writing a median
         ${pct(R.find(r => r.rule === M.rule).median_otm_pct, 2)} above spot, and the best of the
         alternatives — ${esc(nameOf(best))} — finished ${signed(best.pnl)}. ${mono
-          ? "Across these four the ordering is monotone in distance from spot."
+          ? `Across these ${R.length} the ordering is monotone in distance from spot.`
           : "The ordering is nearly, but not perfectly, monotone in distance from spot — the furthest rule is not the best, because a strike far enough out stops being paid for."}
         That is not a discovery about covered calls; it is a description of what a cap does to
         a stock that rose ${pct(STOCK.ret)} through the window. In a flat or falling tape the ordering would invert, and
@@ -666,8 +672,12 @@
         the median spread is ${money(h.median_spread_printed, 3)} hourly against
         ${money(m.median_spread_printed, 3)} at one minute. Read carelessly that says minute
         data is cleaner. Measured <em>unconditionally</em> on the same contracts and days, the
-        two agree exactly: ${money(h.median_spread_all, 3)} and
-        ${money(m.median_spread_all, 3)}. The difference is entirely selection —
+        gap disappears: ${money(h.median_spread_all, 3)} hourly against
+        ${money(m.median_spread_all, 3)} at one minute${
+          Math.abs(h.median_spread_all - m.median_spread_all) < 0.005 ? ", identical"
+          : m.median_spread_all > h.median_spread_all
+            ? " — if anything the minute quotes are the <em>wider</em> ones" : ""}. So the
+        four-to-one difference is selection, not cleaner data —
         ${pct(h.printed_share, 0)} of hourly bars contain a trade against
         ${pct(m.printed_share, 0)} of minute bars, so "this bar printed" is a far more
         demanding filter at one minute and it picks out the liquid, tight-spread moments.

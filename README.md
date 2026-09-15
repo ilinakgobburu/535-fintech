@@ -23,7 +23,7 @@ trading_app/
   scripts/build_hw2.py              -> docs/hw2.html
   scripts/hw2_app.js                the page's figures and computed prose
   scripts/bar_size_study.py         hourly vs a 1-minute re-pull -> a <1 KB committed JSON
-  scripts/mutation_check.py         re-introduces 31 bugs, asserts the suite catches each
+  scripts/mutation_check.py         re-introduces 38 bugs, asserts the suite catches each
   tests/test_covered_call.py        the engine, the loaders, the strike rules
   tests/test_fetch_shapes.py        LSEG response shapes, bisection, the dry run
   tests/test_page.py                the payload, the built page, the prose, this README
@@ -33,24 +33,23 @@ docs/data.html                      <- "Data connection required", as Pages must
 
 ```bash
 cd trading_app
-python3 -m pytest tests -q             # 281 cases; 154 test functions for this assignment
-python3 scripts/mutation_check.py      # 31 mutations, all caught (needs node + chromium)
+python3 -m pytest tests -q             # 320 cases; 193 test functions for this assignment
+python3 scripts/mutation_check.py      # 38 mutations, all caught (needs node + chromium)
 python3 scripts/build_hw2.py           # rebuild the page from the cached pull
 ```
 
 ### The result
 
-AAPL ran **$275.73 → $319.76 (+16.0%)** over the ten weeks. The book wrote 10
+AAPL ran **$275.73 → $319.97 (+16.0%)** over the ten weeks. The book wrote 10
 calls, collected **$3,567** of premium, and was **assigned 8 times**. It finished
-**+$682** against **+$3,826** for the same 100 shares simply held.
+**+$682** against **+$3,847** for the same 100 shares simply held.
 
 That gap is the entire subject. Nearest-OTM sells a cap a median of **0.31%**
 above spot, and AAPL's weekly range is far wider than 0.31%, so assignment is
 close to the default outcome rather than the exception. On the 8 assigned weeks
-the stock closed **$7,289** above the strikes sold — $3,567 of certain income did
-not pay for $7,289 of surrendered upside. Every counterfactual strike rule beat
-the booked one, and **none of them beat buy-and-hold**, monotonically in distance
-from spot. None of that is a discovery about covered calls; it is a description
+the stock closed **$7,306** above the strikes sold — $3,567 of certain income did
+not pay for $7,306 of surrendered upside. Every counterfactual strike rule beat
+the booked one, and **none of them beat buy-and-hold**. None of that is a discovery about covered calls; it is a description
 of what a cap does to a stock that rose 16.0% through the window, and a flat or
 falling tape would invert the ordering.
 
@@ -105,10 +104,10 @@ it did not ask for.
 
 ### The bar extremes carry bad prints; the last-trade series does not
 
-`HIGH_1` runs more than 1% above the bar's own open/close body on **12.8%** of
-the 400 hourly bars and `LOW_1` more than 1% below on **21.3%**, reaching +10.6%
+`HIGH_1` runs more than 1% above the bar's own open/close body on **12.0%** of
+the 350 in-session hourly bars and `LOW_1` more than 1% below on **21.4%**, reaching +10.6%
 and −18.0% — one hour that opened and closed near $301 reports a high of $333.
-`TRDPRC_1` shows nothing of the kind (median hourly move 0.256%, p99 2.05%).
+`TRDPRC_1` shows nothing of the kind (median hourly move 0.294%, p99 2.03%).
 
 So entry and settlement read **TRDPRC_1 and never HIGH_1/LOW_1**. Any rule phrased
 as *"did the stock touch the strike"* would have booked assignments against trades
@@ -120,15 +119,15 @@ below it must expire.
 
 Pooled R² is **0.9992**, which alone proves little on a chain spanning $0.01 to
 $99. I expected conditioning to collapse it the way pooling inverted 1.1's spread
-conclusion. **It did not** — R² holds between **0.952 and 0.998** inside narrow
-price bands, and 0.9965 in the band the book actually wrote in. The mid really
+conclusion. **It did not** — R² holds between **0.954 and 0.998** inside narrow
+price bands, and 0.9966 in the band the book actually wrote in. The mid really
 does track the print, and that is reported here because it contradicted the
 expectation rather than because it flattered it.
 
 What it does not establish is fillability, and the spread is what separates the
 two claims. The median print missed the mid by **$0.035** on a median spread of
 **$0.20** — 30.0% of the spread — only **27.4%** landed within a quarter-spread of
-the mid, and **16.2% landed outside the quote entirely**. That last number is the
+the mid, and **16.3% landed outside the quote entirely**. That last number is the
 hourly bar, not an arbitrage: BID/ASK is the quote at the end of the hour while
 TRDPRC_1 is the last trade inside it. R² near 0.999 and a mid that is the actual
 trade price about a third of the time are both true at once, because R² is
@@ -139,10 +138,10 @@ answering "how big is this option" and the fill question is "who paid the spread
 Writing at a different hour of the same entry session moves final P&L from
 **+$682 to +$1,390** — a $708 spread around a booked result of $682. The
 strategy is identical in every row; only the clock moves. The hour actually
-booked, 15:00 UTC, turned out to be **the worst of the seven**, and it is left
+booked, the hour ending 16:00 UTC (noon ET), turned out to be **the worst of the seven**, and it is left
 standing because it was fixed before any of these numbers existed.
 
-It did *not* outrank the strike rule, which spans $2,631. I expected the reverse
+It did *not* outrank the strike rule, which spans $2,509. I expected the reverse
 after watching one Monday's mid move 2× intraday, and one vivid observation
 turned out to be a poor guide to the aggregate.
 
@@ -157,12 +156,12 @@ which 1.1's own parity fit justifies at this horizon — and solve
 K* = S · exp( σ√T · N⁻¹(1 − p)  −  σ²T/2 )
 ```
 
-for a stated breach probability `p`. Implied vol ran **24.3%–47.1%**, and the
-rule did widen when the week was priced to move: in the 47.1% week it pushed the
+for a stated breach probability `p`. Implied vol ran **24.4%–47.4%**, and the
+rule did widen when the week was priced to move: in the 47.4% week it pushed the
 strike to its furthest, 3.83% out.
 
-**It did not beat a fixed 2% rule** — $53,170 against $53,313, which over ten
-weeks is noise. The valuable output was the calibration:
+**It edged out the fixed 2% rule** — $53,191 against $52,800 — but most of that gap is
+a single week, and over ten weeks it is noise. The valuable output was the calibration:
 
 | target breach probability | realised assignment |
 |---|---|
@@ -191,16 +190,22 @@ fill assumption would not have survived. The convention is now measured.
 
 **Two-thirds of the impossible prints were the bar.** On identical
 (contract, day) cells, prints landing outside their own bar's quote fall from
-**14.0% hourly to 5.1% at one minute**. The remainder is the honest rate.
+**14.2% hourly to 5.1% at one minute**. The remainder is the honest rate.
 
 **And a trap that nearly produced a false claim.** Conditioned on bars that also
 printed, the median spread is $0.200 hourly against $0.050 at one minute — which
 reads as "minute data is four times cleaner". Measured *unconditionally* on the
-same contracts and days the two agree exactly at **$0.300**. The difference is
-entirely selection: 78% of hourly bars contain a trade against 37% of minute
-bars, so "this bar printed" is a far more demanding filter at one minute and it
-selects the liquid, tight-spread moments. Third time this hazard has appeared
-across the two assignments.
+same contracts and days the gap disappears: **$0.250** hourly against **$0.300**
+at one minute, so if anything the minute quotes are the wider ones. The
+four-to-one difference is selection: 87% of hourly bars contain a trade against
+37% of minute bars, so "this bar printed" is a far more demanding filter at one
+minute and it selects the liquid, tight-spread moments. Third time this hazard
+has appeared across the two assignments.
+
+(An earlier version of this section said the unconditional spreads "agree
+exactly at $0.300". That was partly an artefact of the timing bug described
+below: the hourly sample included LSEG's after-hours bar, whose stale quotes are
+wide. With that bar removed, the hourly median is $0.250.)
 
 The minute cache is ~390 MB and is **not** committed; `scripts/bar_size_study.py`
 distils it to a <1 KB JSON that is, so the page builds without it and the numbers
@@ -208,10 +213,10 @@ stay checkable.
 
 ### The tests, and a bug in the thing that checks the tests
 
-154 test functions for this assignment (281 cases with parametrisation), split by
+193 test functions for this assignment (320 cases with parametrisation), split by
 failure mode: the RIC and calendar tests pin bugs that produce *silence*, the
 blotter/ledger/Reg T tests pin bugs that produce a *plausible wrong number*.
-`scripts/mutation_check.py` re-introduces **31** specific bugs one at a time,
+`scripts/mutation_check.py` re-introduces **38** specific bugs one at a time,
 each aimed at the test file that should notice, and asserts the suite fails on
 every one.
 
@@ -310,6 +315,42 @@ the *restored* source. The mutation survived the restore, in bytecode, with
 correct code on disk. It surfaced as a build reporting 11 trading weeks instead of
 10. The harness now runs under `PYTHONDONTWRITEBYTECODE`, deletes the bytecode
 regardless, and finishes by asserting the suite still passes clean.
+
+### The off-by-one found in class
+
+Presenting this, Jun 29's NAV was flagged as off by one period. It was, and the
+cause was upstream of every number on the page.
+
+**LSEG stamps an intraday bar with its start.** The bar it labels 15:00 covers
+15:00–16:00, and its last trade and closing quote are from 15:59. Checked against
+a one-minute pull of the same data, the hourly price equals the last minute of the
+hour it is *labelled* with on 300 of 300 bars, and the last minute of the hour
+before on 1. The book had used LSEG's label as the moment the prices were
+observed. That did two things:
+
+- **Every bar was stamped one period early.** The blotter showed the entry at
+  15:00 on prices that did not exist until 16:00, and time-to-expiry for the
+  implied-vol rules was an hour too long.
+- **LSEG's "20:00" bar was treated as the close.** It is 4–5pm ET — after-hours
+  trading. Every end-of-day mark and every expiry settlement came from
+  after-hours prints. Against LSEG's official daily closes, that bar matched on
+  0 of 49 days, missing by a median of $0.31 and by up to $15.27.
+
+The fix relabels every bar to the end of its window, drops the after-hours bar,
+and settles and marks each close at the **official closing price**. Jun 29's
+close NAV moves from $50,006.50 to **$50,036**, and a test now rebuilds that
+figure by hand from LSEG's raw frames, without going through the pipeline.
+
+**The booked strategy's result did not change** — assignment pays the strike,
+so final NAV is still +$682, with the same 8 assignments. But one counterfactual
+did. The 2%-OTM rule had been *assigned* on its Aug 28 call, strike 320, on an
+after-hours print of $320.05, when AAPL closed at $319.70. That is an impossible
+trade, and removing it reorders the strike-rule comparison: the implied-vol rule
+now edges out the fixed 2% rule rather than trailing it.
+
+It also corrected a claim in the one-minute study above. With the after-hours
+bar in the hourly sample, the unconditional median spreads had looked identical;
+its stale quotes were inflating the hourly figure.
 
 ### What this is evidence for
 
