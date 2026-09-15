@@ -273,10 +273,11 @@ def buy_and_hold(stock: pd.DataFrame, ledger: pd.DataFrame,
     """
     100 shares bought at the first entry bar and simply held.
 
-    The honest benchmark for a covered call is not cash -- it is the same
-    stock without the cap, because the cap is the only thing the strategy
-    actually did. Selling calls into a name that ran from $294 to $328 is
-    where theory meets tape.
+    This is the only fair comparison for a covered call, because the short
+    calls are the only difference between the two portfolios: they add premium
+    income and cap the upside, and the gap between the two NAV lines is the net
+    of those two effects. Cash would be the wrong benchmark -- it shares neither
+    the stock's risk nor its return.
     """
     first = ledger.index[ledger["shares"] > 0]
     if len(first) == 0:
