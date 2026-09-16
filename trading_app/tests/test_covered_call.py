@@ -251,6 +251,25 @@ class TestBlotter:
         assert tail[0]["cash_delta"] == 0.0, "the cash belongs to the stock leg"
         assert tail[1]["qty"] == SHARES_PER_CONTRACT
 
+    def test_a_week_with_no_stock_leg_says_why(self):
+        """
+        After an expiry the book is still long, so the next week writes a call
+        with no stock purchase beside it. Read row by row that looks like a
+        call sold against nothing.
+        """
+        stock = make_stock({MON: 300.0, TUE: 300.0, WED: 300.0, THU: 300.0, FRI: 295.0,
+                            dt.date(2026, 7, 13): 295.0, dt.date(2026, 7, 14): 295.0,
+                            dt.date(2026, 7, 15): 295.0, dt.date(2026, 7, 16): 295.0,
+                            dt.date(2026, 7, 17): 295.0})
+        opts = pd.concat([make_options(FRI, [MON, TUE, WED, THU, FRI], STRIKES),
+                          make_options(dt.date(2026, 7, 17),
+                                       [dt.date(2026, 7, 13), dt.date(2026, 7, 17)], STRIKES)])
+        run = run_backtest(stock, opts, trading_weeks(stock), order_hour=15)
+        writes = [e for e in run["blotter"] if e["kind"] == "call" and e["side"] == SELL]
+        assert len(writes) == 2
+        assert "no stock leg" not in writes[0]["note"], "week one buys the stock"
+        assert "Already long" in writes[1]["note"], "week two writes against held shares"
+
     def test_the_assign_row_points_at_the_stock_leg(self):
         """
         An ASSIGN row moving $0 was read by a grader as the assignment

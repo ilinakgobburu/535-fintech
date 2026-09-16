@@ -995,3 +995,67 @@ class TestBlotterReadsUnambiguously:
         # they come in adjacent couples: ASSIGN then the stock SELL
         for a, b_ in zip(paired[::2], paired[1::2]):
             assert b_ == a + 1
+
+
+class TestBookInvariants:
+    """
+    Whole-book properties a reader could challenge, asserted on the published
+    payload rather than on a fixture. These were run as a one-off audit after
+    the professor's blotter note; a one-off audit only protects the day it runs.
+    """
+
+    def test_every_written_call_has_exactly_one_terminal_row(self, payload):
+        writes = [b for b in payload["blotter"] if b["kind"] == "call" and b["side"] == "SELL"]
+        terms = [b for b in payload["blotter"] if b["side"] in ("EXPIRE", "ASSIGN")]
+        assert len(writes) == len(terms) == payload["headline"]["weeks_booked"]
+        for w, t in zip(writes, terms):
+            assert w["instrument"] == t["instrument"], "a call settled against another contract"
+
+    def test_the_short_call_is_always_covered_and_never_doubled(self, payload):
+        L = payload["ledger"]
+        for i in range(len(L["ts"])):
+            if L["call_strike"][i] is not None:
+                assert L["shares"][i] == payload["meta"]["shares"]
+        assert min(L["shares"]) >= 0
+        assert max(L["option_mv"]) <= 0
+
+    def test_initial_is_twice_maintenance_whenever_long(self, payload):
+        L = payload["ledger"]
+        for i in range(len(L["ts"])):
+            assert L["initial_margin"][i] == pytest.approx(2 * L["maintenance_margin"][i])
+
+    def test_every_call_filled_at_the_mid_of_its_own_quote(self, payload):
+        for c in payload["cycles"]:
+            if c.get("mid") is not None:
+                assert c["mid"] == pytest.approx((c["bid"] + c["ask"]) / 2)
+
+    def test_no_strike_was_ever_sold_below_spot(self, payload):
+        for c in payload["cycles"]:
+            if c.get("strike") is not None:
+                assert c["strike"] >= c["spot"] - 1e-9, c["iso"]
+
+    def test_assigned_exactly_when_the_close_is_above_the_strike(self, payload):
+        for c in payload["cycles"]:
+            if c["status"] == "assigned":
+                assert c["settle"] > c["strike"], c["iso"]
+            elif c["status"] == "expired":
+                assert c["settle"] <= c["strike"], c["iso"]
+
+    def test_entries_are_on_the_booked_hour_and_terminals_at_the_close(self, payload):
+        hh = f"{payload['meta']['order_hour']:02d}"
+        for b in payload["blotter"]:
+            if b["side"] == "BUY":
+                assert b["ts"][11:13] == hh
+            if b["side"] in ("EXPIRE", "ASSIGN"):
+                assert b["ts"][11:16] == "20:00"
+
+    def test_a_write_with_no_stock_leg_explains_itself(self, payload):
+        """Weeks after an expiry write against shares already held."""
+        by_ts = {}
+        for b in payload["blotter"]:
+            by_ts.setdefault(b["ts"], []).append(b)
+        for b in payload["blotter"]:
+            if b["kind"] == "call" and b["side"] == "SELL":
+                bought = any(x["kind"] == "stock" and x["side"] == "BUY" for x in by_ts[b["ts"]])
+                if not bought:
+                    assert "Already long" in b["note"], b["ts"]

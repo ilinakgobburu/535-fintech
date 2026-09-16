@@ -384,6 +384,15 @@ single event**; and the ASSIGN note now names the credit and points at the row
 that carries it. Tests assert all three, and that the running balance equals
 starting cash plus the deltas booked so far.
 
+The same audit found one more row that could be read alone: after an expiry the
+book is still long, so the following week writes a call with no stock purchase
+beside it. Two weeks look like a call sold against nothing. Those writes now say
+"already long from last week's expiry, so no stock leg". A whole-book invariant
+sweep — every written call has exactly one terminal row and settles against its
+own contract, the short call is never naked or doubled, no strike was ever sold
+below spot, assignment happens exactly when the official close is above the
+strike — is now a test class rather than a script I ran once.
+
 ### What this is evidence for
 
 Ten weekly cycles on one name in one quarter, all sharing a single price path —

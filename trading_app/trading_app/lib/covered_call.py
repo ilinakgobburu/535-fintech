@@ -528,6 +528,10 @@ def run_backtest(
             continue
 
         r = row.iloc[0]
+        # Whether this week also bought stock. Weeks after an expiry write
+        # against shares already held, so they have no stock leg -- which, read
+        # row by row, looks like a call sold against nothing.
+        already_long = shares > 0
         occ = occ_symbol(parse_option_ric(r["ric"])["underlying"], expiry_day,
                          float(strike), "C")
         if shares == 0:
@@ -546,8 +550,10 @@ def run_backtest(
             "cash_delta": qty * float(mid),
             "strike": float(strike), "expiry": expiry_day,
             "bid": float(r["bid"]), "ask": float(r["ask"]),
-            "note": f"write: {rule}, nearest listed strike >= spot "
-                    f"({spot:.2f}); fill at mid of {r['bid']:.2f}/{r['ask']:.2f}",
+            "note": (f"write: {rule}, nearest listed strike >= spot "
+                     f"({spot:.2f}); fill at mid of {r['bid']:.2f}/{r['ask']:.2f}"
+                     + (". Already long from last week's expiry, so no stock leg"
+                        if already_long else "")),
         })
 
         # ---- wait through expiry -------------------------------------------
