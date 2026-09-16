@@ -368,6 +368,22 @@ It also corrected a claim in the one-minute study above. With the after-hours
 bar in the hourly sample, the unconditional median spreads had looked identical;
 its stale quotes were inflating the hourly figure.
 
+### A blotter row that could be read on its own
+
+The professor's second note was that an assignment should show money coming in,
+and his screenshot of the blotter showed the ASSIGN row moving **+$0.00**. The
+cash was on the very next row — a stock SELL of 100 at the strike, **+$28,250.00**
+— immediately below where his screenshot was cropped.
+
+So the arithmetic was right and the presentation was not, which on a page whose
+whole job is to be read is the same kind of failure. A row that needs the row
+after it to make sense will be read alone eventually. Three changes, none of
+them to the numbers: the blotter carries a running **cash balance** so the jump
+is visible on the row itself; the two rows of one assignment are **tinted as a
+single event**; and the ASSIGN note now names the credit and points at the row
+that carries it. Tests assert all three, and that the running balance equals
+starting cash plus the deltas booked so far.
+
 ### What this is evidence for
 
 Ten weekly cycles on one name in one quarter, all sharing a single price path —

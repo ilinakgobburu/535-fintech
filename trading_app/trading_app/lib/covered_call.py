@@ -568,8 +568,13 @@ def run_backtest(
                 "side": ASSIGN, "qty": contracts, "limit": None,
                 "fill": float(strike), "cash_delta": 0.0,
                 "strike": float(strike), "expiry": expiry_day,
+                # The note points at the stock leg on purpose. Read alone,
+                # an ASSIGN row moving $0 looks like the assignment proceeds
+                # never arrived -- which is exactly how it was misread.
                 "note": f"assigned: {settle_source} {s_t:.2f} > strike "
-                        f"{strike:.2f}; short call closed by assignment",
+                        f"{strike:.2f}; short call closed by assignment. The "
+                        f"{qty} shares are delivered on the next row, "
+                        f"crediting {qty * float(strike):,.2f}",
             })
             blotter.append({
                 "ts": ets, "instrument": stock.attrs.get("ric", "AAPL.O"),

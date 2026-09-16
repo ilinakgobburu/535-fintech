@@ -932,3 +932,66 @@ class TestInterestAndFillSensitivity:
         assert payload["headline"]["bid_fill_cost"] == pytest.approx(
             sum((c["mid"] - c["bid"]) * 100 for c in booked))
         assert 0 < payload["headline"]["bid_fill_cost"] < payload["headline"]["premium"]
+
+
+
+class TestBlotterReadsUnambiguously:
+    """
+    The professor read the blotter's ASSIGN row -- Cash Δ +$0.00 -- as the
+    assignment proceeds going missing. They were on the next row, the stock
+    SELL of 100 at the strike, immediately below his screenshot's crop. The
+    arithmetic was right and the presentation was not, so the blotter now
+    carries a running cash balance, tints the two rows of one assignment
+    together, and the ASSIGN note points at the stock leg by amount.
+    """
+
+    def test_every_assign_note_names_the_credit_and_the_next_row(self, payload):
+        qty = payload["meta"]["shares"]
+        for b in payload["blotter"]:
+            if b["side"] == "ASSIGN":
+                assert "next row" in b["note"]
+                assert f"{qty * b['strike']:,.2f}" in b["note"]
+
+    @needs_browser
+    def test_the_blotter_carries_a_running_cash_balance(self, rendered, payload):
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as pw:
+            br = pw.chromium.launch()
+            pg = br.new_page(viewport={"width": 1700, "height": 1000})
+            pg.goto(f"file://{PAGE.resolve()}", wait_until="load", timeout=90000)
+            pg.wait_for_function(
+                "() => document.querySelectorAll('#tbl-blotter tbody tr').length > 4", timeout=90000)
+            hdr = pg.evaluate("() => [...document.querySelectorAll('#tbl-blotter thead th')].map(e => e.innerText)")
+            cells = pg.evaluate("""() => [...document.querySelectorAll('#tbl-blotter tbody tr')]
+                .map(r => ({cls: r.className, after: r.children[7].innerText}))""")
+            br.close()
+        assert "Cash after" in hdr
+        # The running balance must equal start cash plus the deltas so far.
+        # Compared as numbers: the page writes "−$300.00" with a typographic
+        # minus and a dollar sign, which no Python formatter reproduces.
+        def as_number(text):
+            t = text.replace("\u2212", "-").replace("$", "").replace(",", "")
+            return float(t)
+
+        running = payload["meta"]["start_cash"]
+        for row, b in zip(cells, payload["blotter"]):
+            running += b["cash_delta"]
+            assert as_number(row["after"]) == pytest.approx(running, abs=0.005), b["note"][:50]
+
+    @needs_browser
+    def test_the_two_rows_of_an_assignment_are_tinted_together(self, payload):
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as pw:
+            br = pw.chromium.launch()
+            pg = br.new_page(viewport={"width": 1700, "height": 1000})
+            pg.goto(f"file://{PAGE.resolve()}", wait_until="load", timeout=90000)
+            pg.wait_for_function(
+                "() => document.querySelectorAll('#tbl-blotter tbody tr').length > 4", timeout=90000)
+            cls = pg.evaluate("""() => [...document.querySelectorAll('#tbl-blotter tbody tr')]
+                .map(r => r.className)""")
+            br.close()
+        paired = [i for i, c in enumerate(cls) if "evt-pair" in c]
+        assert len(paired) == 2 * payload["headline"]["assignments"]
+        # they come in adjacent couples: ASSIGN then the stock SELL
+        for a, b_ in zip(paired[::2], paired[1::2]):
+            assert b_ == a + 1

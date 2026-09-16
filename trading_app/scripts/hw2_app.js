@@ -111,15 +111,25 @@
     const rows = D.blotter;
     let html = `<thead><tr>
       <th>Time (UTC)</th><th>Instrument</th><th>Side</th><th>Qty</th>
-      <th>Limit</th><th>Fill</th><th>Cash Δ</th><th>Notes — the rule that fired</th></tr></thead><tbody>`;
+      <th>Limit</th><th>Fill</th><th>Cash Δ</th><th>Cash after</th>
+      <th>Notes — the rule that fired</th></tr></thead><tbody>`;
     // Quantity as a change in POSITION. Stock rows store an unsigned 100 and
     // take their direction from the side, so a stock SELL would otherwise
     // print as +100 -- a sale displayed as a purchase.
     const qtyOf = r => (r.kind === "stock" && r.side === "SELL") ? -r.qty : r.qty;
     let prev = null, cash = M.start_cash;
-    rows.forEach(r => {
+    rows.forEach((r, i) => {
       const d = dateOf(r.ts);
-      const sep = prev && d !== prev && r.side === "BUY" ? " class='wk-sep'" : "";
+      // An assignment is two rows of one event: tint them together, so the
+      // ASSIGN row's $0 is never read as the proceeds going missing.
+      const pair = r.side === "ASSIGN"
+        || (r.kind === "stock" && r.side === "SELL"
+            && rows[i - 1] && rows[i - 1].side === "ASSIGN");
+      // NOT `cls`: that is the module's sign-colour helper, and shadowing it
+      // here threw on the next line's cls(r.cash_delta) and blanked the page.
+      const rowCls = [prev && d !== prev && r.side === "BUY" ? "wk-sep" : "",
+                      pair ? "evt-pair" : ""].filter(Boolean).join(" ");
+      const sep = rowCls ? ` class="${rowCls}"` : "";
       prev = d;
       cash += r.cash_delta;
       html += `<tr${sep}>
@@ -132,10 +142,12 @@
         <td>${r.limit === null ? "—" : num(r.limit)}</td>
         <td>${num(r.fill)}</td>
         <td class="${cls(r.cash_delta)}">${signed(r.cash_delta, 2)}</td>
+        <td>${money(cash, 2)}</td>
         <td class="note">${esc(r.note)}</td></tr>`;
     });
     html += `</tbody><tfoot><tr>
       <th colspan="6" style="text-align:right">net cash from ${rows.length} booked events</th>
+      <th></th>
       <th class="${cls(cash - M.start_cash)}" style="text-align:right">${signed(cash - M.start_cash, 2)}</th>
       <th></th></tr></tfoot>`;
     el("tbl-blotter").innerHTML = html;

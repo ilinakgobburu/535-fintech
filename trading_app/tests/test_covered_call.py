@@ -251,6 +251,18 @@ class TestBlotter:
         assert tail[0]["cash_delta"] == 0.0, "the cash belongs to the stock leg"
         assert tail[1]["qty"] == SHARES_PER_CONTRACT
 
+    def test_the_assign_row_points_at_the_stock_leg(self):
+        """
+        An ASSIGN row moving $0 was read by a grader as the assignment
+        proceeds never arriving -- the next row, the stock sale at the strike,
+        was just below the crop of his screenshot. The note now names the
+        credit so the row cannot be read alone.
+        """
+        run, _, _, _ = one_week(settle=310.0)
+        assign = [e for e in run["blotter"] if e["side"] == ASSIGN][0]
+        assert "next row" in assign["note"]
+        assert f"{100 * 300.0:,.2f}" in assign["note"]
+
     def test_assignment_moves_the_shares_exactly_once(self):
         """Decrementing on both rows would leave the book at -100 shares."""
         run, led, _, _ = one_week(settle=310.0)

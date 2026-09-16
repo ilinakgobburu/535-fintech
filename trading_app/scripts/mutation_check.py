@@ -190,6 +190,10 @@ MUTATIONS = [
             '    start_cash = 50_000.0',
      "starting cash goes back to a flat $50,000 and Jun 29's NAV to about $50k",
      TESTS_PAGE),
+    (CC, '                        f"{qty} shares are delivered on the next row, "',
+         '                        f"{qty} shares are settled, "',
+     "the ASSIGN row stops pointing at the stock leg that carries the cash",
+     TESTS),
     # --- margin interest and the fill sensitivity --------------------------
     (CC, '        if rate and cash < 0 and ts in accrual_days:',
          '        if rate and ts in accrual_days:',
