@@ -34,6 +34,9 @@
     lo: Math.min(...MARKS), hi: Math.max(...MARKS),
     ret: 100 * (MARKS[MARKS.length - 1] / MARKS[0] - 1),
   };
+  // The booked strategy's row of the strike-rule sweep. Its medians are
+  // computed in Python; prose that quotes them reads them from here.
+  const BOOKED = D.rule_sweep.find(r => r.rule === M.rule);
 
 
 
@@ -754,12 +757,11 @@
         ${capCost > H.premium ? "not enough to pay for" : "enough to cover"} ${money(capCost)}
         of surrendered upside.`],
       ["Was the premium fair compensation?",
-       `Per week the book collected a median of ${money(
-          (() => { const m = cyc.map(c => c.mid).sort((a, b) => a - b);
-                   return m.length ? m[Math.floor(m.length / 2)] : 0; })(), 2)} per share on a
-        strike a median of ${pct(
-          (() => { const m = cyc.map(c => c.otm_pct).sort((a, b) => a - b);
-                   return m.length ? m[Math.floor(m.length / 2)] : 0; })(), 2)} above spot. Selling
+       // Read from the booked rule's row of the sweep, not re-derived here. A
+       // local m[floor(n/2)] took the upper-middle of an even count as the
+       // median, and contradicted the strike-rule table two sections up.
+       `Per week the book collected a median of ${money(BOOKED.median_premium, 2)} per share on a
+        strike a median of ${pct(BOOKED.median_otm_pct, 2)} above spot. Selling
         a cap that close to the money on a name this volatile is close to selling the stock's
         weekly range outright, which is why the assignment rate came in at
         ${pct(100 * H.assignments / Math.max(1, H.weeks_booked))}.`],

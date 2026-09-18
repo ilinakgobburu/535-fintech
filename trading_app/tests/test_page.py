@@ -34,6 +34,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -634,6 +635,42 @@ class TestRenders:
     def test_the_headline_numbers_reach_the_page(self, rendered, payload):
         for v in (payload["headline"]["final_nav"], payload["headline"]["bh_final"]):
             assert B.money(v) in rendered["text"], f"{B.money(v)} not on the page"
+
+    def test_the_prose_medians_are_true_medians(self, rendered, payload):
+        """
+        The analysis once took m[floor(n/2)] as the median. With 10 weeks that
+        is the 6th value, not the mean of the 5th and 6th, and it printed a
+        0.35% median distance two sections below a table saying 0.31%. The
+        README check passed throughout, because 0.31% was on the page -- in
+        the table. So this recomputes both medians independently of the sweep
+        and reads them back out of the sentence itself.
+        """
+        booked = [c for c in payload["cycles"] if c["status"] in ("assigned", "expired")]
+        m = re.search(r"collected a median of \$([\d.]+) per share on a\s+strike a "
+                      r"median of ([\d.]+)% above spot", rendered["text"])
+        assert m, "the median-premium sentence is missing from the analysis"
+        # Tolerance is half a cent / half a basis point: display rounding only.
+        assert float(m.group(1)) == pytest.approx(
+            np.median([c["mid"] for c in booked]), abs=0.0051)
+        assert float(m.group(2)) == pytest.approx(
+            np.median([c["otm_pct"] for c in booked]), abs=0.0051)
+
+    def test_the_nav_equation_shown_is_the_one_the_ledger_uses(self, rendered, payload):
+        """
+        The ledger's NAV carries accrued margin interest as a liability, and
+        the equation printed above it did not. Anyone recomputing a row by hand
+        from the page came out $3 to $24 high. The page's equation has to be
+        the arithmetic the table actually did.
+        """
+        L = payload["ledger"]
+        for i in range(len(L["nav"])):
+            parts = [L[k][i] or 0.0 for k in ("cash", "stock_mv", "option_mv")]
+            assert L["nav"][i] == pytest.approx(
+                sum(parts) - (L["accrued_interest"][i] or 0.0), abs=0.01)
+        if any(L["accrued_interest"]):
+            eqn = rendered["text"].split("NAV       =", 1)[1].split("initial", 1)[0]
+            assert "interest" in eqn, \
+                "the ledger charges margin interest but the NAV equation omits it"
 
 
 @needs_browser

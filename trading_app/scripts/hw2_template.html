@@ -165,6 +165,7 @@
 </p>
 <div class="eqn">LMV       = shares × stock mark
 NAV       = cash + stock MV + option MV        (a short call is NEGATIVE)
+            − accrued margin interest          (owed to the broker, not yet debited)
 initial   = 50% × LMV                          covered short call adds $0
 maint     = 25% × LMV                          FINRA
 available = NAV − initial
@@ -174,7 +175,10 @@ excess    = NAV − maint</div>
   reason the position is called covered: the short call's only obligation is to
   deliver stock the account already owns. Cash moves on blotter events and
   nowhere else — buy stock, collect premium, expire at zero, assign at the
-  strike. Marks move NAV; they never move cash.
+  strike. Marks move NAV; they never move cash. Accrued margin interest is the
+  one other thing that lowers NAV without a blotter row: it is a liability owed
+  on the borrowed cash, so it comes off NAV while cash stays where the blotter
+  left it.
 </p>
 <div class="card"><div id="plot-nav" class="plot" style="height:460px"></div></div>
 <div class="card"><div id="plot-margin" class="plot" style="height:340px"></div></div>

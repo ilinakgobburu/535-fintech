@@ -23,7 +23,7 @@ trading_app/
   scripts/build_hw2.py              -> docs/hw2.html
   scripts/hw2_app.js                the page's figures and computed prose
   scripts/bar_size_study.py         hourly vs a 1-minute re-pull -> a <1 KB committed JSON
-  scripts/mutation_check.py         re-introduces 44 bugs, asserts the suite catches each
+  scripts/mutation_check.py         re-introduces 45 bugs, asserts the suite catches each
   tests/test_covered_call.py        the engine, the loaders, the strike rules
   tests/test_fetch_shapes.py        LSEG response shapes, bisection, the dry run
   tests/test_page.py                the payload, the built page, the prose, this README
@@ -33,8 +33,8 @@ docs/data.html                      <- "Data connection required", as Pages must
 
 ```bash
 cd trading_app
-python3 -m pytest tests -q             # 337 cases; 210 test functions for this assignment
-python3 scripts/mutation_check.py      # 44 mutations, all caught (needs node + chromium)
+python3 -m pytest tests -q             # 352 cases; 225 test functions for this assignment
+python3 scripts/mutation_check.py      # 45 mutations, all caught (needs node + chromium)
 python3 scripts/build_hw2.py           # rebuild the page from the cached pull
 ```
 
@@ -217,10 +217,10 @@ stay checkable.
 
 ### The tests, and a bug in the thing that checks the tests
 
-210 test functions for this assignment (337 cases with parametrisation), split by
+225 test functions for this assignment (352 cases across the suite with parametrisation), split by
 failure mode: the RIC and calendar tests pin bugs that produce *silence*, the
 blotter/ledger/Reg T tests pin bugs that produce a *plausible wrong number*.
-`scripts/mutation_check.py` re-introduces **44** specific bugs one at a time,
+`scripts/mutation_check.py` re-introduces **45** specific bugs one at a time,
 each aimed at the test file that should notice, and asserts the suite fails on
 every one.
 
@@ -392,6 +392,26 @@ sweep — every written call has exactly one terminal row and settles against it
 own contract, the short call is never naked or doubled, no strike was ever sold
 below spot, assignment happens exactly when the official close is above the
 strike — is now a test class rather than a script I ran once.
+
+### Checked against the assignment text, line by line
+
+The assignment text is now committed at
+[`trading_app/README.md`](trading_app/README.md), so this check can be rerun.
+Reading the published page against it found two inconsistencies, both in the
+prose rather than in the book:
+
+- **Two medians disagreed on the same page.** The analysis computed its median
+  strike distance and median premium in JavaScript as the upper-middle of the
+  sorted weeks rather than the mean of the two middle ones, and so contradicted
+  the strike-rule table two sections above it. The README check passed
+  throughout, because the correct figure was on the page — in the table. The
+  prose now reads the value Python computed, and a test recomputes both medians
+  from the cycles and reads them back out of the sentence itself.
+- **The NAV equation left out a term the ledger uses.** Since margin interest
+  was added, the ledger's NAV subtracts it as a liability, but the equation
+  printed above the table did not, so recomputing any row by hand from the page
+  came out a few dollars high. The equation now carries the term, and a test
+  fails if the ledger charges interest that the equation does not show.
 
 ### What this is evidence for
 
