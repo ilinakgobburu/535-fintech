@@ -229,6 +229,10 @@ MUTATIONS = [
          'return same_day[0]',
      "the order always fills on the first bar of the day regardless of the "
      "hour asked for, silently ignoring the fill-hour parameter", TESTS),
+    (APP_JS, '"\u2014" : Number(v).toFixed(4).replace(',
+             '"\u2014" : Number(v).toFixed(2).replace(',
+     "blotter fills round to the cent, so 100 x fill stops matching the cash column",
+     TESTS_PAGE),
 ]
 
 

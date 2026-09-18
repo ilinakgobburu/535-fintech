@@ -412,7 +412,6 @@ class TestReadmeMatchesThePage:
         "21.3%":  "what the page rendered before the after-hours bar was removed",
         "$50,006.50": "Jun 29's close NAV as the off-by-one bug computed it",
         "$50,036": "Jun 29's corrected close NAV at the old $50,000 starting cash",
-        "$50,000": "the flat starting cash the book used before it was sized to the first combo",
         "$0.31": "median miss of the after-hours 'close' against the official close",
         "$15.27": "worst miss of the after-hours 'close' against the official close",
         "$320.05": "the after-hours print that wrongly assigned the 2% rule's call",
@@ -572,6 +571,8 @@ def rendered():
               });
             }),
             text: document.body.innerText,
+            blotter: [...document.querySelectorAll('#tbl-blotter tbody tr')]
+              .map(r => [...r.cells].map(c => c.innerText.trim())),
             scrollW: document.documentElement.scrollWidth,
             clientW: document.documentElement.clientWidth,
           };
@@ -635,6 +636,44 @@ class TestRenders:
     def test_the_headline_numbers_reach_the_page(self, rendered, payload):
         for v in (payload["headline"]["final_nav"], payload["headline"]["bh_final"]):
             assert B.money(v) in rendered["text"], f"{B.money(v)} not on the page"
+
+    def test_every_blotter_row_reproduces_its_own_cash(self, rendered):
+        """
+        qty x fill must give the cash column, on the row as displayed. The
+        fills are sub-penny -- the stock's last print was $281.505, and a mid
+        between two nickel quotes ends in a half cent -- and the blotter showed
+        them at two decimals, so "BUY 100 @ 281.50" sat beside -$28,150.50 and
+        eight rows could not be checked by hand. A blotter a reader cannot
+        reconcile is not a blotter.
+        """
+        n = lambda t: float(t.replace("$", "").replace(",", "").replace("\u2212", "-"))
+        checked = 0
+        for cells in rendered["blotter"]:
+            _, instrument, side, qty, _, fill, cash = cells[:7]
+            if side not in ("BUY", "SELL"):
+                continue                      # ASSIGN / EXPIRE move no cash by design
+            mult = 100 if "OCC" in instrument else 1
+            assert abs(n(qty)) * mult * n(fill) == pytest.approx(abs(n(cash)), abs=0.005), (
+                f"{side} {qty} @ {fill} shows cash {cash}")
+            checked += 1
+        assert checked >= 20
+
+    def test_the_starting_cash_is_derived_on_the_page(self, rendered, payload):
+        """
+        The account used to start with a flat $50,000, and that is the figure
+        seen in class. It now starts with the cost of the first combo, and the
+        page has to show that arithmetic rather than assert the result.
+        """
+        amt = r"([\d,]+(?:\.\d+)?)"          # stops before a sentence's full stop
+        m = re.search(rf"funded with \${amt} before the first order: (\d+) shares "
+                      rf"\u00d7 \${amt} = \${amt}, less the first call's premium, "
+                      rf"(\d+) \u00d7 \${amt} = \${amt}", rendered["text"])
+        assert m, "the capital rule does not show how the starting cash is reached"
+        start, sh, px, cost, csh, mid, prem = (float(g.replace(",", "")) for g in m.groups())
+        assert sh * px == pytest.approx(cost, abs=0.005)
+        assert csh * mid == pytest.approx(prem, abs=0.005)
+        assert cost - prem == pytest.approx(start, abs=0.005)
+        assert start == pytest.approx(payload["meta"]["start_cash"], abs=0.005)
 
     def test_the_prose_medians_are_true_medians(self, rendered, payload):
         """

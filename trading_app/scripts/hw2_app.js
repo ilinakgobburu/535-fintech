@@ -13,6 +13,12 @@
   const num = (v, dp = 2) => v === null || v === undefined || !isFinite(v)
     ? "—" : Number(v).toFixed(dp);
   const pct = (v, dp = 1) => v === null || !isFinite(v) ? "—" : Number(v).toFixed(dp) + "%";
+  // A booked price at the precision it was booked: two decimals minimum, up
+  // to four. The stock's last print is often sub-penny, and a mid
+  // between nickel quotes ends in a half cent, so num() at two decimals
+  // printed fills that no longer multiplied out to the cash beside them.
+  const px = v => v === null || v === undefined || !isFinite(v)
+    ? "—" : Number(v).toFixed(4).replace(/(\.\d\d\d*?)0+$/, (_, kept) => kept);
   const signed = (v, dp = 0) => (v >= 0 ? "+" : "") + money(v, dp).replace("−", "-");
   const cls = v => v >= 0 ? "pos" : "neg";
   const el = id => document.getElementById(id);
@@ -48,6 +54,15 @@
     `hourly bar ending ${String(M.order_hour).padStart(2, "0")}:00 UTC (${M.order_hour - 4}:00 ET)`;
   el("l-bars").textContent = M.bars.toLocaleString();
   el("r-capital").textContent = money(M.start_cash, 2);
+  // Show the arithmetic, not just the result: the figure seen in class was a
+  // flat round number, and this one has to be checkable from the blotter.
+  {
+    const s0 = D.blotter.find(r => r.kind === "stock" && r.side === "BUY");
+    const c0 = D.blotter.find(r => r.kind === "call" && r.side === "SELL");
+    el("r-capital-math").textContent =
+      `${s0.qty} shares × $${px(s0.fill)} = ${money(-s0.cash_delta, 2)}, less the first `
+      + `call's premium, ${s0.qty} × $${px(c0.fill)} = ${money(c0.cash_delta, 2)}`;
+  }
   el("r-margin").innerHTML = H.min_cash < 0
     ? `Later entries happen at higher prices, so they are partly <strong>bought on margin</strong>:
        cash goes as low as ${money(H.min_cash)}, a loan Reg T permits as long as available funds
@@ -142,8 +157,8 @@
           : ""}</td>
         <td class="side s-${r.side}">${r.side}</td>
         <td>${qtyOf(r) > 0 ? "+" : ""}${qtyOf(r)}</td>
-        <td>${r.limit === null ? "—" : num(r.limit)}</td>
-        <td>${num(r.fill)}</td>
+        <td>${r.limit === null ? "—" : px(r.limit)}</td>
+        <td>${px(r.fill)}</td>
         <td class="${cls(r.cash_delta)}">${signed(r.cash_delta, 2)}</td>
         <td>${money(cash, 2)}</td>
         <td class="note">${esc(r.note)}</td></tr>`;
@@ -231,7 +246,7 @@
       </tr></thead><tbody>` + written.map(b => `<tr>
         <td>${esc(dateOf(b.ts))}</td><td style="text-align:left">${esc(b.instrument)}</td>
         <td style="text-align:left">${esc(b.occ || "—")}</td><td>${num(b.strike)}</td>
-        <td>${esc(String(b.expiry))}</td><td>${num(b.fill)}</td>
+        <td>${esc(String(b.expiry))}</td><td>${px(b.fill)}</td>
         <td class="side s-${outcome(b.instrument)}">${outcome(b.instrument)}</td></tr>`).join("")
       + "</tbody>";
   })();

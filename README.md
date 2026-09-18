@@ -23,7 +23,7 @@ trading_app/
   scripts/build_hw2.py              -> docs/hw2.html
   scripts/hw2_app.js                the page's figures and computed prose
   scripts/bar_size_study.py         hourly vs a 1-minute re-pull -> a <1 KB committed JSON
-  scripts/mutation_check.py         re-introduces 45 bugs, asserts the suite catches each
+  scripts/mutation_check.py         re-introduces 46 bugs, asserts the suite catches each
   tests/test_covered_call.py        the engine, the loaders, the strike rules
   tests/test_fetch_shapes.py        LSEG response shapes, bisection, the dry run
   tests/test_page.py                the payload, the built page, the prose, this README
@@ -33,8 +33,8 @@ docs/data.html                      <- "Data connection required", as Pages must
 
 ```bash
 cd trading_app
-python3 -m pytest tests -q             # 352 cases; 225 test functions for this assignment
-python3 scripts/mutation_check.py      # 45 mutations, all caught (needs node + chromium)
+python3 -m pytest tests -q             # 354 cases; 227 test functions for this assignment
+python3 scripts/mutation_check.py      # 46 mutations, all caught (needs node + chromium)
 python3 scripts/build_hw2.py           # rebuild the page from the cached pull
 ```
 
@@ -217,10 +217,10 @@ stay checkable.
 
 ### The tests, and a bug in the thing that checks the tests
 
-225 test functions for this assignment (352 cases across the suite with parametrisation), split by
+227 test functions for this assignment (354 cases across the suite with parametrisation), split by
 failure mode: the RIC and calendar tests pin bugs that produce *silence*, the
 blotter/ledger/Reg T tests pin bugs that produce a *plausible wrong number*.
-`scripts/mutation_check.py` re-introduces **45** specific bugs one at a time,
+`scripts/mutation_check.py` re-introduces **46** specific bugs one at a time,
 each aimed at the test file that should notice, and asserts the suite fails on
 every one.
 
@@ -397,8 +397,8 @@ strike — is now a test class rather than a script I ran once.
 
 The assignment text is now committed at
 [`trading_app/README.md`](trading_app/README.md), so this check can be rerun.
-Reading the published page against it found two inconsistencies, both in the
-prose rather than in the book:
+Reading the published page against it found four inconsistencies, all in how
+the page presents the book rather than in the book itself:
 
 - **Two medians disagreed on the same page.** The analysis computed its median
   strike distance and median premium in JavaScript as the upper-middle of the
@@ -412,6 +412,20 @@ prose rather than in the book:
   printed above the table did not, so recomputing any row by hand from the page
   came out a few dollars high. The equation now carries the term, and a test
   fails if the ledger charges interest that the equation does not show.
+- **The starting cash was stated, not derived.** The capital rule said the
+  account starts with $27,850.50 but did not show the arithmetic, and the figure
+  seen in class had been a flat $50,000, so it was fair to ask how one became the
+  other. It never did: the account is funded at $27,850.50 before the first
+  order. The rule now says the assignment sets no capital, derives the figure
+  (100 shares × $281.505 = $28,150.50, less the first premium) and names the old
+  one. A test reads the derivation back off the page and checks that it adds up
+  to the starting cash the book actually used.
+- **Blotter fills were rounded to the cent, so eight rows did not reconcile.**
+  The stock's last print is often sub-penny and a mid between nickel quotes can
+  end in a half cent, but the blotter printed two decimals, so the very first
+  row showed a fill that, times the quantity, missed its own cash by fifty
+  cents. Fills now show at the precision they were booked, and a test multiplies
+  out every BUY and SELL row exactly as displayed.
 
 ### What this is evidence for
 
