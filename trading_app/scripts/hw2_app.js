@@ -482,6 +482,8 @@
         to ${money(D.fit.by_moves[D.fit.by_moves.length - 1].median_abs_resid, 3)}. A last trade
         drawn from a single lot is a noisier estimate than one drawn from many, and R² is
         largely insensitive to the difference.</li>
+    </ul>`;
+    el("fit-verdict").innerHTML = `<ul class="notes">
       <li><strong>Assessment of the fill assumption.</strong> For one contract per week, written
         slightly out of the money on one of the most liquid option chains, the mid is a
         defensible fill, and the evidence above supports it. The assumption would not hold at
@@ -492,6 +494,9 @@
         collected ${money(H.bid_fill_cost, 2)} less premium over ${H.weeks_booked} weeks,
         reducing P&L from ${signed(H.pnl)} to ${signed(H.pnl - H.bid_fill_cost)}. The
         conclusions are unchanged.</li>
+      <li><strong>Further checks.</strong> The fit within narrow price bands, by moneyness
+        and by liquidity, and a one-minute re-pull of the same contracts, are reported in
+        <a href="#sec-fill-more" style="color:var(--both)">Part II</a>.</li>
     </ul>`;
   })();
 
@@ -773,7 +778,7 @@
         ${pct(100 * H.assignments / Math.max(1, H.weeks_booked))}.`],
       ["Validity of the mid fill",
        `The pooled R² of ${num(D.fit.pooled.r2, 4)} is weak evidence on its own, but the fit
-        persists within narrow price bands, where R² ranges from
+        persists within narrow price bands (Part II), where R² ranges from
         ${num(Math.min(...D.fit.by_price.map(b => b.r2)), 3)} to
         ${num(Math.max(...D.fit.by_price.map(b => b.r2)), 3)}; the mid tracks the print
         closely. Tracking a price differs from transacting at it, however: the median print was
@@ -804,9 +809,9 @@
         First, declare the order hour as an explicit, pre-committed parameter and report the
         sensitivity, since the
         ${money(Math.max(...D.hour_sweep.map(s => s.pnl)) - Math.min(...D.hour_sweep.map(s => s.pnl)))}
-        range in P&L across hours is too large to leave unstated. Second, key the strike to the
-        week's implied volatility rather than to a fixed distance, since a fixed rule sells the
-        same cap in calm and volatile weeks. Third, evaluate the fill by the residual as a
+        range in P&L across hours (Part II) is too large to leave unstated. Second, key the strike
+        to the week's implied volatility rather than to a fixed distance, since a fixed rule
+        sells the same cap in calm and volatile weeks (evaluated in Part II). Third, evaluate the fill by the residual as a
         fraction of the spread rather than by the pooled R², since that is the scale on which
         proximity to the mid is meaningful. The hold-to-expiry rule would be retained: it is
         costly in a rising market, but each alternative (rolling, or buying to close) adds a
@@ -832,7 +837,8 @@
     const shortWeeks = D.cycles.filter(c => c.short_week);
     el("methods").innerHTML = `
       <div class="qa"><p class="q">Zero-padding of the expiry day in option RICs</p>
-        <p class="a">The assignment's RIC scheme states <em>"DAY not zero-padded"</em>. Two of
+        <p class="a"><em>Motivation:</em> two weeks of the sample initially returned no option data, and an
+        empty response is indistinguishable from a quiet week unless its cause is established. The assignment's RIC scheme states <em>"DAY not zero-padded"</em>. Two of
         the three AAPL examples it gives do not resolve against LSEG:
         <code>AAPLF52619000.U^F26</code> and <code>AAPLH72620500.U^H26</code> both return an
         error, whereas the zero-padded <code>AAPLF052619000.U^F26</code> and
@@ -848,7 +854,9 @@
         weeks.</p></div>
 
       <div class="qa"><p class="q">Holiday expiries and the stock calendar</p>
-        <p class="a">The assignment instructs: <em>"take the last session in each week from the
+        <p class="a"><em>Motivation:</em> the assignment's instruction to read expiries from the stock tape
+        was implemented as written, and this item verifies that it behaves as intended around
+        market holidays. The assignment instructs: <em>"take the last session in each week from the
         stock tape so you do not invent holiday expiries."</em> Recent holidays illustrate the
         reason. Jun 19 2026 (Juneteenth) and Jul 3 2026 (Independence Day, observed) are market
         holidays, and options for those weeks expire on the <strong>Thursday</strong>: the
@@ -863,7 +871,8 @@
         A Monday holiday is handled symmetrically: the entry moves to Tuesday.</p></div>
 
       <div class="qa"><p class="q">Ambiguous shape of flat LSEG responses</p>
-        <p class="a">Assignment 1.1 documented that a multi-field request that loses all but one
+        <p class="a"><em>Motivation:</em> the fetcher reported more live series than it had requested, which
+        indicated that response labels were being misread. Assignment 1.1 documented that a multi-field request that loses all but one
         field returns <em>flat columns of bare RICs</em>, indistinguishable from a valid
         single-field response. Further probing identified the general rule: flat columns carry
         whichever axis has more than one member, and <strong>when both are singletons the
@@ -879,7 +888,8 @@
         requested.</p></div>
 
       <div class="qa"><p class="q">Erroneous prints in bar highs and lows</p>
-        <p class="a">A bar's open and close are both sequenced trades, so any price the bar
+        <p class="a"><em>Motivation:</em> assignment depends on where the stock closed relative to the strike,
+        so any price field used for entry or settlement must be free of spurious prints. A bar's open and close are both sequenced trades, so any price the bar
         genuinely traded through should lie near that range. On this pull,
         <strong>HIGH_1 exceeds the bar's open–close range by more than
         ${pct(O.thresholds_pct[0], 0)} on ${pct(O.high.over_1pct_share)} of the ${O.bars} bars,
@@ -903,7 +913,8 @@
         RICs.</p></div>
 
       <div class="qa"><p class="q">Coverage of the requested option chain</p>
-        <p class="a">The fetcher bands strikes to the range the stock traded and extends beyond
+        <p class="a"><em>Motivation:</em> many candidate RICs are generated for strikes that were never
+        listed, and the fetch must distinguish these from genuine data loss. The fetcher bands strikes to the range the stock traded and extends beyond
         it, so a substantial share of candidate RICs are contracts that were never listed.
         ${F.dead_rics ? `${F.dead_rics.length} returned no data.` : "RICs that return no data are counted."}
         These were identified by bisecting failing batches rather than by falling back to one
@@ -915,7 +926,8 @@
         bars.</p></div>
 
       <div class="qa"><p class="q">Precomputation in Python</p>
-        <p class="a">As in Assignment 1.1, every figure on this page is computed once in
+        <p class="a"><em>Motivation:</em> the page reports the same figures in tables, charts and text, and
+        these must not be able to disagree. As in Assignment 1.1, every figure on this page is computed once in
         <code>lib/covered_call.py</code> and <code>lib/cc_analysis.py</code> and embedded as
         JSON; the browser only renders it. With a single implementation of the arithmetic, the
         blotter, ledger, Reg T panel and text cannot disagree. The counterfactual strike rules
@@ -924,7 +936,9 @@
         code.</p></div>
 
       <div class="qa"><p class="q">Testing</p>
-        <p class="a">${M.suite.hw2_functions} test functions cover this assignment, in
+        <p class="a"><em>Motivation:</em> the errors this assignment grades, such as impossible trades or
+        incorrect cash, usually produce plausible numbers rather than failures, so they have to
+        be tested for directly. ${M.suite.hw2_functions} test functions cover this assignment, in
         ${M.suite.hw2_files.map(f => `<code>${esc(f)}</code>`).join(", ")}, within a repository
         suite of ${M.suite.functions} functions across ${M.suite.files} files. (Parametrised
         functions expand into several cases each, so pytest collects at least this many.) The

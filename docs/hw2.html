@@ -231,6 +231,19 @@
      charts do. The shared stylesheet sets these blocks in two or three narrow
      columns, which left most of each row empty beside a full-width table. */
   .reading{columns:auto}
+  /* Part I holds what the assignment requires; Part II what goes beyond it.
+     Each Part II section opens with the reason it was undertaken. */
+  .part{margin:72px 0 0;padding:20px 22px;border:1px solid var(--line);
+    border-left:3px solid var(--both);border-radius:0 10px 10px 0;background:var(--panel)}
+  .part.first{margin-top:34px}
+  .part-label{font-size:var(--fs-xs);letter-spacing:.16em;text-transform:uppercase;
+    color:var(--both);font-weight:600;margin-bottom:6px}
+  .part-title{font-size:var(--fs-h2);font-weight:700;letter-spacing:-.018em;margin-bottom:8px}
+  .part .lead-in{margin:0}
+  .part + h2{margin-top:34px;border-top:none;padding-top:0}
+  .lead-in.motivation{border-left:3px solid var(--both);padding:4px 0 4px 16px;margin-bottom:14px}
+  nav .nav-sep{color:var(--faint);font-size:var(--fs-xs);letter-spacing:.12em;
+    text-transform:uppercase;font-weight:600;margin:0 2px 0 12px}
   .reading.qa-grid,.reading.qa-grid.qa-two{grid-template-columns:1fr;gap:0}
   .reading.qa-grid .qa{margin-bottom:22px}
   .lead-in{color:var(--muted);font-size:var(--fs-lede);line-height:1.62;
@@ -248,12 +261,14 @@
   <a href="#sec-ledger">Ledger</a>
   <a href="#sec-regt">Reg T</a>
   <a href="#sec-fill">Mid vs trade</a>
+  <a href="#sec-analysis">Analysis</a>
+  <a href="data.html">Data</a>
+  <span class="nav-sep">Part II</span>
+  <a href="#sec-fill-more">Fill checks</a>
+  <a href="#sec-bars">One-minute</a>
   <a href="#sec-hours">Order time</a>
   <a href="#sec-cf">Strike rules</a>
-  <a href="#sec-bars">One-minute check</a>
-  <a href="#sec-analysis">Analysis</a>
   <a href="#sec-methods">Methods</a>
-  <a href="data.html">Data</a>
   <a class="ticker-link" href="index.html">← Assignment 1.1 · Surface Lab</a>
 </nav>
 
@@ -270,6 +285,18 @@
   <div class="prov" id="prov"></div>
   <div class="banner hidden" id="banner"></div>
 </header>
+
+<div class="part first" id="part-1">
+  <div class="part-label">Part I</div>
+  <div class="part-title">Assignment requirements</div>
+  <p class="lead-in">
+    This part contains the items the assignment requires: the strategy rules and the
+    rationale for the key choices, the blotter, the ledger, Reg T accounting with the NAV
+    and margin charts, the mid-versus-trade scatter with R², the written analysis, and the
+    data-connection notice. Work that goes beyond these requirements is collected in
+    <a href="#part-2" style="color:var(--both)">Part II</a>.
+  </p>
+</div>
 
 <h2 id="sec-rules">Framework</h2>
 <p class="lead-in">
@@ -374,15 +401,36 @@ excess    = NAV − maint</div>
 </p>
 <div class="card"><div id="plot-scatter" class="plot" style="height:520px"></div></div>
 <div id="fit-pooled" class="callout"></div>
-<h3 style="font-size:var(--fs-sub);margin:26px 0 8px">Fit within narrow price bands</h3>
-<p class="lead-in" style="margin-top:0">
-  A pooled R&sup2; across contracts priced from one cent to ninety-nine dollars is inflated by
-  the price range alone. The fit is therefore re-estimated within narrow price bands, where
-  distinguishing a $3 option from a $6 option is a more demanding test. <strong>The fit holds
-  within these bands</strong>, contrary to the initial expectation.
+<div id="fit-written" class="callout good"></div>
+<div id="fit-verdict" class="notes"></div>
+
+<h2 id="sec-analysis">Analysis</h2>
+<div id="analysis" class="reading"></div>
+
+<h2 id="sec-data">Data</h2>
+<div id="data-state"></div>
+<div class="notes" id="data-note"></div>
+
+<div class="part" id="part-2">
+  <div class="part-label">Part II</div>
+  <div class="part-title">Further exploration beyond the assignment</div>
+  <p class="lead-in">
+    The sections in this part are not required by the assignment. Each examines an
+    assumption or decision on which the Part I results depend, and each opens with the
+    reason it was undertaken. None of them changes the booked strategy or its figures.
+  </p>
+</div>
+
+<h2 id="sec-fill-more">Robustness of the fill assumption</h2>
+<p class="lead-in motivation">
+  <strong>Motivation.</strong> The pooled R&sup2; in Part I is dominated by the range of
+  option prices in the sample, so on its own it cannot establish that the mid is a realistic
+  fill for the contracts the book actually trades. The fit is therefore re-estimated within
+  narrow price bands, where distinguishing a $3 option from a $6 option is a more demanding
+  test, and separately by moneyness and by the number of trades in the bar. The fit holds
+  within these bands, contrary to the initial expectation.
 </p>
 <div class="tbl-wrap"><table class="tbl" id="tbl-price"></table></div>
-<div id="fit-written" class="callout good"></div>
 <div class="grid2" style="margin-top:26px">
   <div><h3 style="font-size:var(--fs-sub);margin:8px 0">By moneyness</h3>
     <div class="tbl-wrap"><table class="tbl" id="tbl-buckets"></table></div></div>
@@ -391,52 +439,49 @@ excess    = NAV − maint</div>
 </div>
 <div id="fit-note" class="notes"></div>
 
+<h2 id="sec-bars">Validation against one-minute data</h2>
+<p class="lead-in motivation">
+  <strong>Motivation.</strong> The fill assumption in Part I rests on two properties of the
+  hourly bar that the data description does not state: that its BID/ASK is the quote at the
+  end of the hour, and that prints outside their bar's quote are a timing artefact. If
+  either failed, the mid used in Part I would not be a tradeable price. Both were tested by
+  re-pulling the same contracts at one-minute resolution (<span id="bars-n">—</span>
+  two-sided quoted bars).
+</p>
+<div id="bars" class="notes"></div>
+
 <h2 id="sec-hours">Sensitivity to order time</h2>
-<p class="lead-in">
-  The fill assumption also requires a choice of time: the mid at which hour. Neither the
-  assignment nor most backtests specify it. The table below re-runs the identical book (the
-  same rule, strike logic and calendar) at each tradeable hour of the entry session, so that
-  only the order time varies.
+<p class="lead-in motivation">
+  <strong>Motivation.</strong> The assignment specifies a fill at the mid at the order
+  timestamp but does not specify the time, and most backtests leave it unstated. An
+  unstated parameter that materially affects the result would weaken every comparison built
+  on it, so the identical book (the same rule, strike logic and calendar) is re-run at each
+  tradeable hour of the entry session, with only the order time varying.
 </p>
 <div class="card"><div id="plot-hours" class="plot" style="height:400px"></div></div>
 <div class="tbl-wrap"><table class="tbl" id="tbl-hours"></table></div>
 <div id="hours-note" class="notes"></div>
 
 <h2 id="sec-cf">Alternative strike rules</h2>
-<p class="lead-in">
-  The booked rule is the assignment's baseline. The alternatives run through the
-  <em>identical</em> engine (the same calendar, fills and ledger), so differences between them
-  reflect the decision rule rather than differences in implementation. Two of the rules do not
-  use a fixed distance: they select the strike that the week's at-the-money implied volatility
-  prices at a stated probability of being breached, using the Black-76 inversion developed for
-  Assignment 1.1.
+<p class="lead-in motivation">
+  <strong>Motivation.</strong> The assignment identifies the strike as the central decision,
+  but a single rule cannot show how much that decision is worth. The alternatives below run
+  through the <em>identical</em> engine (the same calendar, fills and ledger), so differences
+  between them reflect the decision rule alone. Two of them select the strike that the week's
+  at-the-money implied volatility prices at a stated probability of being breached, using the
+  Black-76 inversion developed for Assignment 1.1; these also test whether option-implied
+  assignment probabilities are borne out.
 </p>
 <div class="tbl-wrap"><table class="tbl" id="tbl-rules"></table></div>
 <div id="rules-note" class="notes"></div>
 
-<h2 id="sec-bars">Validation against one-minute data</h2>
-<p class="lead-in">
-  Two claims on this page depend on how an hourly bar is constructed: that its BID/ASK is the
-  quote at the end of the hour, and that prints outside their bar's quote are a timing
-  artefact. To test both, the same contracts were re-pulled at one-minute resolution
-  (<span id="bars-n">—</span> two-sided quoted bars).
-</p>
-<div id="bars" class="notes"></div>
-
-<h2 id="sec-analysis">Analysis</h2>
-<div id="analysis" class="reading"></div>
-
 <h2 id="sec-methods">Methods and data checks</h2>
-<p class="lead-in">
-  This section documents a correction to the assignment's RIC scheme, the rationale for one
-  of its instructions, and a series of data and implementation checks, including errors
-  found during development and how each was detected.
+<p class="lead-in motivation">
+  <strong>Motivation.</strong> The checks below concern the data and the implementation
+  rather than the strategy. Each was prompted by a specific risk to the figures in Part I,
+  stated at the start of each item.
 </p>
 <div id="methods" class="reading"></div>
-
-<h2 id="sec-data">Data</h2>
-<div id="data-state"></div>
-<div class="notes" id="data-note"></div>
 
 <footer id="footer"></footer>
 </div>
@@ -929,6 +974,8 @@ const DATA = {"meta":{"ticker":"AAPL","stock_ric":"AAPL.O","fetched_at":"2026-09
         to ${money(D.fit.by_moves[D.fit.by_moves.length - 1].median_abs_resid, 3)}. A last trade
         drawn from a single lot is a noisier estimate than one drawn from many, and R² is
         largely insensitive to the difference.</li>
+    </ul>`;
+    el("fit-verdict").innerHTML = `<ul class="notes">
       <li><strong>Assessment of the fill assumption.</strong> For one contract per week, written
         slightly out of the money on one of the most liquid option chains, the mid is a
         defensible fill, and the evidence above supports it. The assumption would not hold at
@@ -939,6 +986,9 @@ const DATA = {"meta":{"ticker":"AAPL","stock_ric":"AAPL.O","fetched_at":"2026-09
         collected ${money(H.bid_fill_cost, 2)} less premium over ${H.weeks_booked} weeks,
         reducing P&L from ${signed(H.pnl)} to ${signed(H.pnl - H.bid_fill_cost)}. The
         conclusions are unchanged.</li>
+      <li><strong>Further checks.</strong> The fit within narrow price bands, by moneyness
+        and by liquidity, and a one-minute re-pull of the same contracts, are reported in
+        <a href="#sec-fill-more" style="color:var(--both)">Part II</a>.</li>
     </ul>`;
   })();
 
@@ -1220,7 +1270,7 @@ const DATA = {"meta":{"ticker":"AAPL","stock_ric":"AAPL.O","fetched_at":"2026-09
         ${pct(100 * H.assignments / Math.max(1, H.weeks_booked))}.`],
       ["Validity of the mid fill",
        `The pooled R² of ${num(D.fit.pooled.r2, 4)} is weak evidence on its own, but the fit
-        persists within narrow price bands, where R² ranges from
+        persists within narrow price bands (Part II), where R² ranges from
         ${num(Math.min(...D.fit.by_price.map(b => b.r2)), 3)} to
         ${num(Math.max(...D.fit.by_price.map(b => b.r2)), 3)}; the mid tracks the print
         closely. Tracking a price differs from transacting at it, however: the median print was
@@ -1251,9 +1301,9 @@ const DATA = {"meta":{"ticker":"AAPL","stock_ric":"AAPL.O","fetched_at":"2026-09
         First, declare the order hour as an explicit, pre-committed parameter and report the
         sensitivity, since the
         ${money(Math.max(...D.hour_sweep.map(s => s.pnl)) - Math.min(...D.hour_sweep.map(s => s.pnl)))}
-        range in P&L across hours is too large to leave unstated. Second, key the strike to the
-        week's implied volatility rather than to a fixed distance, since a fixed rule sells the
-        same cap in calm and volatile weeks. Third, evaluate the fill by the residual as a
+        range in P&L across hours (Part II) is too large to leave unstated. Second, key the strike
+        to the week's implied volatility rather than to a fixed distance, since a fixed rule
+        sells the same cap in calm and volatile weeks (evaluated in Part II). Third, evaluate the fill by the residual as a
         fraction of the spread rather than by the pooled R², since that is the scale on which
         proximity to the mid is meaningful. The hold-to-expiry rule would be retained: it is
         costly in a rising market, but each alternative (rolling, or buying to close) adds a
@@ -1279,7 +1329,8 @@ const DATA = {"meta":{"ticker":"AAPL","stock_ric":"AAPL.O","fetched_at":"2026-09
     const shortWeeks = D.cycles.filter(c => c.short_week);
     el("methods").innerHTML = `
       <div class="qa"><p class="q">Zero-padding of the expiry day in option RICs</p>
-        <p class="a">The assignment's RIC scheme states <em>"DAY not zero-padded"</em>. Two of
+        <p class="a"><em>Motivation:</em> two weeks of the sample initially returned no option data, and an
+        empty response is indistinguishable from a quiet week unless its cause is established. The assignment's RIC scheme states <em>"DAY not zero-padded"</em>. Two of
         the three AAPL examples it gives do not resolve against LSEG:
         <code>AAPLF52619000.U^F26</code> and <code>AAPLH72620500.U^H26</code> both return an
         error, whereas the zero-padded <code>AAPLF052619000.U^F26</code> and
@@ -1295,7 +1346,9 @@ const DATA = {"meta":{"ticker":"AAPL","stock_ric":"AAPL.O","fetched_at":"2026-09
         weeks.</p></div>
 
       <div class="qa"><p class="q">Holiday expiries and the stock calendar</p>
-        <p class="a">The assignment instructs: <em>"take the last session in each week from the
+        <p class="a"><em>Motivation:</em> the assignment's instruction to read expiries from the stock tape
+        was implemented as written, and this item verifies that it behaves as intended around
+        market holidays. The assignment instructs: <em>"take the last session in each week from the
         stock tape so you do not invent holiday expiries."</em> Recent holidays illustrate the
         reason. Jun 19 2026 (Juneteenth) and Jul 3 2026 (Independence Day, observed) are market
         holidays, and options for those weeks expire on the <strong>Thursday</strong>: the
@@ -1310,7 +1363,8 @@ const DATA = {"meta":{"ticker":"AAPL","stock_ric":"AAPL.O","fetched_at":"2026-09
         A Monday holiday is handled symmetrically: the entry moves to Tuesday.</p></div>
 
       <div class="qa"><p class="q">Ambiguous shape of flat LSEG responses</p>
-        <p class="a">Assignment 1.1 documented that a multi-field request that loses all but one
+        <p class="a"><em>Motivation:</em> the fetcher reported more live series than it had requested, which
+        indicated that response labels were being misread. Assignment 1.1 documented that a multi-field request that loses all but one
         field returns <em>flat columns of bare RICs</em>, indistinguishable from a valid
         single-field response. Further probing identified the general rule: flat columns carry
         whichever axis has more than one member, and <strong>when both are singletons the
@@ -1326,7 +1380,8 @@ const DATA = {"meta":{"ticker":"AAPL","stock_ric":"AAPL.O","fetched_at":"2026-09
         requested.</p></div>
 
       <div class="qa"><p class="q">Erroneous prints in bar highs and lows</p>
-        <p class="a">A bar's open and close are both sequenced trades, so any price the bar
+        <p class="a"><em>Motivation:</em> assignment depends on where the stock closed relative to the strike,
+        so any price field used for entry or settlement must be free of spurious prints. A bar's open and close are both sequenced trades, so any price the bar
         genuinely traded through should lie near that range. On this pull,
         <strong>HIGH_1 exceeds the bar's open–close range by more than
         ${pct(O.thresholds_pct[0], 0)} on ${pct(O.high.over_1pct_share)} of the ${O.bars} bars,
@@ -1350,7 +1405,8 @@ const DATA = {"meta":{"ticker":"AAPL","stock_ric":"AAPL.O","fetched_at":"2026-09
         RICs.</p></div>
 
       <div class="qa"><p class="q">Coverage of the requested option chain</p>
-        <p class="a">The fetcher bands strikes to the range the stock traded and extends beyond
+        <p class="a"><em>Motivation:</em> many candidate RICs are generated for strikes that were never
+        listed, and the fetch must distinguish these from genuine data loss. The fetcher bands strikes to the range the stock traded and extends beyond
         it, so a substantial share of candidate RICs are contracts that were never listed.
         ${F.dead_rics ? `${F.dead_rics.length} returned no data.` : "RICs that return no data are counted."}
         These were identified by bisecting failing batches rather than by falling back to one
@@ -1362,7 +1418,8 @@ const DATA = {"meta":{"ticker":"AAPL","stock_ric":"AAPL.O","fetched_at":"2026-09
         bars.</p></div>
 
       <div class="qa"><p class="q">Precomputation in Python</p>
-        <p class="a">As in Assignment 1.1, every figure on this page is computed once in
+        <p class="a"><em>Motivation:</em> the page reports the same figures in tables, charts and text, and
+        these must not be able to disagree. As in Assignment 1.1, every figure on this page is computed once in
         <code>lib/covered_call.py</code> and <code>lib/cc_analysis.py</code> and embedded as
         JSON; the browser only renders it. With a single implementation of the arithmetic, the
         blotter, ledger, Reg T panel and text cannot disagree. The counterfactual strike rules
@@ -1371,7 +1428,9 @@ const DATA = {"meta":{"ticker":"AAPL","stock_ric":"AAPL.O","fetched_at":"2026-09
         code.</p></div>
 
       <div class="qa"><p class="q">Testing</p>
-        <p class="a">${M.suite.hw2_functions} test functions cover this assignment, in
+        <p class="a"><em>Motivation:</em> the errors this assignment grades, such as impossible trades or
+        incorrect cash, usually produce plausible numbers rather than failures, so they have to
+        be tested for directly. ${M.suite.hw2_functions} test functions cover this assignment, in
         ${M.suite.hw2_files.map(f => `<code>${esc(f)}</code>`).join(", ")}, within a repository
         suite of ${M.suite.functions} functions across ${M.suite.files} files. (Parametrised
         functions expand into several cases each, so pytest collects at least this many.) The
