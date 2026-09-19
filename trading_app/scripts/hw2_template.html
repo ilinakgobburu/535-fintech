@@ -45,10 +45,15 @@
   /* An inline grid-template-columns would outrank the shared stylesheet's
      phone-width media query and keep two cramped columns on a 390px screen,
      so the two-up layout is a class with its own breakpoint. */
-  .reading.qa-grid.qa-two{grid-template-columns:repeat(2,1fr)}
-  @media(max-width:1000px){.reading.qa-grid.qa-two{grid-template-columns:1fr}}
+  /* Prose runs the full content width in a single column, as the tables and
+     charts do. The shared stylesheet sets these blocks in two or three narrow
+     columns, which left most of each row empty beside a full-width table. */
+  .reading{columns:auto}
+  .reading.qa-grid,.reading.qa-grid.qa-two{grid-template-columns:1fr;gap:0}
+  .reading.qa-grid .qa{margin-bottom:22px}
   .lead-in{color:var(--muted);font-size:var(--fs-lede);line-height:1.62;
-    max-width:92ch;margin:0 0 6px}
+    max-width:none;margin:0 0 6px}
+  header .lede{max-width:none}
 </style>
 </head>
 <body>
@@ -60,10 +65,10 @@
   <a href="#sec-blotter">Blotter</a>
   <a href="#sec-ledger">Ledger</a>
   <a href="#sec-regt">Reg T</a>
-  <a href="#sec-fill">Scatter + R²</a>
-  <a href="#sec-hours">Timing test</a>
+  <a href="#sec-fill">Mid vs trade</a>
+  <a href="#sec-hours">Order time</a>
   <a href="#sec-cf">Strike rules</a>
-  <a href="#sec-bars">1-min check</a>
+  <a href="#sec-bars">One-minute check</a>
   <a href="#sec-analysis">Analysis</a>
   <a href="#sec-methods">Methods</a>
   <a href="data.html">Data</a>
@@ -74,100 +79,91 @@
   <div class="eyebrow">MEng FinTech · Algorithmic Trading II · Assignment 1.2</div>
   <h1>Covered Call <span class="accent">·</span> <span id="h-ticker">—</span></h1>
   <p class="lede">
-    Long 100 shares, short one weekly call, one name, no rolls. The strategy is
-    small enough to state in a sentence, which means the whole result lives in
-    the decisions around it — <em>which strike</em>, <em>at what price</em>, and
-    <em>at which moment</em>. This page books all three explicitly and then
-    measures how much each one was worth.
+    This page backtests a covered call on a single name: long 100 shares, short one weekly
+    call, held to expiry without rolls. Because the strategy itself is fixed, the analysis
+    concentrates on three implementation decisions: <em>the strike</em>, <em>the fill
+    price</em> and <em>the time of the order</em>. Each is recorded explicitly in the book,
+    and its effect on the result is measured.
   </p>
   <div class="prov" id="prov"></div>
   <div class="banner hidden" id="banner"></div>
 </header>
 
-<h2 id="sec-rules">Framework followed</h2>
+<h2 id="sec-rules">Framework</h2>
 <p class="lead-in">
-  Every line below is executed by one loop in
-  <code>lib/covered_call.py</code>. Nothing on this page is chosen by hand, and
-  nothing is chosen after seeing the outcome.
+  Each rule below is executed by a single loop in <code>lib/covered_call.py</code>. All
+  parameters were fixed before any results were observed; none was chosen by hand or
+  selected after the fact.
 </p>
-
 <div class="rulebox">
   <ol>
-    <li><span class="tag">capital</span> The assignment sets no starting capital, so the
-      account is sized to the strategy. It is funded with <span id="r-capital">—</span> before
-      the first order: <span id="r-capital-math">—</span>. That is exactly the cost of the first
-      covered call, so cash is $0 once the first combo fills and none of it sits idle. An
-      earlier version of this page started with a flat $50,000, most of it idle cash that
-      diluted the return and hid the margin mechanics; the trades and the trading P&amp;L are
-      identical either way. <span id="r-margin"></span></li>
-    <li><span class="tag">entry</span> On the <strong>first session of each
-      week</strong> — not "Monday", see below — at the
-      <span id="r-hour">—</span>: if the book is flat, buy
-      <strong>100 shares at the stock print</strong>. Cash decreases.</li>
-    <li><span class="tag">strike</span> In the same bar, sell <strong>one call
-      expiring at the end of that same week</strong>, struck at the
-      <strong>lowest listed strike at or above spot</strong>. When spot sits
-      exactly on a listed strike, that strike is the answer — the rule is
-      "at or above", not "strictly above", which is what makes the ATM case
-      work instead of silently selling an extra strike of upside.</li>
-    <li><span class="tag">fill</span> The call fills at
-      <strong>mid = (BID + ASK) / 2</strong> in that same bar. Both legs come
-      from one bar, so neither leg sees the other's future.
-      <strong>No two-sided quote, no fill</strong> — and because the combo is
-      one decision, an unpriceable call also means we do not buy the stock.</li>
-    <li><span class="tag">wait</span> Hold to expiry. No rolls, no
-      buy-to-close, no adjustment of any kind.
-      At the closing print of the week's last session:
-      <br><strong>S<sub>T</sub> &gt; K</strong> → assigned. Deliver the shares,
-      cash increases by 100 × K, the book is flat, and the next week starts the
-      combo again.
-      <br><strong>S<sub>T</sub> ≤ K</strong> → expires worthless. Keep the
-      shares, keep the premium, and next week simply write another call against
-      stock we already own.</li>
+    <li><span class="tag">capital</span> The assignment does not specify starting capital,
+      so the account is sized to the strategy. It is funded with <span id="r-capital">—</span>
+      before the first order: <span id="r-capital-math">—</span>. This equals the cost of the
+      first covered call, so cash is $0 once the first position is established and no capital
+      is idle. An earlier version of this page used a flat $50,000, most of which was idle
+      cash that diluted the return and obscured the margin mechanics; trades and trading
+      P&amp;L are unaffected by the choice. <span id="r-margin"></span></li>
+    <li><span class="tag">entry</span> On the <strong>first session of each week</strong>
+      (usually, but not always, Monday; see Methods), at the <span id="r-hour">—</span>: if
+      the book holds no shares, buy <strong>100 shares at the stock print</strong>. Cash
+      decreases.</li>
+    <li><span class="tag">strike</span> In the same bar, sell <strong>one call expiring at the
+      end of the same week</strong>, at the <strong>lowest listed strike at or above
+      spot</strong>. The rule is "at or above" rather than "strictly above", so that when spot
+      equals a listed strike the at-the-money strike is selected rather than the next strike
+      out.</li>
+    <li><span class="tag">fill</span> The call is filled at <strong>mid = (BID + ASK) /
+      2</strong> in the same bar. Both legs are priced from one bar, so neither uses
+      information that postdates the other. <strong>If the chosen strike has no two-sided
+      quote, no order is filled</strong>; because the stock and the call form a single
+      decision, the stock is not purchased either.</li>
+    <li><span class="tag">wait</span> Positions are held to expiry, with no rolls,
+      buy-to-close orders or other adjustments. At the official close of the week's last
+      session:
+      <br><strong>S<sub>T</sub> &gt; K</strong> → assigned. The shares are delivered, cash
+      increases by 100 × K, the book is flat, and the next week opens a new position.
+      <br><strong>S<sub>T</sub> ≤ K</strong> → the call expires worthless. The shares and the
+      premium are retained, and the next week's call is written against the shares already
+      held.</li>
   </ol>
 </div>
-
 <div class="callout">
-  <strong>Ties expire.</strong> If the stock closes exactly at the strike, the
-  call has no intrinsic value and isn't exercised, so it is treated as expiring.
+  <strong>Ties.</strong> If the stock closes exactly at the strike, the call has no intrinsic
+  value and is treated as expiring unexercised.
 </div>
-
 <div id="why" class="reading qa-grid qa-two"></div>
-
 <div class="tiles" id="tiles"></div>
 
 <h2 id="sec-blotter">Blotter</h2>
 <p class="lead-in">
-  Only trades that were actually booked. No working orders, no signals, no
-  intentions. Each row names the rule that produced it. Prices are shown at the
-  precision they were booked, because the stock's last print is often sub-penny
-  and a mid between two nickel quotes can end in a half cent: quantity × fill
-  reproduces every row's cash exactly.
+  The blotter records only executed trades; it contains no working orders or signals. Each
+  row cites the rule that produced it. Prices are shown at the precision at which they were
+  booked: the stock's last print is frequently sub-penny, and a mid between two nickel quotes
+  can end in a half cent, so quantity × fill reproduces each row's cash change exactly.
 </p>
 <div class="card"><div class="tbl-wrap"><table class="tbl" id="tbl-blotter"></table></div></div>
 <div id="blotter-note" class="notes"></div>
 
 <h2 id="sec-ledger">Ledger</h2>
 <p class="lead-in">
-  Shares, the short call with its strike and expiry, cash, and the marks — at
-  the close of every session. The ledger is <em>derived from the blotter</em>
-  rather than accumulated alongside it, so the two cannot drift apart: cash at
-  any bar is the starting cash plus the deltas of the blotter events that have
-  happened by then, and a test asserts exactly that at every one of the
+  The ledger reports shares, the short call (strike and expiry), cash and marks at the close
+  of every session. It is <em>derived from the blotter</em> rather than maintained
+  separately, so the two cannot diverge: cash at any bar equals starting cash plus the cash
+  changes of all blotter events up to that bar, which a test verifies at each of the
   <span id="l-bars">—</span> bars.
 </p>
 <div class="card"><div class="tbl-wrap"><table class="tbl" id="tbl-ledger"></table></div></div>
-
 <h3 style="font-size:var(--fs-sub);margin:26px 0 8px">Contracts written</h3>
-<p class="lead-in" style="margin-top:0">Every expired contract this book queried for a fill.</p>
+<p class="lead-in" style="margin-top:0">Every contract for which the book sought a fill.</p>
 <div class="card"><div class="tbl-wrap"><table class="tbl" id="tbl-contracts"></table></div></div>
 
-<h2 id="sec-regt">Reg T</h2>
+<h2 id="sec-regt">Reg T margin</h2>
 <p class="lead-in">
-  Reg T rather than portfolio margin, for a reason that is not just "the
-  handout said so": Reg T is computable without a broker's PM engine, and a
-  book that clears Reg T also clears PM. The implication runs one way only, so
-  the conservative requirement is the one worth reporting.
+  Margin is computed under Reg T rather than portfolio margin. Reg T can be computed without
+  a broker's risk engine, and a book that satisfies Reg T also satisfies portfolio margin,
+  whereas the converse does not hold. Reg T is therefore the more conservative requirement
+  to report.
 </p>
 <div class="eqn">LMV       = shares × stock mark
 NAV       = cash + stock MV + option MV        (a short call is NEGATIVE)
@@ -177,91 +173,82 @@ maint     = 25% × LMV                          FINRA
 available = NAV − initial
 excess    = NAV − maint</div>
 <p class="lead-in">
-  The covered call adds nothing to the initial requirement, which is the whole
-  reason the position is called covered: the short call's only obligation is to
-  deliver stock the account already owns. Cash moves on blotter events and
-  nowhere else — buy stock, collect premium, expire at zero, assign at the
-  strike. Marks move NAV; they never move cash. Accrued margin interest is the
-  one other thing that lowers NAV without a blotter row: it is a liability owed
-  on the borrowed cash, so it comes off NAV while cash stays where the blotter
-  left it.
+  The covered call adds nothing to the initial requirement, because the short call's only
+  obligation is to deliver shares the account already holds. Cash changes only on blotter
+  events: stock purchases, premium received, expiry at zero and assignment at the strike.
+  Marks change NAV but not cash. Accrued margin interest is the only other item that reduces
+  NAV without a blotter row: it is a liability on the borrowed cash, deducted from NAV while
+  cash remains as the blotter left it.
 </p>
 <div class="card"><div id="plot-nav" class="plot" style="height:460px"></div></div>
 <div class="card"><div id="plot-margin" class="plot" style="height:340px"></div></div>
 <div id="feas" class="callout"></div>
 
-<h2 id="sec-fill">Mid vs. trade price scatter + R²</h2>
+<h2 id="sec-fill">Mid versus trade price: scatter and R²</h2>
 <p class="lead-in">
-  The whole book fills at the mid, so the assumption deserves evidence rather
-  than a sentence. Below is every hourly bar in which a call both had a
-  two-sided quote and actually printed: <span id="f-n">—</span> of them.
+  Every call in the book is filled at the mid, so this assumption is tested directly. The
+  sample comprises every hourly bar in which a call had both a two-sided quote and a trade:
+  <span id="f-n">—</span> bars.
 </p>
 <div class="card"><div id="plot-scatter" class="plot" style="height:520px"></div></div>
 <div id="fit-pooled" class="callout"></div>
-
-<h3 style="font-size:var(--fs-sub);margin:26px 0 8px">Tightening the band</h3>
+<h3 style="font-size:var(--fs-sub);margin:26px 0 8px">Fit within narrow price bands</h3>
 <p class="lead-in" style="margin-top:0">
-  A pooled R&sup2; over contracts worth one cent to ninety-nine dollars is
-  inflated by range alone. The honest check is whether the fit survives inside a
-  narrow band, where knowing that a $3 option is not a $6 option is actually
-  difficult. <strong>It does</strong> — which was not the expected answer, and is
-  reported here because it was not.
+  A pooled R&sup2; across contracts priced from one cent to ninety-nine dollars is inflated by
+  the price range alone. The fit is therefore re-estimated within narrow price bands, where
+  distinguishing a $3 option from a $6 option is a more demanding test. <strong>The fit holds
+  within these bands</strong>, contrary to the initial expectation.
 </p>
 <div class="tbl-wrap"><table class="tbl" id="tbl-price"></table></div>
 <div id="fit-written" class="callout good"></div>
-
 <div class="grid2" style="margin-top:26px">
   <div><h3 style="font-size:var(--fs-sub);margin:8px 0">By moneyness</h3>
     <div class="tbl-wrap"><table class="tbl" id="tbl-buckets"></table></div></div>
-  <div><h3 style="font-size:var(--fs-sub);margin:8px 0">By how often it traded in the bar</h3>
+  <div><h3 style="font-size:var(--fs-sub);margin:8px 0">By number of trades in the bar</h3>
     <div class="tbl-wrap"><table class="tbl" id="tbl-moves"></table></div></div>
 </div>
 <div id="fit-note" class="notes"></div>
 
-<h2 id="sec-hours">Timing test: re-running at different hours</h2>
+<h2 id="sec-hours">Sensitivity to order time</h2>
 <p class="lead-in">
-  "Fill at mid" is only half an assumption. The other half is <em>which</em>
-  mid — and nothing in the assignment, or in most backtests, says. Below is the
-  identical book, same rule and same strike logic and same calendar, written at
-  each tradeable hour of the entry session. Only the clock moves.
+  The fill assumption also requires a choice of time: the mid at which hour. Neither the
+  assignment nor most backtests specify it. The table below re-runs the identical book (the
+  same rule, strike logic and calendar) at each tradeable hour of the entry session, so that
+  only the order time varies.
 </p>
 <div class="card"><div id="plot-hours" class="plot" style="height:400px"></div></div>
 <div class="tbl-wrap"><table class="tbl" id="tbl-hours"></table></div>
 <div id="hours-note" class="notes"></div>
 
-<h2 id="sec-cf">Comparing strike rules</h2>
+<h2 id="sec-cf">Alternative strike rules</h2>
 <p class="lead-in">
-  The booked rule is the assignment's baseline. The others run through the
-  <em>identical</em> engine — same calendar, same fills, same ledger — so the
-  difference between them is a difference of decisions and not of two
-  implementations that drifted. Two of them are not fixed distances at all:
-  they solve for the strike the week's own at-the-money implied volatility
-  prices at a stated chance of being breached, reusing the Black-76 inversion
-  written for Assignment 1.1.
+  The booked rule is the assignment's baseline. The alternatives run through the
+  <em>identical</em> engine (the same calendar, fills and ledger), so differences between them
+  reflect the decision rule rather than differences in implementation. Two of the rules do not
+  use a fixed distance: they select the strike that the week's at-the-money implied volatility
+  prices at a stated probability of being breached, using the Black-76 inversion developed for
+  Assignment 1.1.
 </p>
 <div class="tbl-wrap"><table class="tbl" id="tbl-rules"></table></div>
 <div id="rules-note" class="notes"></div>
 
-<h2 id="sec-bars">Checking the bar against a 1-minute pull</h2>
+<h2 id="sec-bars">Validation against one-minute data</h2>
 <p class="lead-in">
-  Two claims on this page rest on what an hourly bar <em>is</em>: that its
-  BID/ASK is the quote standing at the end of the hour, and that prints landing
-  outside their own bar's quote are a timing artefact rather than something
-  real. Both were assumptions. So the same contracts were re-pulled at one
-  minute — <span id="bars-n">—</span> two-sided quoted bars — and both were
-  measured.
+  Two claims on this page depend on how an hourly bar is constructed: that its BID/ASK is the
+  quote at the end of the hour, and that prints outside their bar's quote are a timing
+  artefact. To test both, the same contracts were re-pulled at one-minute resolution
+  (<span id="bars-n">—</span> two-sided quoted bars).
 </p>
 <div id="bars" class="notes"></div>
 
-<h2 id="sec-analysis">What happened</h2>
+<h2 id="sec-analysis">Analysis</h2>
 <div id="analysis" class="reading"></div>
 
-<h2 id="sec-methods">Methods and checks</h2>
+<h2 id="sec-methods">Methods and data checks</h2>
 <p class="lead-in">
-  One of these is a correction to the assignment's RIC scheme, and one shows
-  why an instruction in it matters. The rest are assumptions this page would
-  otherwise have been resting on quietly — including bugs of my own, which are
-  here because of how they were caught rather than despite it.
+  This section documents a correction to the assignment's RIC scheme, the rationale for one
+  of its instructions, and a series of data and implementation checks, including errors
+  found during development and how each was detected.
 </p>
 <div id="methods" class="reading"></div>
 

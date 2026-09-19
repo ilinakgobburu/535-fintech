@@ -357,8 +357,8 @@ def render_data_page(css: str, meta: dict) -> str:
 </header>
 <div class="callout" id="data-state"><strong>Data connection required.</strong> Pages is static
 hosting. LSEG Workspace and the Python desktop session exist only on a local machine, so nothing
-here fetches data at view time. The book at <a href="hw2.html" style="color:var(--both)">hw2.html</a>
-still works \u2014 that is what gets graded.</div>
+here fetches data at view time. The published book at <a href="hw2.html" style="color:var(--both)">hw2.html</a>
+is unaffected: every figure on it is computed from the cached pull.</div>
 <h2>What is baked into the book</h2>
 <ul class="notes">
   <li>{e(str(meta.get("stock_ric", "")))} and its call chain, {e(str(meta.get("interval", "")))}

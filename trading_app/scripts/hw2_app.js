@@ -64,13 +64,13 @@
       + `call's premium, ${s0.qty} × $${px(c0.fill)} = ${money(c0.cash_delta, 2)}`;
   }
   el("r-margin").innerHTML = H.min_cash < 0
-    ? `Later entries happen at higher prices, so they are partly <strong>bought on margin</strong>:
-       cash goes as low as ${money(H.min_cash)}, a loan Reg T permits as long as available funds
-       stay positive. Interest on that loan accrues at ${pct(100 * M.margin_rate, 0)} a year
-       (actual/360, an assumed broker rate) and comes out of NAV:
-       ${money(H.margin_interest, 2)} over the whole backtest, taking trading P&L of
-       ${signed(H.pnl + H.margin_interest)} to ${signed(H.pnl)}. Buy-and-hold borrows on the same
-       terms.`
+    ? `Because later entries occur at higher prices, they are partly <strong>bought on margin</strong>:
+       cash reaches a low of ${money(H.min_cash)}, a loan Reg T permits while available funds
+       remain positive. Interest accrues on the debit balance at ${pct(100 * M.margin_rate, 0)}
+       a year (actual/360, an assumed broker rate) and is deducted from NAV. It totals
+       ${money(H.margin_interest, 2)} over the backtest and reduces trading P&L from
+       ${signed(H.pnl + H.margin_interest)} to ${signed(H.pnl)}. The buy-and-hold benchmark
+       borrows on the same terms.`
     : "";
   el("f-n").textContent = D.fit.resid.n.toLocaleString();
   el("prov").innerHTML =
@@ -82,20 +82,22 @@
   (function why() {
     const R = D.fit.resid, B = D.bar_study;
     el("why").innerHTML = `
-      <div class="qa"><p class="q">Why ${esc(M.ticker)}?</p>
-        <p class="a">Filling at the mid is only believable on a liquid chain. ${esc(M.ticker)} has
-        weeklies every week with strikes ${money(M.strike_step, 2)} apart, a median spread of
-        ${money(R.median_spread, 2)}, and ${D.fit.pooled.n.toLocaleString()} hourly bars with both a
-        quote and a trade to test the mid against. I confirmed the data existed before running the
-        backtest, so the name wasn't picked for its result.</p></div>
+      <div class="qa"><p class="q">Choice of underlying: ${esc(M.ticker)}</p>
+        <p class="a">A mid-price fill is only credible on a liquid option chain. ${esc(M.ticker)}
+        lists weekly expiries every week, with strikes ${money(M.strike_step, 2)} apart, a median
+        bid-ask spread of ${money(R.median_spread, 2)}, and ${D.fit.pooled.n.toLocaleString()} hourly
+        bars carrying both a quote and a trade against which the mid can be tested. Data
+        availability was confirmed before the backtest was run, so the underlying was not
+        selected on the basis of its result.</p></div>
 
-      <div class="qa"><p class="q">Why wait through expiry instead of buying the call back at a profit?</p>
-        <p class="a">A buy-back limit fills at whatever moment the ask touches it inside an hour, but
-        ${B ? `an hourly quote is only the last minute's snapshot (checked on
-        ${B.snapshot.matched_hours.toLocaleString()} contract-hours)` : "an hourly quote is only an end-of-hour snapshot"},
-        so simulating that fill would mean inventing a price. Waiting needs only the closing stock
-        price on expiry day. The cost is real: in a rally the cap binds, and the premium is all
-        the upside there is.</p></div>`;
+      <div class="qa"><p class="q">Holding to expiry rather than buying the call back</p>
+        <p class="a">A buy-back limit order would fill at whatever point within the hour the ask
+        reached the limit. ${B ? `An hourly quote, however, records only the final minute
+        (verified on ${B.snapshot.matched_hours.toLocaleString()} contract-hours)`
+        : "An hourly quote, however, is only an end-of-hour snapshot"}, so simulating that fill
+        would require a price that was never observed. Holding to expiry requires only the
+        closing stock price on expiry day. The cost of this choice is that, in a rising market,
+        the cap binds and the premium is the only upside retained.</p></div>`;
   })();
 
   // ---- tiles ------------------------------------------------------------
@@ -104,15 +106,15 @@
       sub: `${signed(H.pnl)} on ${money(M.start_cash)} starting cash (${pct(H.pnl_pct)})`
         + (H.margin_interest > 0 ? `, after ${money(H.margin_interest, 2)} of margin interest` : "") },
     { label: "Buy & hold, same 100 shares", value: money(H.bh_final), hero: 2,
-      sub: `the covered call finished ${signed(H.gap)} against simply holding` },
+      sub: `the covered call finished ${signed(H.gap)} relative to holding the shares` },
     { label: "Premium collected", value: money(H.premium),
-      sub: `${H.weeks_booked} calls written, ${H.weeks_skipped} week(s) skipped for want of a quote` },
+      sub: `${H.weeks_booked} calls written, ${H.weeks_skipped} skipped for lack of a quote` },
     { label: "Assignments", value: `${H.assignments} of ${H.weeks_booked}`,
       sub: `${pct(100 * H.assignments / Math.max(1, H.weeks_booked))} of the calls written finished in the money` },
     { label: "Lowest available funds", value: money(H.min_available),
       sub: H.ever_infeasible
-        ? "went negative — this book could not have been put on"
-        : `never negative; the trade was fundable at every bar` },
+        ? "went negative; this book could not have been established"
+        : `never negative; every trade was fundable when booked` },
     { label: "Minimum starting cash", value: money(D.min_cash.min_cash),
       sub: D.min_cash.binds
         ? `below this, available funds go negative`
@@ -173,27 +175,26 @@
     const skipped = D.cycles.filter(c => String(c.status).startsWith("skipped"));
     const parts = [
       `<li><strong>${rows.length} rows, ${H.weeks_booked} cycles.</strong> `
-      + `Each cycle is a stock BUY (only when flat) and one call SELL, then a `
-      + `terminal event. ${H.weeks_booked - H.assignments} week(s) ended in an `
-      + `EXPIRE row. ${H.assignments} ended in assignment, which is booked as the `
-      + `assignment specifies — <strong>two rows</strong>: ASSIGN on the call, which `
-      + `closes the short and moves no cash, and a stock SELL of 100 at the strike, `
-      + `which carries it. The shares visibly leave the book.</li>`,
-      `<li><strong>Cash Δ is the whole accounting.</strong> Buying stock debits `
-      + `100 × print; writing debits nothing and credits 100 × mid; an expiry `
-      + `moves $0; an assignment credits 100 × <em>strike</em> — never 100 × settle. `
-      + `Crediting the settle would quietly turn a capped strategy into an `
-      + `uncapped one, so it has its own test.</li>`,
+      + `Each cycle consists of a stock BUY (only when the book holds no shares), one call `
+      + `SELL and a terminal event. ${H.weeks_booked - H.assignments} of the ${H.weeks_booked} `
+      + `cycles ended with an EXPIRE row and ${H.assignments} with assignment. As the `
+      + `assignment specifies, an assignment is booked as <strong>two rows</strong>: an ASSIGN `
+      + `row, which closes the short call and moves no cash, and a stock SELL of 100 shares at `
+      + `the strike, which carries the cash.</li>`,
+      `<li><strong>Cash accounting.</strong> A stock purchase debits 100 × print; writing a `
+      + `call credits 100 × mid; an expiry moves $0; an assignment credits 100 × `
+      + `<em>strike</em>, not 100 × settlement price. Crediting the settlement price would `
+      + `remove the cap from the strategy, and a dedicated test guards against it.</li>`,
     ];
     if (skipped.length) {
-      parts.push(`<li><strong>${skipped.length} week(s) booked nothing</strong> `
+      parts.push(`<li><strong>${skipped.length} week(s) were not traded</strong> `
         + `(${skipped.map(s => esc(s.iso)).join(", ")}) because the chosen strike had no `
-        + `two-sided quote at the order bar. The rule is "no bid/ask → no fill", and `
-        + `since the combo is one decision, the stock leg was not put on either.</li>`);
+        + `two-sided quote at the order bar. Under the rule "no bid/ask, no fill", and because `
+        + `the position is a single decision, the stock leg was not established either.</li>`);
     } else {
-      parts.push(`<li><strong>No week was skipped.</strong> Every chosen strike carried `
-        + `a two-sided quote at the order bar, so the "no bid/ask → no fill" rule never `
-        + `had to fire. It is still implemented and tested.</li>`);
+      parts.push(`<li><strong>No week was skipped.</strong> Every selected strike had a `
+        + `two-sided quote at the order bar, so the no-quote rule was never triggered; it is `
+        + `nonetheless implemented and tested.</li>`);
     }
     el("blotter-note").innerHTML = `<ul class="notes">${parts.join("")}</ul>`;
   })();
@@ -335,7 +336,7 @@
         hovertemplate: "buy &amp; hold %{y:$,.0f}<extra></extra>" });
     }
     draw("plot-nav", traces, baseLayout({
-      title: { text: "NAV against the same 100 shares held outright" },
+      title: { text: "NAV: covered call against buy-and-hold" },
       xaxis: ax(""),
       yaxis: ax("NAV / account value", { tickformat: "$,.0f" }),
       yaxis2: { overlaying: "y", side: "right", tickformat: "$,.0f", rangemode: "tozero",
@@ -358,7 +359,7 @@
         type: "scatter", mode: "lines", line: { color: TH.both, width: 1.6 },
         hovertemplate: "excess %{y:$,.0f}<extra></extra>" },
     ], baseLayout({
-      title: { text: "Could the account actually carry the trade?" },
+      title: { text: "Available funds and excess liquidity under Reg T" },
       xaxis: ax(""), yaxis: ax("dollars", { tickformat: "$,.0f" }),
       shapes: [{ type: "line", xref: "paper", x0: 0, x1: 1, yref: "y", y0: 0, y1: 0,
         line: { color: TH.warn, width: 1.2, dash: "dash" } }],
@@ -366,18 +367,16 @@
     const f = el("feas");
     f.className = "callout" + (H.ever_infeasible ? "" : " good");
     f.innerHTML = H.ever_infeasible
-      ? `<strong>Available funds went negative.</strong> The low was `
-        + `${money(H.min_available)}. This book could not have been put on at `
-        + `${money(M.start_cash)} of starting cash, and the honest reading of the `
-        + `NAV path above is that it describes a position the account could not have held.`
-      : `<strong>Available funds never went negative.</strong> The low was `
-        + `${money(H.min_available)}, on ${money(M.start_cash)} of starting cash`
-        + (H.min_cash < 0 ? `, even with cash borrowed down to ${money(H.min_cash)} on margin` : "")
-        + ` — so `
-        + `every trade on the blotter was fundable at the moment it was booked. That is `
-        + `not a free pass: the same book at ${money(D.min_cash.min_cash)} of starting `
-        + `cash would have breached${D.min_cash.worst_ts ? " around " + esc(dateOf(D.min_cash.worst_ts)) : ""}, `
-        + `and the gap between those two numbers is the only margin of safety the strategy had.`;
+      ? `<strong>Available funds went negative.</strong> The minimum was `
+        + `${money(H.min_available)}, so this book could not have been established with `
+        + `${money(M.start_cash)} of starting cash, and the NAV path above describes a position `
+        + `the account could not have held.`
+      : `<strong>Available funds remained positive.</strong> The minimum was `
+        + `${money(H.min_available)} on ${money(M.start_cash)} of starting cash`
+        + (H.min_cash < 0 ? `, despite borrowing that took cash to ${money(H.min_cash)}` : "")
+        + `, so every trade on the blotter was fundable when booked. The margin of safety is `
+        + `limited: with ${money(D.min_cash.min_cash)} of starting cash, the same book would `
+        + `have breached${D.min_cash.worst_ts ? " around " + esc(dateOf(D.min_cash.worst_ts)) : ""}.`;
   })();
 
   // Mid vs TRDPRC_1
@@ -399,22 +398,21 @@
         type: "scatter", mode: "lines", name: "least squares",
         line: { color: TH.print, width: 1.8 }, hoverinfo: "skip" },
     ], baseLayout({
-      title: { text: `TRDPRC_1 against mid — ${S.drawn.toLocaleString()} of ${S.total.toLocaleString()} bars drawn` },
+      title: { text: `TRDPRC_1 against mid (${S.drawn.toLocaleString()} of ${S.total.toLocaleString()} bars shown)` },
       hovermode: "closest",
       xaxis: ax("mid = (BID + ASK) / 2", { tickformat: "$,.0f" }),
       yaxis: ax("TRDPRC_1 (last print in the bar)", { tickformat: "$,.0f" }),
     }));
 
     el("fit-pooled").innerHTML =
-      `<strong>Pooled: R² = ${num(P.r2, 4)}</strong> on n = ${P.n.toLocaleString()}, `
+      `<strong>Pooled fit: R² = ${num(P.r2, 4)}</strong> on n = ${P.n.toLocaleString()}, `
       + `slope ${num(P.slope, 4)}, intercept ${num(P.intercept, 3)}, RMSE ${money(P.rmse, 2)}. `
-      + `<br>Taken alone that number proves less than it looks. The chain spans contracts `
-      + `worth ${money(Math.min(...S.mid), 2)} to ${money(Math.max(...S.mid), 2)}, so a fit across all `
-      + `of them is partly graded on knowing that a deep-in-the-money call is not a wing `
-      + `call — which nobody doubted. The slope of ${num(P.slope, 4)} and intercept of `
-      + `${num(P.intercept, 3)} are the more informative half of this line: the mid is `
-      + `${Math.abs(P.slope - 1) < 0.01 ? "an essentially unbiased" : "a biased"} predictor of the `
-      + `print, not merely a correlated one.`;
+      + `<br>The pooled R² is of limited value on its own. The sample spans contracts priced from `
+      + `${money(Math.min(...S.mid), 2)} to ${money(Math.max(...S.mid), 2)}, so much of the fit `
+      + `reflects the large differences in value between deep in-the-money and far `
+      + `out-of-the-money contracts. The slope and intercept are more informative: they indicate `
+      + `that the mid is ${Math.abs(P.slope - 1) < 0.01 ? "an essentially unbiased" : "a biased"} `
+      + `predictor of the print, not merely a correlated one.`;
 
     const tb = (id, rows, first, extra) => {
       let h = `<thead><tr><th>${first}</th><th>n</th><th>R²</th><th>slope</th>`
@@ -439,63 +437,61 @@
     const W = D.fit.written;
     if (W) {
       el("fit-written").innerHTML =
-        `<strong>Where the assumption is actually used.</strong> The book only ever wrote `
-        + `calls just out of the money for a few dollars of premium. Restricted to that band `
-        + `(${esc(W.label)}), the fit is R² ${num(W.r2, 4)} on n = ${W.n.toLocaleString()}, `
-        + `with a median miss of ${money(W.median_abs_resid, 3)} against a median spread of `
-        + `${money(W.median_spread, 2)} — ${pct(100 * W.resid_over_spread)} of the spread. `
-        + `A fill assumption only has to hold where it is being used, and this is where it is `
-        + `being used.`;
+        `<strong>The band in which the book trades.</strong> The book wrote only calls slightly `
+        + `out of the money, for a few dollars of premium. Within that band (${esc(W.label)}), `
+        + `R² is ${num(W.r2, 4)} on n = ${W.n.toLocaleString()}, with a median absolute deviation `
+        + `of ${money(W.median_abs_resid, 3)} from the mid against a median spread of `
+        + `${money(W.median_spread, 2)} (${pct(100 * W.resid_over_spread)} of the spread). A fill `
+        + `assumption needs to hold only where it is applied, and this is that band.`;
     } else {
       el("fit-written").style.display = "none";
     }
 
     const R = D.fit.resid;
     el("fit-note").innerHTML = `<ul class="notes">
-      <li><strong>The fit refused to break, and that is the finding.</strong> I expected
-        conditioning to collapse the R² the way it inverted HW1's spread conclusion. It did
-        not: across the price bands above, R² only falls to between ${num(rlo, 3)} and
-        ${num(rhi, 3)}. Inside a band spanning a few dollars, "a $3 option is not a $6 option"
-        is a real distinction to draw, and the mid draws it. <em>The mid tracks the print.</em>
-        That is a genuine result and it is reported here because it contradicted the
-        expectation, not because it flattered it.</li>
-      <li><strong>But tracking a price and being able to trade at it are different claims,</strong>
-        and the spread is what separates them. The median print missed the mid by
-        ${money(R.median_abs, 3)} against a median quoted spread of ${money(R.median_spread, 2)} —
-        ${pct(100 * R.median_resid_over_spread)} of the spread. Only ${pct(R.at_mid_pct)} of prints
-        landed within a quarter-spread of the mid, while ${pct(R.at_bid_pct)} went off at the bid
-        and ${pct(R.at_ask_pct)} at the ask. R² near ${num(P.r2, 3)} and a mid that is the actual
-        trade price about a third of the time are both true at once, because R² is answering
-        "how big is this option" and the fill question is "who paid the spread".</li>
-      <li><strong>${pct(R.outside_pct)} of prints landed outside the quote entirely</strong> —
-        below the bid or above the ask. That is not an arbitrage; it is the bar. In an hourly
-        bar the BID/ASK is the quote standing at the end of the hour while TRDPRC_1 is the last
-        trade inside it, so the two are simply not simultaneous.
+      <li><strong>Robustness of the fit.</strong> Conditioning on price was expected to reduce
+        R² substantially, as pooling had reversed the spread conclusion in Assignment 1.1. It
+        did not: across the price bands above, R² ranges from ${num(rlo, 3)} to ${num(rhi, 3)}.
+        Even within a band a few dollars wide, the mid distinguishes contracts of different
+        value and tracks the print closely.</li>
+      <li><strong>Tracking versus execution.</strong> Tracking a price is distinct from being
+        able to trade at it, and the bid-ask spread separates the two. The median print deviated
+        from the mid by ${money(R.median_abs, 3)}, against a median quoted spread of
+        ${money(R.median_spread, 2)} (${pct(100 * R.median_resid_over_spread)} of the spread).
+        Only ${pct(R.at_mid_pct)} of prints fell within a quarter-spread of the mid, while
+        ${pct(R.at_bid_pct)} traded at the bid and ${pct(R.at_ask_pct)} at the ask. A high R²
+        (${num(P.r2, 3)}) is compatible with a mid that equals the traded price in only about a
+        third of cases, because R² measures how well the mid orders contracts by value, whereas
+        the fill question concerns which side paid the spread.</li>
+      <li><strong>Prints outside the quote.</strong> ${pct(R.outside_pct)} of prints fell below
+        the bid or above the ask. This does not indicate an arbitrage; it follows from the
+        construction of the hourly bar, in which BID/ASK is the quote at the end of the hour and
+        TRDPRC_1 is the last trade within it, so the two are not simultaneous.
         ${D.bar_study
-          ? `Rather than leave that as an excuse, the same contracts were re-pulled at one
-             minute: on identical cells the figure falls from
-             ${pct(D.bar_study.hourly.outside_pct)} to
-             ${pct(D.bar_study.minute.outside_pct)}, so roughly two-thirds of it was the
-             sampling and the rest is real. <a href="#sec-bars" style="color:var(--both)">The
-             measurement is below.</a>`
-          : `It bounds how precise this comparison can be, and it is the strongest argument for
-             pulling minute bars if this were repeated.`}</li>
-      <li><strong>Liquidity moves the miss, not the fit.</strong> Going from one trade in the bar
-        to ${esc(D.fit.by_moves[D.fit.by_moves.length - 1].label)}, R² barely moves
+          ? `A one-minute re-pull of the same contracts reduces the figure on identical cells
+             from ${pct(D.bar_study.hourly.outside_pct)} to
+             ${pct(D.bar_study.minute.outside_pct)}, which suggests that roughly two-thirds of
+             the effect is due to sampling and the remainder is genuine (see the
+             <a href="#sec-bars" style="color:var(--both)">one-minute validation</a>).`
+          : `This limits the precision of the comparison and would motivate minute bars in a
+             repeat study.`}</li>
+      <li><strong>Effect of liquidity.</strong> Moving from one trade in the bar to
+        ${esc(D.fit.by_moves[D.fit.by_moves.length - 1].label)}, R² changes little
         (${num(D.fit.by_moves[0].r2, 4)} → ${num(D.fit.by_moves[D.fit.by_moves.length - 1].r2, 4)})
-        while the median miss falls from ${money(D.fit.by_moves[0].median_abs_resid, 3)} to
-        ${money(D.fit.by_moves[D.fit.by_moves.length - 1].median_abs_resid, 3)}. A "last trade"
-        drawn from a single lot is a noisier object than one drawn from twenty, exactly as it
-        should be — and R² is the statistic least able to see it.</li>
-      <li><strong>Verdict on the fill.</strong> For one contract a week, written just out of the
-        money on one of the most liquid chains listed, mid is a defensible fill and the numbers
-        above support it. It is not a claim that would survive size, and it is not what a market
-        order would have gotten — that is the ${money(R.median_spread / 2, 2)} half-spread, every
-        week, against ${money(H.premium / Math.max(1, H.weeks_booked))} of average premium.
-        <strong>And it barely matters here:</strong> had every call been filled at the
-        <em>bid</em> instead of the mid, the book would have collected
-        ${money(H.bid_fill_cost, 2)} less premium over all ${H.weeks_booked} weeks, taking P&L from
-        ${signed(H.pnl)} to ${signed(H.pnl - H.bid_fill_cost)}. The conclusion does not move.</li>
+        while the median deviation falls from ${money(D.fit.by_moves[0].median_abs_resid, 3)}
+        to ${money(D.fit.by_moves[D.fit.by_moves.length - 1].median_abs_resid, 3)}. A last trade
+        drawn from a single lot is a noisier estimate than one drawn from many, and R² is
+        largely insensitive to the difference.</li>
+      <li><strong>Assessment of the fill assumption.</strong> For one contract per week, written
+        slightly out of the money on one of the most liquid option chains, the mid is a
+        defensible fill, and the evidence above supports it. The assumption would not hold at
+        larger size, and a market order would instead have paid the
+        ${money(R.median_spread / 2, 2)} half-spread each week, against average premium of
+        ${money(H.premium / Math.max(1, H.weeks_booked))}. The effect on the result is small:
+        had every call been filled at the <em>bid</em> rather than the mid, the book would have
+        collected ${money(H.bid_fill_cost, 2)} less premium over ${H.weeks_booked} weeks,
+        reducing P&L from ${signed(H.pnl)} to ${signed(H.pnl - H.bid_fill_cost)}. The
+        conclusions are unchanged.</li>
     </ul>`;
   })();
 
@@ -511,7 +507,7 @@
         name: "final P&L", yaxis: "y2", line: { color: TH.print, width: 2 },
         marker: { size: 7 }, hovertemplate: "P&amp;L %{y:$,.0f}<extra></extra>" },
     ], baseLayout({
-      title: { text: "The same book, written at each hour of the entry session" },
+      title: { text: "Final P&L by order hour" },
       xaxis: ax("order bar, UTC, labelled by the hour it ends"),
       yaxis: ax("premium collected", { tickformat: "$,.0f" }),
       yaxis2: { overlaying: "y", side: "right", tickformat: "$,.0f",
@@ -542,39 +538,37 @@
     const ruleSpread = Math.max(...D.rule_sweep.map(r => r.pnl))
                      - Math.min(...D.rule_sweep.map(r => r.pnl));
 
+    const hh = x => String(x).padStart(2, "0") + ":00";
     el("hours-note").innerHTML = `<ul class="notes">
-      <li><strong>The swing is larger than the result.</strong> Final P&L ranged
-        ${signed(worstH.pnl)} at ${String(worstH.order_hour).padStart(2, "0")}:00 to
-        ${signed(bestH.pnl)} at ${String(bestH.order_hour).padStart(2, "0")}:00 — a
-        ${money(swing)} spread around a booked outcome of ${signed(H.pnl)}. The parameter
-        nobody declares moved the answer by ${pct(100 * swing / Math.abs(H.pnl))} of the
-        answer. Premium collected ranged ${money(pLo)} to ${money(pHi)} over the same rows,
-        and every one of them booked ${booked.weeks_booked} cycles with
-        ${booked.assignments} assignments: the strategy is genuinely identical, and only the
-        clock moved.</li>
-      <li><strong>The hour actually booked was the worst of the ${S.length}.</strong>
-        ${String(M.order_hour).padStart(2, "0")}:00 ranks ${bookedRank} of ${S.length} by P&L.
-        That is luck running against us and it is left standing, because the hour was fixed
-        before any of these numbers existed — the hour ending at noon ET, chosen to sit clear of
-        both the open and the close. Re-picking it now, knowing the table, would be the
-        exact mistake this page is built to avoid, and the honest version of a sensitivity
-        analysis is the one you publish when the sensitivity embarrasses you.</li>
-      <li><strong>But it did not outrank the strike rule.</strong> The
-        ${money(swing)} spread across hours sits against ${money(ruleSpread)} across the four
-        strike rules in the next section. I expected the reverse — an intraday mid that moved
-        2× on a single Monday made the timestamp look dominant — and it is not what the full
-        book shows. The strike rule is the bigger lever, which is the assignment's premise,
-        and it is worth confirming rather than presuming.</li>
-      <li><strong>Why the hour moves anything at all.</strong> A one-week call is nearly all
-        time value and its delta is large near the money, so an intraday move of a percent in
-        the stock repositions the whole chain against spot. The rule then selects a
-        <em>different contract</em>, not merely a different price for the same one — which is
-        why this is not a rounding effect and why it partly cancels across ten weeks instead
-        of accumulating.</li>
-      <li><strong>What it does to the fill claim.</strong> "Fill at mid" is defensible.
-        "Fill at mid" with an unstated hour is an incomplete assumption wearing a complete
-        one's clothes. The fix is not a better hour; it is declaring the hour as a parameter
-        and publishing this table beside the result.</li>
+      <li><strong>Magnitude of the effect.</strong> Final P&L ranged from ${signed(worstH.pnl)}
+        at ${hh(worstH.order_hour)} to ${signed(bestH.pnl)} at ${hh(bestH.order_hour)}, a range of
+        ${money(swing)} around the booked outcome of ${signed(H.pnl)}, or
+        ${pct(100 * swing / Math.abs(H.pnl))} of that outcome. Premium collected ranged from
+        ${money(pLo)} to ${money(pHi)}, and every row booked ${booked.weeks_booked} cycles with
+        ${booked.assignments} assignments, so the strategy is identical across rows and only the
+        order time differs.</li>
+      <li><strong>The booked hour.</strong> The booked hour, ${hh(M.order_hour)}, ranks
+        ${bookedRank} of ${S.length} by P&L${bookedRank === S.length
+          ? ", the lowest of the hours tested" : ""}. It is retained because it was fixed before
+        these results were computed: the hour ending at noon ET was chosen to avoid both the
+        open and the close. Selecting a different hour after observing this table would
+        introduce look-ahead bias, which the pre-committed design is intended to prevent.</li>
+      <li><strong>Comparison with the strike rule.</strong> The ${money(swing)} range across
+        hours is ${swing < ruleSpread ? "smaller" : "larger"} than the ${money(ruleSpread)}
+        range across the ${D.rule_sweep.length} strike rules in the next section. ${swing < ruleSpread
+          ? `The initial expectation was the reverse, based on a single Monday on which a mid
+             moved by a factor of two intraday; the full sample does not support it. The strike
+             rule is the larger source of variation, consistent with the premise of the
+             assignment.`
+          : `On this sample the order time is the larger source of variation.`}</li>
+      <li><strong>Mechanism.</strong> A one-week call consists almost entirely of time value
+        and has a large delta near the money, so an intraday move of one percent in the stock
+        shifts the chain relative to spot. The rule then selects a <em>different contract</em>,
+        not merely a different price for the same contract. The effect is therefore not a
+        rounding artefact, and it partly offsets across weeks rather than accumulating.</li>
+      <li><strong>Implication for the fill assumption.</strong> "Fill at mid" is complete only
+        when the order time is stated. The appropriate remedy is not to choose a better hour but
+        to declare the hour as a parameter and report this table alongside the result.</li>
     </ul>`;
   })();
 
@@ -617,67 +611,68 @@
     for (let i = 1; i < byDist.length; i++) if (byDist[i].pnl < byDist[i - 1].pnl) mono = false;
 
     const calib = probRules.map(r =>
-      `${pct(100 * r.target_prob, 0)} priced → <strong>${pct(100 * r.realised_prob, 0)}</strong> realised`
-    ).join(", ");
+      `${pct(100 * r.target_prob, 0)} targeted, <strong>${pct(100 * r.realised_prob, 0)}</strong> realised`
+    ).join("; ");
+    const allAbove = probRules.length > 0
+      && probRules.every(r => r.realised_prob > r.target_prob);
+    const iv25 = R.find(r => r.rule === "iv_prob_25"), fixed2 = R.find(r => r.rule === "otm_2pct");
 
     el("rules-note").innerHTML = `<ul class="notes">
-      <li><strong>The implied-vol rule under-predicted assignment, and it was supposed to.</strong>
-        Two of the rules target a stated probability of the cap being breached, solved out of the
-        week's own at-the-money implied vol (median ${pct(100 * R[0].median_atm_iv)}, ranging
+      <li><strong>Calibration of the implied-probability rules.</strong> Two rules target a
+        stated probability that the cap is breached, derived from the week's at-the-money
+        implied volatility (median ${pct(100 * R[0].median_atm_iv)}, range
         ${pct(100 * Math.min(...R.map(r => (r.iv_range || [NaN])[0])))}–${pct(100 * Math.max(...R.map(r => (r.iv_range || [NaN, NaN])[1])))}).
-        They came in ${calib}. That gap is not a broken rule: the probability an option price
-        implies is a <em>risk-neutral</em> one, and the risk-neutral measure has zero drift by
-        construction. This tape had a ${pct(STOCK.ret)} drift. A cap that is
-        ${pct(100 * probRules[0].target_prob, 0)} likely to be breached by a driftless stock is a
-        good deal more likely to be breached by one marching upward, and that is the entire
-        discrepancy. Anyone reading an option-implied probability
-        as a forecast should read these two rows first.</li>
-      <li><strong>Adapting to volatility ${
-          R.find(r => r.rule === "iv_prob_25").pnl > R.find(r => r.rule === "otm_2pct").pnl
-            ? "edged out" : "did not beat"} a fixed distance here.</strong> The
-        ${pct(100 * R.find(r => r.rule === "iv_prob_25").target_prob, 0)}
-        rule wrote a median ${pct(R.find(r => r.rule === "iv_prob_25").median_otm_pct, 2)} out
-        against the fixed rule at
-        ${pct(R.find(r => r.rule === "otm_2pct").median_otm_pct, 2)} — nearly the same place on
-        average — and finished
-        ${money(Math.abs(R.find(r => r.rule === "iv_prob_25").pnl - R.find(r => r.rule === "otm_2pct").pnl))}
-        ${R.find(r => r.rule === "iv_prob_25").pnl > R.find(r => r.rule === "otm_2pct").pnl ? "ahead" : "behind"}.
-        The adaptivity is real — in the week priced at
-        ${pct(100 * Math.max(...D.cycles.filter(c => c.atm_iv).map(c => c.atm_iv)))} implied vol it
-        pushed the strike out to
-        ${pct(R.find(r => r.rule === "iv_prob_25").max_otm_pct, 2)}, its widest of the
-        ${M.weeks} — but over ten weeks that difference is well inside noise.
-        The theoretical motivation is sound; ten weeks on one price path cannot confirm it
-        in either direction.</li>
-      <li><strong>Every rule lost to simply holding the stock.</strong> ${beatBH === 0
-        ? `None of the ${R.length} beat buy-and-hold's ${signed(H.bh_pnl)}`
-        : `${beatBH} of ${R.length} beat buy-and-hold's ${signed(H.bh_pnl)}`}, and the closer
-        the rule wrote to the money the worse it did: the booked nearest-OTM rule finished
-        ${signed(H.pnl)} while writing a median
-        ${pct(R.find(r => r.rule === M.rule).median_otm_pct, 2)} above spot, and the best of the
-        alternatives — ${esc(nameOf(best))} — finished ${signed(best.pnl)}. ${mono
-          ? `Across these ${R.length} the ordering is monotone in distance from spot.`
-          : "The ordering is nearly, but not perfectly, monotone in distance from spot — the furthest rule is not the best, because a strike far enough out stops being paid for."}
-        That is not a discovery about covered calls; it is a description of what a cap does to
-        a stock that rose ${pct(STOCK.ret)} through the window. In a flat or falling tape the ordering would invert, and
-        nothing here tells you which tape comes next.</li>
-      <li><strong>The strike rule is the bigger lever.</strong> The spread across rules is
-        ${money(spread)}, against ${money(hourSpread)} across the seven order hours. The
-        assignment's premise — that the strike decision is the point of the exercise — holds
-        on this data. It is worth saying that I expected the opposite after watching one
-        Monday's mid move 2× intraday, and that a single vivid observation turned out to be a
-        poor guide to the aggregate.</li>
-      <li><strong>These are counterfactuals, not results.</strong> ${R.length} rules over
-        ${M.weeks} weeks on one name in one quarter is far too little to choose between them.
-        All ${R.length} share a single price path, so they are closer to one observation than to
-        ${R.length * M.weeks}, and the ranking would not survive a different quarter. Picking the winner after
-        the fact is precisely the mistake the pre-committed booked rule exists to avoid. They
-        are here to size the <em>sensitivity</em>, not to nominate a strategy.</li>
-      <li><strong>What would change my mind.</strong> If the furthest-OTM rule still won over
-        a window containing a real drawdown, that would be evidence about the rule rather than
-        about the tape. This window contains no such period, so the comparison above cannot
-        distinguish "writing closer to the money is worse" from "selling calls into a rally is
-        worse", and the second is almost certainly the whole of it.</li>
+        ${allAbove ? "Realised assignment exceeded the target in every case" : "Realised assignment rates were"}:
+        ${calib}.${allAbove ? ` This is expected rather than a defect of the rule. The
+        probability implied by option prices is <em>risk-neutral</em>, and the risk-neutral
+        measure has zero drift by construction, whereas the stock rose ${pct(STOCK.ret)} over
+        the window. A cap with a ${pct(100 * probRules[0].target_prob, 0)} breach probability for
+        a driftless stock is considerably more likely to be breached by a stock with strong
+        positive drift. Option-implied probabilities should therefore not be read as
+        forecasts.` : ""}</li>
+      <li><strong>Implied-volatility rule against a fixed distance.</strong> The
+        ${pct(100 * iv25.target_prob, 0)} rule wrote a median ${pct(iv25.median_otm_pct, 2)} out
+        of the money, against ${pct(fixed2.median_otm_pct, 2)} for the fixed-distance rule, a
+        similar average distance, and finished ${money(Math.abs(iv25.pnl - fixed2.pnl))}
+        ${iv25.pnl > fixed2.pnl ? "ahead" : "behind"}. The rule adapts as intended: in the week
+        with the highest implied volatility
+        (${pct(100 * Math.max(...D.cycles.filter(c => c.atm_iv).map(c => c.atm_iv)))}) it placed
+        the strike ${pct(iv25.max_otm_pct, 2)} out of the money, its widest of the ${M.weeks}
+        weeks. Over ${M.weeks} weeks, however, the difference in P&L is within the range of
+        noise, and a single price path cannot confirm the theoretical advantage in either
+        direction.</li>
+      <li><strong>Comparison with buy-and-hold.</strong> ${beatBH === 0
+        ? `None of the ${R.length} rules beat buy-and-hold (${signed(H.bh_pnl)}).`
+        : `${beatBH} of the ${R.length} rules beat buy-and-hold (${signed(H.bh_pnl)}).`}
+        The booked nearest-OTM rule, writing a median
+        ${pct(R.find(r => r.rule === M.rule).median_otm_pct, 2)} above spot, finished
+        ${signed(H.pnl)}; the best alternative (${esc(nameOf(best))}) finished
+        ${signed(best.pnl)}. ${mono
+          ? `Across these rules, P&L increases monotonically with distance from spot.`
+          : `P&L increases broadly, but not monotonically, with distance from spot: the
+             furthest rule is not the best, because a sufficiently distant strike earns little
+             premium.`}
+        This ordering reflects the effect of a cap on a stock that ${STOCK.ret >= 0 ? "rose" : "fell"}
+        ${pct(Math.abs(STOCK.ret))} over the window rather than a general property of covered
+        calls; in a flat or falling market it would be expected to reverse.</li>
+      <li><strong>Relative importance of strike and timing.</strong> P&L varies by
+        ${money(spread)} across strike rules, against ${money(hourSpread)} across the
+        ${D.hour_sweep.length} order hours. ${spread > hourSpread
+          ? "The premise of the assignment, that the strike decision matters most, holds on this data."
+          : "On this data the order time matters more than the strike rule."}</li>
+      <li><strong>Interpretation.</strong> These are counterfactuals rather than results.
+        ${R.length} rules over ${M.weeks} weeks on one name in one quarter cannot discriminate
+        between strategies: all share a single price path, so they are closer to one
+        observation than to ${R.length * M.weeks}, and the ranking is unlikely to persist in a
+        different quarter. Selecting the best rule after the fact would introduce the
+        look-ahead bias that the pre-committed rule is designed to avoid. The comparison
+        measures <em>sensitivity</em>; it does not recommend a strategy.</li>
+      <li><strong>Evidence that would alter this conclusion.</strong> If rules further from the
+        money still performed better over a window containing a substantial drawdown, that
+        would be evidence about the rules rather than about the market. This window contains no
+        such period, so the comparison cannot distinguish "writing closer to the money is
+        worse" from "selling calls in a rising market is worse"; the latter most likely
+        accounts for most of the result.</li>
     </ul>`;
   })();
 
@@ -695,57 +690,53 @@
     el("bars-n").textContent = m.quoted_bars.toLocaleString();
 
     el("bars").innerHTML = `<ul class="notes">
-      <li><strong>An hourly BID/ASK is exactly the last minute's quote.</strong> Checked on
+      <li><strong>Hourly quotes are end-of-hour snapshots.</strong> Across
         ${s.matched_hours.toLocaleString()} matched contract-hours, the hourly bid equals the
-        final minute bar's bid ${pct(s.bid_is_last_pct)} of the time and the ask
-        ${pct(s.ask_is_last_pct)} — against ${pct(s.bid_is_min_pct)} for the hour's lowest bid
-        and ${pct(s.ask_is_max_pct)} for its highest ask. So it is a snapshot at the close of
-        the bar, not an aggregated envelope over it. That matters more than it sounds: had the
-        hourly quote been a min-bid/max-ask envelope, <em>every</em> "mid" in this backtest
-        would have been the midpoint of an hour's worth of quote range rather than a price
-        anyone could have traded against, and the fill assumption would not survive it. The
-        convention this page states is now measured rather than declared.</li>
+        final minute's bid in ${pct(s.bid_is_last_pct)} of cases and the ask in
+        ${pct(s.ask_is_last_pct)}, compared with ${pct(s.bid_is_min_pct)} for the hour's lowest
+        bid and ${pct(s.ask_is_max_pct)} for its highest ask. The hourly quote is therefore a
+        snapshot at the close of the bar rather than an envelope over it. This matters for the
+        fill assumption: had the hourly quote been a minimum-bid/maximum-ask envelope, each mid
+        in the backtest would have been the midpoint of an hour's quote range rather than a
+        tradeable price.</li>
 
-      <li><strong>Two-thirds of the impossible prints were the bar.</strong> On identical
-        (contract, day) cells — ${B.matched_cells.toLocaleString()} of them, the same
-        ${m.contracts} contracts — prints landing outside their own bar's quote fall from
-        <strong>${pct(h.outside_pct)} at one hour to ${pct(m.outside_pct)} at one minute</strong>.
-        That is the artefact measured instead of assumed: the hourly quote is end-of-hour while
-        the print is somewhere inside the hour, and shrinking the bar shrinks the gap. The
-        ${pct(m.outside_pct)} that survives is the honest rate — genuine trade-throughs, odd
-        lots, and a minute still not being an instant.</li>
+      <li><strong>Prints outside the quote.</strong> On identical (contract, day) cells
+        (${B.matched_cells.toLocaleString()} cells, ${m.contracts} contracts), the share of
+        prints outside their bar's quote falls from <strong>${pct(h.outside_pct)} at one hour to
+        ${pct(m.outside_pct)} at one minute</strong>. This is consistent with the timing
+        explanation: the hourly quote is taken at the end of the hour while the print occurs
+        within it, and a shorter bar narrows the gap. The remaining ${pct(m.outside_pct)}
+        reflects genuine trade-throughs, odd lots, and the residual width of a one-minute
+        bar.</li>
 
-      <li><strong>The trap: minute spreads look four times tighter, and are not.</strong>
-        Conditioned on bars that also printed — which the mid-versus-trade comparison must do —
-        the median spread is ${money(h.median_spread_printed, 3)} hourly against
-        ${money(m.median_spread_printed, 3)} at one minute. Read carelessly that says minute
-        data is cleaner. Measured <em>unconditionally</em> on the same contracts and days, the
-        gap disappears: ${money(h.median_spread_all, 3)} hourly against
-        ${money(m.median_spread_all, 3)} at one minute${
-          Math.abs(h.median_spread_all - m.median_spread_all) < 0.005 ? ", identical"
+      <li><strong>A selection effect in spreads.</strong> Among bars that also contain a trade,
+        as the mid-versus-trade comparison requires, the median spread is
+        ${money(h.median_spread_printed, 3)} hourly against ${money(m.median_spread_printed, 3)}
+        at one minute, which would suggest that minute data is cleaner. Measured
+        <em>unconditionally</em> on the same contracts and days, the difference disappears:
+        ${money(h.median_spread_all, 3)} hourly against ${money(m.median_spread_all, 3)} at one
+        minute${
+          Math.abs(h.median_spread_all - m.median_spread_all) < 0.005 ? ", which are identical"
           : m.median_spread_all > h.median_spread_all
-            ? " — if anything the minute quotes are the <em>wider</em> ones" : ""}. So the
-        four-to-one difference is selection, not cleaner data —
-        ${pct(h.printed_share, 0)} of hourly bars contain a trade against
-        ${pct(m.printed_share, 0)} of minute bars, so "this bar printed" is a far more
-        demanding filter at one minute and it picks out the liquid, tight-spread moments.
-        HW1 found that pooling could invert a spread conclusion; this is the same hazard in a
-        different costume, and it is written up because it nearly produced a confident and
-        completely false claim.</li>
+            ? ", so the minute quotes are, if anything, <em>wider</em>" : ""}. The difference in
+        the conditional figures is therefore a selection effect: ${pct(h.printed_share, 0)} of
+        hourly bars contain a trade, against ${pct(m.printed_share, 0)} of minute bars, so
+        conditioning on a trade is a much stricter filter at one minute and selects liquid,
+        narrow-spread moments. Assignment 1.1 documented a related effect, in which pooling
+        reversed a spread conclusion.</li>
 
-      <li><strong>What this does not change.</strong> The book still fills at the hourly mid,
-        because that is the bar the assignment specifies and because the quote it uses has now
-        been shown to be a real end-of-hour quote. What the minute pull buys is not a better
-        backtest — it is knowing which of the hourly panel's oddities were the market and which
-        were the sampling. The residual-to-spread ratio, the statistic the fill argument
-        actually rests on, is ${pct(100 * h.resid_over_spread)} hourly and
-        ${pct(100 * m.resid_over_spread)} at one minute: close enough that the conclusion drawn
-        from hourly data stands.</li>
+      <li><strong>Implications for the backtest.</strong> The book continues to fill at the
+        hourly mid, because the assignment specifies hourly bars and the hourly quote has been
+        shown to be a genuine end-of-hour quote. The one-minute data identifies which features
+        of the hourly panel reflect the market and which reflect sampling. The
+        residual-to-spread ratio, on which the fill argument rests, is
+        ${pct(100 * h.resid_over_spread)} hourly and ${pct(100 * m.resid_over_spread)} at one
+        minute, close enough that the conclusion drawn from hourly data stands.</li>
 
-      <li><strong>The minute cache is not in the repository.</strong> It is ~390 MB, which is
-        not a thing to put in git. <code>scripts/bar_size_study.py</code> distils it to a
-        &lt;1 KB JSON that <em>is</em> committed, so this section builds without it and anyone
-        with an LSEG session can re-pull and check every number above.</li>
+      <li><strong>Data availability.</strong> The one-minute cache (approximately 390 MB) is not
+        committed to the repository. <code>scripts/bar_size_study.py</code> reduces it to a JSON
+        file under 1 KB, which is committed, so this section builds without the cache and every
+        figure above can be checked by re-pulling with an LSEG session.</li>
     </ul>`;
   })();
 
@@ -756,81 +747,78 @@
     const assigned = cyc.filter(c => c.status === "assigned");
     const capCost = assigned.reduce((a, c) => a + Math.max(0, (c.settle - c.strike) * M.shares), 0);
     const qa = [
-      ["What actually happened?",
-       `${M.ticker} went from ${money(first, 2)} to ${money(last, 2)} over the ${M.weeks} weeks
-        (${pct(stockRet)}), ranging ${money(sLo, 2)}–${money(sHi, 2)}. The book
-        wrote ${H.weeks_booked} calls, collected ${money(H.premium)} in premium and was assigned
-        ${H.assignments} time(s). It finished at ${money(H.final_nav)} — ${signed(H.pnl)} — against
-        ${money(H.bh_final)} for the same 100 shares simply held. The covered call
-        ${H.gap >= 0 ? "beat" : "trailed"} buy-and-hold by ${money(Math.abs(H.gap))}.`],
-      ["Where did theory meet tape?",
-       `Right at the cap. On the ${assigned.length} assigned week(s) the stock closed a total of
-        ${money(capCost)} above the strikes we had sold — that is upside the account did not
-        keep, and it is the price of the ${money(H.premium)} of premium. The textbook framing is
-        that a covered call converts uncertain upside into certain income; the tape's version is
-        that over a ${pct(stockRet)} run, ${money(H.premium)} of certain income was
-        ${capCost > H.premium ? "not enough to pay for" : "enough to cover"} ${money(capCost)}
-        of surrendered upside.`],
-      ["Was the premium fair compensation?",
+      ["Results",
+       `${M.ticker} ${stockRet >= 0 ? "rose" : "fell"} from ${money(first, 2)} to
+        ${money(last, 2)} over the ${M.weeks} weeks (${pct(stockRet)}), trading between
+        ${money(sLo, 2)} and ${money(sHi, 2)}. The book wrote ${H.weeks_booked} calls, collected
+        ${money(H.premium)} in premium and was assigned ${H.assignments}
+        time${H.assignments === 1 ? "" : "s"}. It finished at ${money(H.final_nav)}
+        (${signed(H.pnl)}), against ${money(H.bh_final)} for the same 100 shares held outright,
+        ${H.gap >= 0 ? "outperforming" : "trailing"} buy-and-hold by ${money(Math.abs(H.gap))}.`],
+      ["Theory and observed outcomes",
+       `The two portfolios diverge at the cap. On the ${assigned.length} assigned weeks the stock
+        closed a total of ${money(capCost)} above the strikes sold; this upside was forgone in
+        exchange for ${money(H.premium)} of premium. In theory a covered call exchanges
+        uncertain upside for certain income. Over a ${pct(stockRet)} move, ${money(H.premium)}
+        of premium was ${capCost > H.premium ? "insufficient to offset" : "sufficient to offset"}
+        ${money(capCost)} of forgone upside.`],
+      ["Premium relative to the cap",
        // Read from the booked rule's row of the sweep, not re-derived here. A
        // local m[floor(n/2)] took the upper-middle of an even count as the
        // median, and contradicted the strike-rule table two sections up.
-       `Per week the book collected a median of ${money(BOOKED.median_premium, 2)} per share on a
-        strike a median of ${pct(BOOKED.median_otm_pct, 2)} above spot. Selling
-        a cap that close to the money on a name this volatile is close to selling the stock's
-        weekly range outright, which is why the assignment rate came in at
+       `The book collected a median of ${money(BOOKED.median_premium, 2)} per share on a
+        strike a median of ${pct(BOOKED.median_otm_pct, 2)} above spot. A cap this close to the
+        money on a stock this volatile amounts almost to selling the stock's weekly range, which
+        accounts for the assignment rate of
         ${pct(100 * H.assignments / Math.max(1, H.weeks_booked))}.`],
-      ["Is the mid a defensible fill?",
-       `Yes, with a caveat that is not the one I expected. Pooled R² is
-        ${num(D.fit.pooled.r2, 4)}, which alone proves little — but I squeezed the price range to
-        check, and the fit <em>survives</em>: R² stays between
-        ${num(Math.min(...D.fit.by_price.map(b => b.r2)), 3)} and
-        ${num(Math.max(...D.fit.by_price.map(b => b.r2)), 3)} inside narrow bands. The mid really
-        does track the print. The caveat is that tracking and transacting are different things:
-        the median print sat ${money(D.fit.resid.median_abs, 3)} from the mid on a median spread
-        of ${money(D.fit.resid.median_spread, 2)} — ${pct(100 * D.fit.resid.median_resid_over_spread)}
-        of the spread — and only ${pct(D.fit.resid.at_mid_pct)} of prints landed within a
-        quarter-spread of it. For one contract a week on a chain this liquid, mid is a
-        reasonable fill. It would not survive size, and it is not what a market order would
-        have gotten — that is the ${money(D.fit.resid.median_spread / 2, 2)} half-spread, every
-        week. Even so, filling every call at the bid would have cost only
-        ${money(H.bid_fill_cost, 2)} in total.${D.bar_study
-          ? ` And the hourly quote it uses is a genuine end-of-hour quote, not an aggregate:
-              re-pulling the same contracts at one minute matched the hourly bid and ask to the
-              final minute of every one of ${D.bar_study.snapshot.matched_hours.toLocaleString()}
-              contract-hours.`
+      ["Validity of the mid fill",
+       `The pooled R² of ${num(D.fit.pooled.r2, 4)} is weak evidence on its own, but the fit
+        persists within narrow price bands, where R² ranges from
+        ${num(Math.min(...D.fit.by_price.map(b => b.r2)), 3)} to
+        ${num(Math.max(...D.fit.by_price.map(b => b.r2)), 3)}; the mid tracks the print
+        closely. Tracking a price differs from transacting at it, however: the median print was
+        ${money(D.fit.resid.median_abs, 3)} from the mid on a median spread of
+        ${money(D.fit.resid.median_spread, 2)}
+        (${pct(100 * D.fit.resid.median_resid_over_spread)} of the spread), and only
+        ${pct(D.fit.resid.at_mid_pct)} of prints fell within a quarter-spread of it. For one
+        contract per week on a chain this liquid, the mid is a reasonable fill. It would not
+        hold at larger size, and a market order would have paid the
+        ${money(D.fit.resid.median_spread / 2, 2)} half-spread each week. Filling every call at
+        the bid would have reduced premium by ${money(H.bid_fill_cost, 2)} in total.${D.bar_study
+          ? ` The hourly quote used is an end-of-hour quote rather than an aggregate: a
+              one-minute re-pull matched the hourly bid and ask to the final minute in all
+              ${D.bar_study.snapshot.matched_hours.toLocaleString()} contract-hours.`
           : ""}`],
-      ["Could the account carry it?",
+      ["Margin feasibility",
        `${H.ever_infeasible
-          ? `No. Available funds bottomed at ${money(H.min_available)}, so the book as
-             printed could not have been put on at ${money(M.start_cash)}.`
-          : `Yes, with room. Available funds bottomed at ${money(H.min_available)} on
+          ? `Available funds fell to ${money(H.min_available)}, so the book as shown could not
+             have been established with ${money(M.start_cash)} of starting cash.`
+          : `Available funds remained positive, with a minimum of ${money(H.min_available)} on
              ${money(M.start_cash)} of starting cash. The binding level is
-             ${money(D.min_cash.min_cash)}${D.min_cash.binds ? "" : " or below"} — the same book
-             started there would have breached.`} The covered short call itself never added a
-        dollar of requirement, which is the entire mechanical point of writing calls against
-        stock you already own rather than naked.`],
-      ["What would you change?",
-       `Three things, in order of how much the evidence supports them. <strong>One:</strong> fix
-        the order hour as an explicit, pre-committed parameter and report the sensitivity — the
+             ${money(D.min_cash.min_cash)}${D.min_cash.binds ? "" : " or below"}: the same book
+             started with less would have breached.`} The covered short call added no margin
+        requirement, which is the mechanical advantage of writing calls against shares already
+        held rather than uncovered.`],
+      ["Proposed changes",
+       `Three changes are proposed, in order of the strength of the supporting evidence.
+        First, declare the order hour as an explicit, pre-committed parameter and report the
+        sensitivity, since the
         ${money(Math.max(...D.hour_sweep.map(s => s.pnl)) - Math.min(...D.hour_sweep.map(s => s.pnl)))}
-        P&L swing across hours is too large to leave undeclared. <strong>Two:</strong> a strike
-        rule keyed to the week's own implied volatility rather than to a fixed distance, since a
-        fixed rule sells the same cap in a calm week and a violent one. <strong>Three:</strong>
-        stop reporting a pooled R² as if it validated the fill; report the residual as a
-        fraction of the spread, which is the only scale on which "close to the mid" means
-        anything. <strong>What I would not change</strong> is the wait-through-expiry rule.
-        It costs money in a rally, but every alternative — rolling, buying to close — is a
-        second discretionary decision, and the point of this exercise was to find out what the
-        first one is worth.`],
-      ["What is this evidence for, honestly?",
-       `${M.weeks} weekly cycles on one name in one quarter. That is ${H.weeks_booked} independent
-        decisions, all sharing a single price path — closer to one observation than to
-        ${H.weeks_booked}. Nothing here supports a claim about covered calls in general. What it
-        does support is narrower and still worth having: given <em>this</em> tape, these are exactly
-        the trades the stated rules produce, this is what they cost, and this is the order in
-        which the decisions mattered — the strike distance first, the order hour second, and the
-        fill convention a distant third.`],
+        range in P&L across hours is too large to leave unstated. Second, key the strike to the
+        week's implied volatility rather than to a fixed distance, since a fixed rule sells the
+        same cap in calm and volatile weeks. Third, evaluate the fill by the residual as a
+        fraction of the spread rather than by the pooled R², since that is the scale on which
+        proximity to the mid is meaningful. The hold-to-expiry rule would be retained: it is
+        costly in a rising market, but each alternative (rolling, or buying to close) adds a
+        second discretionary decision, whereas this exercise isolates the value of the
+        first.`],
+      ["Scope of the evidence",
+       `The sample consists of ${M.weeks} weekly cycles on one name in one quarter. These are
+        ${H.weeks_booked} decisions sharing a single price path, closer to one observation than
+        to ${H.weeks_booked}, and they do not support general conclusions about covered calls.
+        They do establish, for this price path, the trades the stated rules produce, their cost,
+        and the order in which the decisions mattered: strike distance first, order time second,
+        and the fill convention a distant third.`],
     ];
     el("analysis").className = "reading qa-grid";
     el("analysis").innerHTML = qa.map(([q, a]) =>
@@ -843,124 +831,127 @@
     const O = D.ohlc;
     const shortWeeks = D.cycles.filter(c => c.short_week);
     el("methods").innerHTML = `
-      <div class="qa"><p class="q">The expiry day is zero-padded, and the handout says it is not.</p>
-        <p class="a">The RIC scheme in the assignment states <em>"DAY not zero-padded"</em>. Two of
-        the three AAPL examples it prints do not resolve against LSEG:
-        <code>AAPLF52619000.U^F26</code> and <code>AAPLH72620500.U^H26</code> both return an error,
-        while <code>AAPLF052619000.U^F26</code> and <code>AAPLH072620500.U^H26</code> return 400 and
-        478 observations. The third example expires on the 17th, so the rule never bites and it
-        resolves either way. Every testable case fails; every padded correction works. The body is
-        always nine digits — DD + YY + SSSSS — and a single-digit day must not shorten it to eight.
-        This is not cosmetic here: <strong>Aug 7 and Sep 4 are single-digit Fridays in this very
-        window</strong>, so following the scheme literally drops 2 of ${M.weeks} cycles with no
-        error message at all — the strikes simply come back empty and the weeks look quiet. The
-        assignment notes that its description matches the course's Helios Python, which builds the
-        day as <code>expiry.day</code>; that is the unpadded form, so the reference builder would
-        hit the same two empty weeks. Worth knowing before anyone else trusts an empty response.</p></div>
+      <div class="qa"><p class="q">Zero-padding of the expiry day in option RICs</p>
+        <p class="a">The assignment's RIC scheme states <em>"DAY not zero-padded"</em>. Two of
+        the three AAPL examples it gives do not resolve against LSEG:
+        <code>AAPLF52619000.U^F26</code> and <code>AAPLH72620500.U^H26</code> both return an
+        error, whereas the zero-padded <code>AAPLF052619000.U^F26</code> and
+        <code>AAPLH072620500.U^H26</code> return 400 and 478 observations. The third example
+        expires on the 17th and resolves either way. Every testable case therefore fails without
+        padding and succeeds with it: the RIC body is always nine digits (DD + YY + SSSSS), and
+        a single-digit day must not shorten it to eight. The correction is material in this
+        sample. <strong>Aug 7 and Sep 4 are single-digit Fridays within the window</strong>, so
+        a literal reading of the scheme drops 2 of ${M.weeks} cycles without raising an error;
+        the strikes return empty and the weeks appear inactive. The assignment notes that the
+        scheme matches the course's Helios Python, which builds the day as
+        <code>expiry.day</code>, the unpadded form, so that builder would miss the same two
+        weeks.</p></div>
 
-      <div class="qa"><p class="q">Why the assignment says to read expiries off the stock tape.</p>
-        <p class="a">The assignment instructs: <em>"take the last session in each week from the stock
-        tape so you do not invent holiday expiries."</em> This window shows exactly why. Jun 19 2026
-        is Juneteenth and Jul 3 2026 is the observed Fourth of July; both are closed. Those weeks
-        expire on the <strong>Thursday</strong>, and the Thursday RIC resolves against LSEG while
-        the Friday one does not. A loop that hardcoded Friday would have asked for contracts that
-        never existed. This one follows the instruction — it takes the first and last session the
-        stock actually printed in each ISO week, so a holiday <em>shifts</em> the cycle instead of
-        deleting it.
-        ${shortWeeks.length ? `In this window that fired on ${shortWeeks.length} week(s)
+      <div class="qa"><p class="q">Holiday expiries and the stock calendar</p>
+        <p class="a">The assignment instructs: <em>"take the last session in each week from the
+        stock tape so you do not invent holiday expiries."</em> Recent holidays illustrate the
+        reason. Jun 19 2026 (Juneteenth) and Jul 3 2026 (Independence Day, observed) are market
+        holidays, and options for those weeks expire on the <strong>Thursday</strong>: the
+        Thursday RIC resolves against LSEG and the Friday RIC does not. A loop that assumed
+        Friday expiries would request contracts that never existed. The backtest instead takes
+        the first and last session in which the stock traded in each ISO week, so a holiday
+        <em>shifts</em> the cycle rather than removing it.
+        ${shortWeeks.length ? `In this window the rule applied to ${shortWeeks.length}
+        week${shortWeeks.length === 1 ? "" : "s"}
         (${shortWeeks.map(w => esc(w.iso) + " → " + esc(String(w.expiry_date))).join(", ")}).`
-        : `In this window no cycle needed shifting, but the rule is what makes that a finding rather than an assumption.`}
-        A Monday holiday is handled by the same rule from the other end: the entry moves to
-        Tuesday instead of the week being skipped.</p></div>
+        : `In this window no cycle required shifting.`}
+        A Monday holiday is handled symmetrically: the entry moves to Tuesday.</p></div>
 
-      <div class="qa"><p class="q">A flat LSEG response means the opposite thing depending on how much you asked for.</p>
-        <p class="a">HW1 documented that a multi-field request which loses all but one field comes
-        back as <em>flat columns of bare RICs</em>, indistinguishable from a healthy single-field
-        pull. Probing it again for this assignment turned up the sharper rule: flat columns carry
-        whichever axis has more than one member, and <strong>when both are singletons the columns
-        are fields</strong>. One RIC and three fields returns columns
-        <code>['BID','ASK','TRDPRC_1']</code> with the RIC parked on <code>columns.name</code>;
-        two RICs and one field returns the RICs as columns with the field on
-        <code>columns.name</code>. That is a trap for the bisection this fetcher uses to skip
-        strikes that never existed, because bisection drives batches down to size one and flips the
-        meaning of the response underneath itself. The first version labelled field names as RICs
-        and reported 26 live series out of 20 requested — which is the only reason the bug was
-        caught. The fix is to resolve labels by <em>membership</em> in the known batch and the known
-        field list rather than by position, and to refuse to write a cache containing any label
-        that was not asked for.</p></div>
+      <div class="qa"><p class="q">Ambiguous shape of flat LSEG responses</p>
+        <p class="a">Assignment 1.1 documented that a multi-field request that loses all but one
+        field returns <em>flat columns of bare RICs</em>, indistinguishable from a valid
+        single-field response. Further probing identified the general rule: flat columns carry
+        whichever axis has more than one member, and <strong>when both are singletons the
+        columns are fields</strong>. One RIC with three fields returns columns
+        <code>['BID','ASK','TRDPRC_1']</code> with the RIC in <code>columns.name</code>; two
+        RICs with one field return the RICs as columns with the field in
+        <code>columns.name</code>. This affects the bisection the fetcher uses to skip
+        non-existent strikes, because bisection reduces batches to size one and thereby changes
+        the meaning of the response. The first version mislabelled field names as RICs and
+        reported 26 live series out of 20 requested, which is how the error was detected. Labels
+        are now resolved by <em>membership</em> in the known batch and field list rather than by
+        position, and the fetcher refuses to write a cache containing any label that was not
+        requested.</p></div>
 
-      <div class="qa"><p class="q">The bar extremes carry bad prints. The last-trade series does not.</p>
-        <p class="a">A bar's open and close are both real, sequenced trades, so anything the bar
-        genuinely traded through should sit near that body. On this pull it does not:
-        <strong>HIGH_1 runs more than ${pct(O.thresholds_pct[0], 0)} above the bar's own body on ${pct(O.high.over_1pct_share)}
-        of the ${O.bars} bars, and LOW_1 more than ${pct(O.thresholds_pct[0], 0)} below on ${pct(O.low.over_1pct_share)}</strong>,
-        with excursions reaching +${num(O.high.max_pct, 1)}% and −${num(O.low.max_pct, 1)}%. ${O.worst_high
-          ? `The worst single bar opened at ${money(O.worst_high.open, 2)} and closed at
-             ${money(O.worst_high.close, 2)}, and reports a high of
+      <div class="qa"><p class="q">Erroneous prints in bar highs and lows</p>
+        <p class="a">A bar's open and close are both sequenced trades, so any price the bar
+        genuinely traded through should lie near that range. On this pull,
+        <strong>HIGH_1 exceeds the bar's open–close range by more than
+        ${pct(O.thresholds_pct[0], 0)} on ${pct(O.high.over_1pct_share)} of the ${O.bars} bars,
+        and LOW_1 falls more than ${pct(O.thresholds_pct[0], 0)} below it on
+        ${pct(O.low.over_1pct_share)}</strong>, with excursions of up to
+        +${num(O.high.max_pct, 1)}% and −${num(O.low.max_pct, 1)}%. ${O.worst_high
+          ? `The most extreme bar opened at ${money(O.worst_high.open, 2)}, closed at
+             ${money(O.worst_high.close, 2)} and reports a high of
              <strong>${money(O.worst_high.high, 2)}</strong>.`
-          : ""} Those are odd-lot, out-of-sequence and cross prints surviving into the
-        extremes.
-        TRDPRC_1 shows nothing of the kind — its hour-to-hour move has a median of
-        ${num(O.close_move.median_pct, 3)}%, a 99th percentile of ${num(O.close_move.p99_pct, 2)}%,
-        and only ${O.close_move.over_3pct} bar(s) in the whole window move more than ${pct(O.thresholds_pct[1], 0)}.
-        <br><br>This is why entry and settlement here read <strong>TRDPRC_1 and never
-        HIGH_1/LOW_1</strong>. Any rule phrased as "did the stock touch the strike" — a
-        barrier, a stop, an intraday assignment test — would have booked trades against prints
-        that did not happen, and it would have looked entirely reasonable doing it. The
-        extremes are still used in the fetcher, where all they do is widen the strike band and
-        cost a few dead RICs.</p></div>
+          : ""} These excursions are consistent with odd-lot, out-of-sequence and cross prints
+        entering the extremes. TRDPRC_1 shows no such behaviour: its hour-to-hour move has a
+        median of ${num(O.close_move.median_pct, 3)}%, a 99th percentile of
+        ${num(O.close_move.p99_pct, 2)}%, and only ${O.close_move.over_3pct}
+        bar${O.close_move.over_3pct === 1 ? "" : "s"} in the window
+        move${O.close_move.over_3pct === 1 ? "s" : ""} more than ${pct(O.thresholds_pct[1], 0)}.
+        <br><br>Entry prices therefore use <strong>TRDPRC_1</strong> and settlement uses the
+        official close; <strong>HIGH_1 and LOW_1 are used for neither</strong>. A rule based on
+        whether the stock touched the strike (a barrier, a stop, or an intraday assignment test)
+        would have booked trades against prints that did not occur. The extremes are used only
+        in the fetcher, where they widen the strike band at the cost of a few non-existent
+        RICs.</p></div>
 
-      <div class="qa"><p class="q">How much of the requested chain actually existed?</p>
-        <p class="a">The fetcher bands strikes to where the stock actually traded and then generates
-        past that range, so a good fraction of the candidate RICs are contracts that were never
-        listed. ${F.dead_rics ? `${F.dead_rics.length} of them came back dead` : "Dead RICs are counted"},
-        found by bisecting the batches that threw rather than by falling back to one request per
-        (RIC, field) — the difference between O(N log B) and 160 requests for a single bad strike.
-        ${F.collapsed ? `${F.collapsed} response(s) came back collapsed and were re-pulled one field
-        at a time and relabelled locally.` : `No response came back collapsed on this pull, so the per-field fallback never had to run.`} The panel that survives is
-        ${M.option_series} call series over ${M.option_obs.toLocaleString()} hourly bars.</p></div>
+      <div class="qa"><p class="q">Coverage of the requested option chain</p>
+        <p class="a">The fetcher bands strikes to the range the stock traded and extends beyond
+        it, so a substantial share of candidate RICs are contracts that were never listed.
+        ${F.dead_rics ? `${F.dead_rics.length} returned no data.` : "RICs that return no data are counted."}
+        These were identified by bisecting failing batches rather than by falling back to one
+        request per (RIC, field), which requires O(N log B) requests rather than 160 for a
+        single bad strike. ${F.collapsed ? `${F.collapsed} response(s) were collapsed and were
+        re-pulled one field at a time and relabelled locally.` : `No response was collapsed on
+        this pull, so the per-field fallback was not needed.`} The surviving panel contains
+        ${M.option_series} call series over ${M.option_obs.toLocaleString()} hourly
+        bars.</p></div>
 
-      <div class="qa"><p class="q">Why precompute everything in Python?</p>
-        <p class="a">Same reason as HW1. Every figure on this page is computed once in
-        <code>lib/covered_call.py</code> and <code>lib/cc_analysis.py</code> and embedded as JSON;
-        the browser only draws what it is handed. There is exactly one implementation of the
-        arithmetic, so the blotter, the ledger, the Reg T panel and the prose cannot disagree with
-        each other. The counterfactual strike rules and the hour sweep call the <em>same</em>
-        backtest function with different arguments, which is what makes a comparison between them a
-        comparison of decisions rather than of two code paths that drifted.</p></div>
+      <div class="qa"><p class="q">Precomputation in Python</p>
+        <p class="a">As in Assignment 1.1, every figure on this page is computed once in
+        <code>lib/covered_call.py</code> and <code>lib/cc_analysis.py</code> and embedded as
+        JSON; the browser only renders it. With a single implementation of the arithmetic, the
+        blotter, ledger, Reg T panel and text cannot disagree. The counterfactual strike rules
+        and the hour sweep call the <em>same</em> backtest function with different arguments,
+        so comparisons between them reflect the decisions rather than differences in
+        code.</p></div>
 
-      <div class="qa"><p class="q">What is tested?</p>
-        <p class="a">${M.suite.hw2_functions} test functions for this assignment, across
-        ${M.suite.hw2_files.map(f => `<code>${esc(f)}</code>`).join(", ")} — inside a repository
-        suite of ${M.suite.functions} across ${M.suite.files} files. ("Functions", because the
-        parametrised ones expand into several cases each, so pytest collects more than that
-        number and never fewer.) They are split by failure mode.
-        The RIC and calendar tests pin bugs that produce <em>silence</em> — a strike that never
-        resolves, a week that never happens. The blotter, ledger and Reg T tests pin bugs that
-        produce a <em>plausible wrong number</em>: an assignment credited at the settle instead of
-        the strike, a short call marked as an asset, marks leaking into cash, an initial requirement
-        charged against a covered call. Each was verified by re-introducing the bug and confirming
-        the test fails. That check is itself a committed script,
-        <code>scripts/mutation_check.py</code>: it re-introduces ${M.suite.mutations} specific
-        bugs one at a time, runs the suite against each, and restores the file afterwards.
-        All ${M.suite.mutations} are caught. A suite that passes proves nothing on its own —
-        it is entirely possible to write ${M.suite.hw2_functions} tests that assert whatever the code
-        already happens to do — so the reproducible version of "these tests have teeth" is a
-        harness anyone can re-run.</p>
-        <p class="a" style="margin-top:14px">That harness had a bug of its own worth recording,
-        because it is invisible and it forges a passing test run. CPython decides a
-        <code>.pyc</code> is current by comparing the <em>(mtime, size)</em> it recorded against
-        the source. Every mutation here is a same-length edit — <code>&lt; 2</code> becomes
-        <code>&lt; 0</code> — so size never moves, and mutate-then-restore happens milliseconds
-        apart, so at the one-second granularity of the recorded mtime they are the same instant.
-        Python therefore accepted bytecode compiled from the <strong>mutated</strong> source as
-        valid for the <strong>restored</strong> source, and the mutation survived the restore in
-        bytecode with correct code sitting on disk. It surfaced as a build reporting
+      <div class="qa"><p class="q">Testing</p>
+        <p class="a">${M.suite.hw2_functions} test functions cover this assignment, in
+        ${M.suite.hw2_files.map(f => `<code>${esc(f)}</code>`).join(", ")}, within a repository
+        suite of ${M.suite.functions} functions across ${M.suite.files} files. (Parametrised
+        functions expand into several cases each, so pytest collects at least this many.) The
+        tests are organised by failure mode. RIC and calendar tests target errors that produce
+        <em>silence</em>, such as a strike that never resolves or a week that never occurs.
+        Blotter, ledger and Reg T tests target errors that produce a <em>plausible but wrong
+        number</em>: an assignment credited at the settlement price rather than the strike, a
+        short call marked as an asset, marks entering cash, or an initial requirement charged
+        against a covered call. Each test was verified by reintroducing the corresponding bug
+        and confirming that the test fails. This check is automated in
+        <code>scripts/mutation_check.py</code>, which reintroduces ${M.suite.mutations} specific
+        bugs one at a time, runs the suite against each, and restores the source afterwards;
+        all ${M.suite.mutations} are detected. A passing suite does not by itself show that its
+        tests would detect errors, since tests can simply assert the code's current behaviour;
+        the mutation harness provides a reproducible check that they do.</p>
+        <p class="a" style="margin-top:14px">The harness itself contained a defect that could
+        produce a false pass. CPython treats a cached <code>.pyc</code> file as current if the
+        <em>(mtime, size)</em> it recorded match the source. Each mutation is a same-length edit
+        (for example, <code>&lt; 2</code> to <code>&lt; 0</code>), so the size is unchanged, and
+        mutation and restoration occur within the same second of mtime resolution. Python
+        therefore reused bytecode compiled from the <strong>mutated</strong> source after the
+        source had been <strong>restored</strong>, so the mutation persisted in bytecode while
+        the file on disk was correct. The defect was detected when a build reported
         ${M.weeks + 1} trading weeks instead of ${M.weeks}, from a <code>trading_weeks</code>
-        whose source had been right the whole time. The harness now runs the suite under
-        <code>PYTHONDONTWRITEBYTECODE</code>, deletes the bytecode either way, and finishes by
-        asserting the suite still passes clean — so a restore that does not take is reported
-        rather than inherited.</p></div>`;
+        function whose source was correct throughout. The harness now runs with
+        <code>PYTHONDONTWRITEBYTECODE</code>, deletes bytecode regardless, and ends by asserting
+        that the unmodified suite passes.</p></div>`;
   })();
 
   // ---- data connection --------------------------------------------------
@@ -978,22 +969,21 @@
         + `<code>${esc(host)}</code>, so <code>scripts/fetch_hw2.py</code> can open an LSEG `
         + `session and rebuild the cache behind it.`
       : `<strong>Data connection required.</strong> This is the published GitHub Pages build. `
-        + `It is static by construction — the LSEG pull of ${esc(M.fetched_at)} is baked into `
-        + `this file — and there is no live session here. Re-pulling needs LSEG Workspace `
-        + `running against a local checkout.`;
+        + `It is static: the LSEG pull of ${esc(M.fetched_at)} is embedded in this file, and no `
+        + `live session is available. Re-pulling requires LSEG Workspace running against a `
+        + `local checkout.`;
     el("data-note").innerHTML = `<ul class="notes">
-      <li><strong>What is baked in.</strong> ${M.option_series} call series across
-        ${M.weeks} weekly expiries, ${M.option_obs.toLocaleString()} option bars and
-        ${M.bars} underlying bars, all hourly, ${esc(M.window[0])} → ${esc(M.window[1])}.
-        Everything on this page is computed from that and nothing is fetched at view time.</li>
-      <li><strong>How to rebuild it.</strong> <code>python3 scripts/fetch_hw2.py</code> with
-        LSEG Workspace running writes the cache; <code>python3 scripts/build_hw2.py</code>
-        turns it into this file. The build needs no credentials, because it reads the
+      <li><strong>Contents.</strong> ${M.option_series} call series across ${M.weeks} weekly
+        expiries, ${M.option_obs.toLocaleString()} option bars and ${M.bars} underlying bars, all
+        hourly, ${esc(M.window[0])} → ${esc(M.window[1])}. Every figure on this page is computed
+        from these data; nothing is fetched at view time.</li>
+      <li><strong>Rebuilding.</strong> Running <code>python3 scripts/fetch_hw2.py</code> with
+        LSEG Workspace open writes the cache, and <code>python3 scripts/build_hw2.py</code>
+        generates this page from it. The build requires no credentials, as it reads the
         committed cache.</li>
-      <li><strong>Why static.</strong> The page and the test suite must not be able to
-        disagree about a number. Precomputing in the same Python the tests cover means there
-        is one implementation of the arithmetic and the browser only draws what it is
-        handed.</li>
+      <li><strong>Rationale for a static page.</strong> Computing every figure in the same
+        Python code that the tests cover gives a single implementation of the arithmetic, so the
+        page and the test suite cannot disagree about a number.</li>
     </ul>`;
   })();
 

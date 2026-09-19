@@ -334,7 +334,6 @@ class TestProseIsComputed:
     ALLOWED = {
         # structural truths, independent of any cache
         "$0",     # "an expiry moves $0"
-        "$3", "$6",   # "a $3 option is not a $6 option" -- illustrative
         # axis-scale note inside a code comment, not prose
         "$15", "$50",
     }
@@ -885,8 +884,8 @@ class TestAssignmentSpecOnThePage:
 class TestNewSectionsRender:
     def test_rationale_contracts_and_reg_t_columns_are_present(self, rendered):
         t = rendered["text"]
-        assert "Why AAPL?" in t
-        assert "Why wait through expiry instead of buying the call back" in t
+        assert "Choice of underlying: AAPL" in t
+        assert "Holding to expiry rather than buying the call back" in t
         assert "Contracts written" in t
         for col in ("Initial", "Maint", "Available"):
             assert col in t
