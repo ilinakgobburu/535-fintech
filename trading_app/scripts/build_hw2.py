@@ -30,7 +30,7 @@ from trading_app.lib import cc_analysis as A  # noqa: E402
 from trading_app.lib.covered_call import (  # noqa: E402
     INITIAL_RATE, MAINT_RATE, SHARES_PER_CONTRACT, TRADEABLE_HOURS,
     build_ledger, load_cache, min_start_cash, option_panel, run_backtest,
-    stock_panel, trading_weeks,
+    stock_marks, stock_panel, trading_weeks,
 )
 
 DEFAULT_CACHE = ROOT / "trading_app" / "data" / "covered_call_AAPL.pkl"
@@ -177,6 +177,7 @@ def build_payload(cache: Path) -> dict:
     run = run_backtest(stock, options, weeks, rule=RULE, order_hour=ORDER_HOUR,
                        start_cash=start_cash, margin_rate=MARGIN_RATE)
     ledger = build_ledger(run, stock, options)
+    _marks = stock_marks(stock).dropna()
     bh = A.buy_and_hold(stock, ledger, start_cash, margin_rate=MARGIN_RATE)
     fit = A.mid_vs_print(options, stock)
     hours = A.fill_hour_sweep(stock, options, weeks, rule=RULE,
@@ -258,6 +259,15 @@ def build_payload(cache: Path) -> dict:
             "min_cash": jnum(float(ledger["cash"].min())),
             "min_excess": jnum(float(ledger["excess_liquidity"].min())),
             "ever_infeasible": bool((~ledger["feasible"]).any()),
+        },
+        # The underlying's own path across the whole data window. The page used
+        # to read this off the ledger's first row, which made "the tape rose
+        # X%" depend on where the ledger happened to start.
+        "stock_path": {
+            "first": jnum(float(_marks.iloc[0])),
+            "last": jnum(float(_marks.iloc[-1])),
+            "lo": jnum(float(_marks.min())),
+            "hi": jnum(float(_marks.max())),
         },
         "blotter": [jrec(b) for b in run["blotter"]],
         "cycles": [jrec(c) for c in run["cycles"]],

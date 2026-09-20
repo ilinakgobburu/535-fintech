@@ -233,6 +233,10 @@ MUTATIONS = [
              '"\u2014" : Number(v).toFixed(2).replace(',
      "blotter fills round to the cent, so 100 x fill stops matching the cash column",
      TESTS_PAGE),
+    (CC, 'led = led[led["ts"] >= first_ts].reset_index(drop=True)',
+         'led = led.reset_index(drop=True)',
+     "the ledger opens before the first order, showing the funding amount on a "
+     "session when it was not yet knowable", TESTS),
 ]
 
 

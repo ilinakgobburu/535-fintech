@@ -311,6 +311,41 @@ class TestBlotter:
         assert BUY not in [e["side"] for e in run["blotter"] if e["kind"] == "call"]
 
 
+class TestLedgerOpensWithTheBook:
+    """
+    The funding amount is the cost of the first combo, which is only known
+    once that combo fills. A row before the first order therefore showed the
+    exact balance sitting in the account on a session when nobody could have
+    known it -- the first question anyone reading the ledger asked.
+    """
+
+    def test_no_row_precedes_the_first_blotter_event(self):
+        run, led, _, _ = one_week(settle=295.0)
+        first = min(ev["ts"] for ev in run["blotter"])
+        assert led["ts"].min() == first
+        assert (led["ts"] >= first).all()
+
+    def test_the_first_row_already_holds_the_position(self):
+        _, led, _, _ = one_week(settle=295.0)
+        row = led.iloc[0]
+        assert row["shares"] > 0 and row["call_ric"]
+
+    def test_the_real_book_opens_with_cash_at_zero(self, real_book):
+        """
+        Funded with the cost of the first combo, the opening row must show the
+        position on and nothing left over; that is what "no idle cash" means.
+        """
+        _, st, op, run, _ = real_book
+        from trading_app.lib.covered_call import build_ledger
+        b0 = run["blotter"]
+        cost = -sum(e["cash_delta"] for e in b0[:2])
+        funded = run_backtest(st, op, trading_weeks(st), order_hour=16, start_cash=cost)
+        led = build_ledger(funded, st, op)
+        assert led["ts"].min() == min(e["ts"] for e in funded["blotter"])
+        assert led.iloc[0]["cash"] == pytest.approx(0.0, abs=0.005)
+        assert led.iloc[0]["shares"] == 100
+
+
 class TestLedger:
     def test_cash_moves_only_on_blotter_events(self):
         """

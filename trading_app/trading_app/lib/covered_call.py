@@ -732,6 +732,13 @@ def build_ledger(run: dict, stock: pd.DataFrame, options: pd.DataFrame) -> pd.Da
             accrued += -cash * rate * accrual_days[ts] / MARGIN_DAY_COUNT
 
     led = pd.DataFrame(rows)
+    # The account is funded AT the first order, with exactly the cost of that
+    # position. Rows before it showed that balance already sitting in the
+    # account on a session when the amount was not yet knowable -- the first
+    # fill is what sets it -- so the book opens when the first order is booked.
+    if blotter:
+        first_ts = min(ev["ts"] for ev in blotter)
+        led = led[led["ts"] >= first_ts].reset_index(drop=True)
     led["feasible"] = led["available_funds"] >= 0
     return led
 

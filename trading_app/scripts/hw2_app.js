@@ -34,11 +34,14 @@
   const L = D.ledger;
   // The underlying's own path, computed once. Several sections quote it and
   // they must not each derive it slightly differently.
-  const MARKS = L.stock_mark.filter(x => x !== null && isFinite(x));
+  // The underlying's path over the whole data window, computed in Python.
+  // Reading it off the ledger made "the tape rose X%" depend on which bar the
+  // ledger happened to open on, which changed when the book was funded at the
+  // first order rather than before it.
+  const SP = D.stock_path;
   const STOCK = {
-    first: MARKS[0], last: MARKS[MARKS.length - 1],
-    lo: Math.min(...MARKS), hi: Math.max(...MARKS),
-    ret: 100 * (MARKS[MARKS.length - 1] / MARKS[0] - 1),
+    first: SP.first, last: SP.last, lo: SP.lo, hi: SP.hi,
+    ret: 100 * (SP.last / SP.first - 1),
   };
   // The booked strategy's row of the strike-rule sweep. Its medians are
   // computed in Python; prose that quotes them reads them from here.
@@ -52,7 +55,7 @@
   // from, which is the END of the hour. ET is UTC-4 across this whole window.
   el("r-hour").textContent =
     `hourly bar ending ${String(M.order_hour).padStart(2, "0")}:00 UTC (${M.order_hour - 4}:00 ET)`;
-  el("l-bars").textContent = M.bars.toLocaleString();
+  el("l-bars").textContent = D.ledger.ts.length.toLocaleString();
   el("r-capital").textContent = money(M.start_cash, 2);
   // Show the arithmetic, not just the result: the figure seen in class was a
   // flat round number, and this one has to be checkable from the blotter.

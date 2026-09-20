@@ -175,10 +175,12 @@
 <h2 id="sec-ledger">Ledger</h2>
 <p class="lead-in">
   The ledger reports shares, the short call (strike and expiry), cash and marks at the close
-  of every session. It is <em>derived from the blotter</em> rather than maintained
-  separately, so the two cannot diverge: cash at any bar equals starting cash plus the cash
-  changes of all blotter events up to that bar, which a test verifies at each of the
-  <span id="l-bars">—</span> bars.
+  of every session. The account is funded at the first order with exactly the cost of that
+  position, so the ledger opens on the session that position is established rather than
+  showing the balance sitting idle beforehand. It is <em>derived from the blotter</em> rather
+  than maintained separately, so the two cannot diverge: cash at any bar equals the funding
+  amount plus the cash changes of all blotter events up to that bar, which a test verifies at
+  each of the <span id="l-bars">—</span> bars it covers.
 </p>
 <div class="card"><div class="tbl-wrap"><table class="tbl" id="tbl-ledger"></table></div></div>
 <h3 style="font-size:var(--fs-sub);margin:26px 0 8px">Contracts written</h3>
