@@ -572,6 +572,10 @@ def rendered():
             text: document.body.innerText,
             blotter: [...document.querySelectorAll('#tbl-blotter tbody tr')]
               .map(r => [...r.cells].map(c => c.innerText.trim())),
+            ledgerHead: [...document.querySelectorAll('#tbl-ledger thead th')]
+              .map(e => e.innerText),
+            ledgerRows: [...document.querySelectorAll('#tbl-ledger tbody tr')]
+              .map(r => [...r.cells].map(c => c.innerText.trim())),
             scrollW: document.documentElement.scrollWidth,
             clientW: document.documentElement.clientWidth,
           };
@@ -673,6 +677,20 @@ class TestRenders:
         assert csh * mid == pytest.approx(prem, abs=0.005)
         assert cost - prem == pytest.approx(start, abs=0.005)
         assert start == pytest.approx(payload["meta"]["start_cash"], abs=0.005)
+
+    def test_the_ledger_shows_every_reg_t_quantity_the_assignment_lists(self, rendered):
+        """
+        The assignment's formula block names five: initial, maintenance,
+        available funds, excess and NAV. Excess was plotted and stated in the
+        equation but was not a column, while the other four were.
+        """
+        n = lambda t: float(t.replace("$", "").replace(",", "").replace("\u2212", "-"))
+        hdr = [h.strip() for h in rendered["ledgerHead"]]
+        for col in ("Cash", "NAV", "Initial", "Maint", "Available", "Excess"):
+            assert col in hdr, f"the ledger has no {col} column: {hdr}"
+        iN, iM, iE = hdr.index("NAV"), hdr.index("Maint"), hdr.index("Excess")
+        for row in rendered["ledgerRows"]:
+            assert n(row[iE]) == pytest.approx(n(row[iN]) - n(row[iM]), abs=1.0), row
 
     def test_the_prose_medians_are_true_medians(self, rendered, payload):
         """
@@ -868,7 +886,8 @@ class TestAssignmentSpecOnThePage:
                 assert re.fullmatch(r"[A-Z ]{6}\d{6}C\d{8}", b["occ"]), b
 
     def test_ledger_payload_carries_the_reg_t_columns_the_table_shows(self, payload):
-        for k in ("initial_margin", "maintenance_margin", "available_funds"):
+        for k in ("initial_margin", "maintenance_margin", "available_funds",
+                  "excess_liquidity"):
             assert k in payload["ledger"]
 
     def test_the_stock_leg_of_an_assignment_is_a_negative_quantity_on_the_page(self):

@@ -237,6 +237,10 @@ MUTATIONS = [
          'led = led.reset_index(drop=True)',
      "the ledger opens before the first order, showing the funding amount on a "
      "session when it was not yet knowable", TESTS),
+    (APP_JS, '<th>Available</th><th>Excess</th>',
+             '<th>Available</th>',
+     "the ledger drops the excess-liquidity column the assignment's formulas list",
+     TESTS_PAGE),
 ]
 
 

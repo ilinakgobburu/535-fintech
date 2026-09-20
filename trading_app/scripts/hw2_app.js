@@ -216,7 +216,7 @@
       <th>Session close</th><th>Shares</th><th>Stock mark</th><th>Stock MV</th>
       <th>Short call</th><th>Call mark</th><th>Option MV</th>
       <th>Cash</th><th>NAV</th><th>Initial</th><th>Maint</th>
-      <th>Available</th><th>Accrued interest</th></tr></thead><tbody>`;
+      <th>Available</th><th>Excess</th><th>Accrued interest</th></tr></thead><tbody>`;
     closes.forEach(i => {
       const k = L.call_strike[i];
       const callTxt = k === null ? "—"
@@ -234,6 +234,7 @@
         <td>${money(L.initial_margin[i])}</td>
         <td>${money(L.maintenance_margin[i])}</td>
         <td class="${L.available_funds[i] < 0 ? "neg" : ""}">${money(L.available_funds[i])}</td>
+        <td class="${L.excess_liquidity[i] < 0 ? "neg" : ""}">${money(L.excess_liquidity[i])}</td>
         <td>${L.accrued_interest[i] ? money(L.accrued_interest[i], 2) : "—"}</td></tr>`;
     });
     el("tbl-ledger").innerHTML = html + "</tbody>";
