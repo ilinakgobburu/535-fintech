@@ -54,26 +54,7 @@ the booked one, and **none of them beat buy-and-hold**. None of that is a discov
 of what a cap does to a stock that rose 16.0% through the window, and a flat or
 falling tape would invert the ordering.
 
-### One correction to the RIC scheme, and why the calendar instruction matters
-
-**The expiry day is zero-padded.** The scheme says *"DAY not zero-padded"*. Two
-of the three AAPL sample RICs it prints do not resolve:
-
-```
-AAPLF52619000.U^F26    handout form    LDError
-AAPLF052619000.U^F26   zero-padded     400 observations
-AAPLH72620500.U^H26    handout form    LDError
-AAPLH072620500.U^H26   zero-padded     478 observations
-```
-
-The third example expires on the 17th, so the rule never bites. Every testable
-case fails; every padded correction works. **Aug 7 and Sep 4 are single-digit
-Fridays in this very window**, so a literal reading silently drops 2 of 10
-cycles — the strikes come back empty and the weeks look quiet. The assignment
-says its description matches the course's Helios Python, which builds the day as
-`expiry.day` — the unpadded form — so the reference builder inherits the same two
-empty weeks. Same shape as the 1.1 put-wing finding: "no data came back" and "I
-asked the wrong question" are indistinguishable from the outside.
+### Why the calendar instruction matters
 
 **The calendar instruction is right, and this window shows why.** The assignment
 says to *"take the last session in each week from the stock tape so you do not
@@ -301,10 +282,7 @@ requirements the book did not yet meet:
 
 And one correction to this write-up's own claims. It used to say the handout got
 the week calendar wrong. It does not — the assignment explicitly says to take the
-last session of each week from the stock tape. The zero-padding finding stands,
-and is sharper than first stated: the assignment says its scheme matches the
-course's Helios Python, which builds the day as `expiry.day`, so the reference
-builder hits the same empty weeks.
+last session of each week from the stock tape.
 
 Adding the rationale section also briefly **blanked the whole page**: it read a
 shared value before the script had declared it, a `ReferenceError` in the

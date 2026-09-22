@@ -1334,23 +1334,6 @@ const DATA = {"meta":{"ticker":"AAPL","stock_ric":"AAPL.O","fetched_at":"2026-09
     const O = D.ohlc;
     const shortWeeks = D.cycles.filter(c => c.short_week);
     el("methods").innerHTML = `
-      <div class="qa"><p class="q">Zero-padding of the expiry day in option RICs</p>
-        <p class="a"><em>Motivation:</em> two weeks of the sample initially returned no option data, and an
-        empty response is indistinguishable from a quiet week unless its cause is established. The assignment's RIC scheme states <em>"DAY not zero-padded"</em>. Two of
-        the three AAPL examples it gives do not resolve against LSEG:
-        <code>AAPLF52619000.U^F26</code> and <code>AAPLH72620500.U^H26</code> both return an
-        error, whereas the zero-padded <code>AAPLF052619000.U^F26</code> and
-        <code>AAPLH072620500.U^H26</code> return 400 and 478 observations. The third example
-        expires on the 17th and resolves either way. Every testable case therefore fails without
-        padding and succeeds with it: the RIC body is always nine digits (DD + YY + SSSSS), and
-        a single-digit day must not shorten it to eight. The correction is material in this
-        sample. <strong>Aug 7 and Sep 4 are single-digit Fridays within the window</strong>, so
-        a literal reading of the scheme drops 2 of ${M.weeks} cycles without raising an error;
-        the strikes return empty and the weeks appear inactive. The assignment notes that the
-        scheme matches the course's Helios Python, which builds the day as
-        <code>expiry.day</code>, the unpadded form, so that builder would miss the same two
-        weeks.</p></div>
-
       <div class="qa"><p class="q">Holiday expiries and the stock calendar</p>
         <p class="a"><em>Motivation:</em> the assignment's instruction to read expiries from the stock tape
         was implemented as written, and this item verifies that it behaves as intended around
