@@ -872,25 +872,6 @@
         : `In this window no cycle required shifting.`}
         A Monday holiday is handled symmetrically: the entry moves to Tuesday.</p></div>
 
-      <div class="qa"><p class="q">Mislabelled columns when a request returns a single series</p>
-        <p class="a"><em>Motivation:</em> the fetcher reported more live series than it had requested, which
-        indicated that response labels were being misread. LSEG returns a table whose column
-        headings are sometimes the contracts requested and sometimes the fields requested, with
-        nothing in the response to say which. Assignment 1.1 documented one form of this: a
-        request for several fields that loses all but one comes back with columns that look
-        like a healthy single-field response. Further probing identified the general rule: flat columns carry
-        whichever axis has more than one member, and <strong>when both are singletons the
-        columns are fields</strong>. One RIC with three fields returns columns
-        <code>['BID','ASK','TRDPRC_1']</code> with the RIC in <code>columns.name</code>; two
-        RICs with one field return the RICs as columns with the field in
-        <code>columns.name</code>. This affects the bisection the fetcher uses to skip
-        non-existent strikes, because bisection reduces batches to size one and thereby changes
-        the meaning of the response. The first version mislabelled field names as RICs and
-        reported 26 live series out of 20 requested, which is how the error was detected. Labels
-        are now resolved by <em>membership</em> in the known batch and field list rather than by
-        position, and the fetcher refuses to write a cache containing any label that was not
-        requested.</p></div>
-
       <div class="qa"><p class="q">Erroneous prints in bar highs and lows</p>
         <p class="a"><em>Motivation:</em> assignment depends on where the stock closed relative to the strike,
         so any price field used for entry or settlement must be free of spurious prints. A bar's open and close are both sequenced trades, so any price the bar

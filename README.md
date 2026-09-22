@@ -64,26 +64,6 @@ the Friday one does not. The loop follows the instruction, reading the
 underlying's own session calendar, so a holiday shifts the cycle instead of
 deleting it. It fires once here, on **2026-W27 → Thu Jul 2**.
 
-### A flat LSEG response means the opposite thing depending on what you asked for
-
-1.1 documented that a multi-field request losing all but one field returns flat
-columns of bare RICs. Probing again turned up the sharper rule — flat columns
-carry whichever axis has more than one member, and **when both are singletons the
-columns are fields**:
-
-```
-1 RIC,  3 fields -> columns ['BID','ASK','TRDPRC_1'], columns.name = the RIC
-2 RICs, 1 field  -> columns [ric, ric],               columns.name = 'BID'
-```
-
-That is a trap for the bisection the fetcher uses to skip strikes that never
-existed, because bisection drives batches to size one and flips the meaning of
-the response underneath itself. The first version labelled field names as RICs
-and reported 26 live series out of 20 requested — the only reason it was caught.
-Labels are now resolved by *membership* in the known batch and known field list,
-never by position, and the fetcher refuses to write a cache containing any label
-it did not ask for.
-
 ### The bar extremes carry bad prints; the last-trade series does not
 
 `HIGH_1` runs more than 1% above the bar's own open/close body on **12.0%** of
