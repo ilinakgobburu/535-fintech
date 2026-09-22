@@ -552,7 +552,7 @@ def rendered():
         info = pg.evaluate("""() => {
           const ids = ['tiles','tbl-blotter','tbl-ledger','plot-nav','plot-margin',
             'plot-scatter','tbl-price','tbl-buckets','tbl-moves','plot-hours',
-            'tbl-hours','tbl-rules','analysis','methods','feas','fit-pooled',
+            'tbl-hours','tbl-rules','analysis','feas','fit-pooled',
             'fit-note','fit-verdict','hours-note','rules-note','blotter-note','data-state'];
           const lens = {};
           ids.forEach(i => { const e = document.getElementById(i);

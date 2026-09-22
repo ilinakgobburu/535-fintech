@@ -163,7 +163,7 @@
       const pair = r.side === "ASSIGN"
         || (r.kind === "stock" && r.side === "SELL"
             && rows[i - 1] && rows[i - 1].side === "ASSIGN");
-      // NOT `cls`: that is the module's sign-colour helper, and shadowing it
+      // NOT `cls`: that is the module's sign-color helper, and shadowing it
       // here threw on the next line's cls(r.cash_delta) and blanked the page.
       const rowCls = [prev && d !== prev && r.side === "BUY" ? "wk-sep" : "",
                       pair ? "evt-pair" : ""].filter(Boolean).join(" ");
@@ -292,8 +292,8 @@
     hoverlabel: { bgcolor: TH.panel_hi, bordercolor: TH.line,
       font: { family: TH.mono, size: 11, color: TH.text } },
     // Title and legend both sit above the plot, but Plotly measures them on
-    // DIFFERENT scales: layout.title.y is normalised to the whole PAPER, while
-    // legend.y is normalised to the PLOT AREA and may exceed 1. Giving both
+    // DIFFERENT scales: layout.title.y is normalized to the whole PAPER, while
+    // legend.y is normalized to the PLOT AREA and may exceed 1. Giving both
     // y = 1.0 put the title's baseline at the very top of the canvas, where it
     // was clipped away entirely, while the legend sat happily just above the
     // axes. So: title anchored near the top of the paper, legend just above
@@ -532,7 +532,7 @@
         marker: { size: 7 }, hovertemplate: "P&amp;L %{y:$,.0f}<extra></extra>" },
     ], baseLayout({
       title: { text: "Final P&L by order hour" },
-      xaxis: ax("order bar, UTC, labelled by the hour it ends"),
+      xaxis: ax("order bar, UTC, labeled by the hour it ends"),
       yaxis: ax("premium collected", { tickformat: "$,.0f" }),
       yaxis2: { overlaying: "y", side: "right", tickformat: "$,.0f",
         gridcolor: "rgba(0,0,0,0)", zeroline: false, linecolor: TH.line,
@@ -589,7 +589,7 @@
         and has a large delta near the money, so an intraday move of one percent in the stock
         shifts the chain relative to spot. The rule then selects a <em>different contract</em>,
         not merely a different price for the same contract. The effect is therefore not a
-        rounding artefact, and it partly offsets across weeks rather than accumulating.</li>
+        rounding artifact, and it partly offsets across weeks rather than accumulating.</li>
       <li><strong>Implication for the fill assumption.</strong> "Fill at mid" is complete only
         when the order time is stated. The appropriate remedy is not to choose a better hour but
         to declare the hour as a parameter and report this table alongside the result.</li>
@@ -635,7 +635,7 @@
     for (let i = 1; i < byDist.length; i++) if (byDist[i].pnl < byDist[i - 1].pnl) mono = false;
 
     const calib = probRules.map(r =>
-      `${pct(100 * r.target_prob, 0)} targeted, <strong>${pct(100 * r.realised_prob, 0)}</strong> realised`
+      `${pct(100 * r.target_prob, 0)} targeted, <strong>${pct(100 * r.realised_prob, 0)}</strong> realized`
     ).join("; ");
     const allAbove = probRules.length > 0
       && probRules.every(r => r.realised_prob > r.target_prob);
@@ -646,7 +646,7 @@
         stated probability that the cap is breached, derived from the week's at-the-money
         implied volatility (median ${pct(100 * R[0].median_atm_iv)}, range
         ${pct(100 * Math.min(...R.map(r => (r.iv_range || [NaN])[0])))}–${pct(100 * Math.max(...R.map(r => (r.iv_range || [NaN, NaN])[1])))}).
-        ${allAbove ? "Realised assignment exceeded the target in every case" : "Realised assignment rates were"}:
+        ${allAbove ? "Realized assignment exceeded the target in every case" : "Realized assignment rates were"}:
         ${calib}.${allAbove ? ` This is expected rather than a defect of the rule. The
         probability implied by option prices is <em>risk-neutral</em>, and the risk-neutral
         measure has zero drift by construction, whereas the stock rose ${pct(STOCK.ret)} over
@@ -849,112 +849,8 @@
       `<div class="qa"><p class="q">${q}</p><p class="a">${a}</p></div>`).join("");
   })();
 
-  // ---- methods ----------------------------------------------------------
-  (function methods() {
-    const F = M.fetch_stats || {};
-    const O = D.ohlc;
-    const shortWeeks = D.cycles.filter(c => c.short_week);
-    el("methods").innerHTML = `
-      <div class="qa"><p class="q">Holiday expiries and the stock calendar</p>
-        <p class="a"><em>Motivation:</em> the assignment's instruction to read expiries from the stock tape
-        was implemented as written, and this item verifies that it behaves as intended around
-        market holidays. The assignment instructs: <em>"take the last session in each week from the
-        stock tape so you do not invent holiday expiries."</em> Recent holidays illustrate the
-        reason. Jun 19 2026 (Juneteenth) and Jul 3 2026 (Independence Day, observed) are market
-        holidays, and options for those weeks expire on the <strong>Thursday</strong>: the
-        Thursday RIC resolves against LSEG and the Friday RIC does not. A loop that assumed
-        Friday expiries would request contracts that never existed. The backtest instead takes
-        the first and last session in which the stock traded in each ISO week, so a holiday
-        <em>shifts</em> the cycle rather than removing it.
-        ${shortWeeks.length ? `In this window the rule applied to ${shortWeeks.length}
-        week${shortWeeks.length === 1 ? "" : "s"}
-        (${shortWeeks.map(w => esc(w.iso) + " → " + esc(String(w.expiry_date))).join(", ")}).`
-        : `In this window no cycle required shifting.`}
-        A Monday holiday is handled symmetrically: the entry moves to Tuesday.</p></div>
-
-      <div class="qa"><p class="q">Erroneous prints in bar highs and lows</p>
-        <p class="a"><em>Motivation:</em> assignment depends on where the stock closed relative to the strike,
-        so any price field used for entry or settlement must be free of spurious prints. A bar's open and close are both sequenced trades, so any price the bar
-        genuinely traded through should lie near that range. On this pull,
-        <strong>HIGH_1 exceeds the bar's open–close range by more than
-        ${pct(O.thresholds_pct[0], 0)} on ${pct(O.high.over_1pct_share)} of the ${O.bars} bars,
-        and LOW_1 falls more than ${pct(O.thresholds_pct[0], 0)} below it on
-        ${pct(O.low.over_1pct_share)}</strong>, with excursions of up to
-        +${num(O.high.max_pct, 1)}% and −${num(O.low.max_pct, 1)}%. ${O.worst_high
-          ? `The most extreme bar opened at ${money(O.worst_high.open, 2)}, closed at
-             ${money(O.worst_high.close, 2)} and reports a high of
-             <strong>${money(O.worst_high.high, 2)}</strong>.`
-          : ""} These excursions are consistent with odd-lot, out-of-sequence and cross prints
-        entering the extremes. TRDPRC_1 shows no such behaviour: its hour-to-hour move has a
-        median of ${num(O.close_move.median_pct, 3)}%, a 99th percentile of
-        ${num(O.close_move.p99_pct, 2)}%, and only ${O.close_move.over_3pct}
-        bar${O.close_move.over_3pct === 1 ? "" : "s"} in the window
-        move${O.close_move.over_3pct === 1 ? "s" : ""} more than ${pct(O.thresholds_pct[1], 0)}.
-        <br><br>Entry prices therefore use <strong>TRDPRC_1</strong> and settlement uses the
-        official close; <strong>HIGH_1 and LOW_1 are used for neither</strong>. A rule based on
-        whether the stock touched the strike (a barrier, a stop, or an intraday assignment test)
-        would have booked trades against prints that did not occur. The extremes are used only
-        in the fetcher, where they widen the strike band at the cost of a few non-existent
-        RICs.</p></div>
-
-      <div class="qa"><p class="q">Coverage of the requested option chain</p>
-        <p class="a"><em>Motivation:</em> many candidate RICs are generated for strikes that were never
-        listed, and the fetch must distinguish these from genuine data loss. The fetcher bands strikes to the range the stock traded and extends beyond
-        it, so a substantial share of candidate RICs are contracts that were never listed.
-        ${F.dead_rics ? `${F.dead_rics.length} returned no data.` : "RICs that return no data are counted."}
-        These were identified by bisecting failing batches rather than by falling back to one
-        request per (RIC, field), which requires O(N log B) requests rather than 160 for a
-        single bad strike. ${F.collapsed ? `${F.collapsed} response(s) were collapsed and were
-        re-pulled one field at a time and relabelled locally.` : `No response was collapsed on
-        this pull, so the per-field fallback was not needed.`} The surviving panel contains
-        ${M.option_series} call series over ${M.option_obs.toLocaleString()} hourly
-        bars.</p></div>
-
-      <div class="qa"><p class="q">Precomputation in Python</p>
-        <p class="a"><em>Motivation:</em> the page reports the same figures in tables, charts and text, and
-        these must not be able to disagree. As in Assignment 1.1, every figure on this page is computed once in
-        <code>lib/covered_call.py</code> and <code>lib/cc_analysis.py</code> and embedded as
-        JSON; the browser only renders it. With a single implementation of the arithmetic, the
-        blotter, ledger, Reg T panel and text cannot disagree. The counterfactual strike rules
-        and the hour sweep call the <em>same</em> backtest function with different arguments,
-        so comparisons between them reflect the decisions rather than differences in
-        code.</p></div>
-
-      <div class="qa"><p class="q">Testing</p>
-        <p class="a"><em>Motivation:</em> the errors this assignment grades, such as impossible trades or
-        incorrect cash, usually produce plausible numbers rather than failures, so they have to
-        be tested for directly. ${M.suite.hw2_functions} test functions cover this assignment, in
-        ${M.suite.hw2_files.map(f => `<code>${esc(f)}</code>`).join(", ")}, within a repository
-        suite of ${M.suite.functions} functions across ${M.suite.files} files. (Parametrised
-        functions expand into several cases each, so pytest collects at least this many.) The
-        tests are organised by failure mode. RIC and calendar tests target errors that produce
-        <em>silence</em>, such as a strike that never resolves or a week that never occurs.
-        Blotter, ledger and Reg T tests target errors that produce a <em>plausible but wrong
-        number</em>: an assignment credited at the settlement price rather than the strike, a
-        short call marked as an asset, marks entering cash, or an initial requirement charged
-        against a covered call. Each test was verified by reintroducing the corresponding bug
-        and confirming that the test fails. This check is automated in
-        <code>scripts/mutation_check.py</code>, which reintroduces ${M.suite.mutations} specific
-        bugs one at a time, runs the suite against each, and restores the source afterwards;
-        all ${M.suite.mutations} are detected. A passing suite does not by itself show that its
-        tests would detect errors, since tests can simply assert the code's current behaviour;
-        the mutation harness provides a reproducible check that they do.</p>
-        <p class="a" style="margin-top:14px">The harness itself contained a defect that could
-        produce a false pass. CPython treats a cached <code>.pyc</code> file as current if the
-        <em>(mtime, size)</em> it recorded match the source. Each mutation is a same-length edit
-        (for example, <code>&lt; 2</code> to <code>&lt; 0</code>), so the size is unchanged, and
-        mutation and restoration occur within the same second of mtime resolution. Python
-        therefore reused bytecode compiled from the <strong>mutated</strong> source after the
-        source had been <strong>restored</strong>, so the mutation persisted in bytecode while
-        the file on disk was correct. The defect was detected when a build reported
-        ${M.weeks + 1} trading weeks instead of ${M.weeks}, from a <code>trading_weeks</code>
-        function whose source was correct throughout. The harness now runs with
-        <code>PYTHONDONTWRITEBYTECODE</code>, deletes bytecode regardless, and ends by asserting
-        that the unmodified suite passes.</p></div>`;
-  })();
-
   // ---- data connection --------------------------------------------------
-  // Pages is the graded artefact and it is static by construction: it carries
+  // Pages is the graded artifact and it is static by construction: it carries
   // a cached LSEG pull baked into this file. The local server is the only
   // context that can reach a live session, so the page says which one it is
   // in rather than implying it is live everywhere.

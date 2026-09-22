@@ -168,7 +168,7 @@ MUTATIONS = [
      TESTS_PAGE),
     (TEMPLATE, '.grid2 > *{min-width:0}', '.grid2 > *{min-width:auto}',
      "tables inside a grid push the whole page sideways below ~420px", TESTS_PAGE),
-    (README, 'more than 1% below on **21.4%**', 'more than 1% below on **21.3%**',
+    (README, 'median print missed the mid by **$0.035**', 'median print missed the mid by **$0.036**',
      "a README figure drifts from the page by one rounding step", TESTS_PAGE),
 
     # --- the bisection, and the bar the order is sent on ------------------

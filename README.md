@@ -64,19 +64,6 @@ the Friday one does not. The loop follows the instruction, reading the
 underlying's own session calendar, so a holiday shifts the cycle instead of
 deleting it. It fires once here, on **2026-W27 → Thu Jul 2**.
 
-### The bar extremes carry bad prints; the last-trade series does not
-
-`HIGH_1` runs more than 1% above the bar's own open/close body on **12.0%** of
-the 350 in-session hourly bars and `LOW_1` more than 1% below on **21.4%**, reaching +10.6%
-and −18.0% — one hour that opened and closed near $301 reports a high of $333.
-`TRDPRC_1` shows nothing of the kind (median hourly move 0.294%, p99 2.03%).
-
-So entry and settlement read **TRDPRC_1 and never HIGH_1/LOW_1**. Any rule phrased
-as *"did the stock touch the strike"* would have booked assignments against trades
-that never happened, and would have looked entirely reasonable doing it. A test
-pins it: a bar whose `HIGH_1` is far through the strike but whose closing print is
-below it must expire.
-
 ### The mid tracks the print. That is not the same as being fillable.
 
 Pooled R² is **0.9992**, which alone proves little on a chain spanning $0.01 to

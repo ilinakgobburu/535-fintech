@@ -62,7 +62,7 @@ def money(x: float, dp: int = 0) -> str:
     $3,566.50 prints as 3,566 in this script's console output and 3,567 on the
     page built by it. Two implementations of the arithmetic disagreeing by a
     dollar is precisely the failure this project is arranged to prevent, and a
-    build log that contradicts its own artefact is the least excusable version
+    build log that contradicts its own artifact is the least excusable version
     of it. So the console rounds the way the browser does.
     """
     q = Decimal(10) ** -dp
@@ -155,7 +155,7 @@ def suite_facts() -> dict:
     # quietly absorbing 1.1's numbers would overstate it.
     mine = {"test_covered_call.py", "test_fetch_shapes.py", "test_page.py"}
     return {
-        # "functions", not "tests": parametrised ones expand into several
+        # "functions", not "tests": parametrized ones expand into several
         # cases each, so this is a floor and never an overstatement. pytest
         # collects more than this number, not fewer.
         "functions": sum(per_file.values()),
