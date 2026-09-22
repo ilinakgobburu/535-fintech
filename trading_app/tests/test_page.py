@@ -35,6 +35,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -572,6 +573,8 @@ def rendered():
             text: document.body.innerText,
             blotter: [...document.querySelectorAll('#tbl-blotter tbody tr')]
               .map(r => [...r.cells].map(c => c.innerText.trim())),
+            lineBreaks: [...document.querySelectorAll('.js-plotly-plot')].slice(0, 2)
+              .map(p => p.data.map(tr => (tr.y || []).filter(v => v === null).length)),
             ledgerHead: [...document.querySelectorAll('#tbl-ledger thead th')]
               .map(e => e.innerText),
             ledgerRows: [...document.querySelectorAll('#tbl-ledger tbody tr')]
@@ -691,6 +694,21 @@ class TestRenders:
         iN, iM, iE = hdr.index("NAV"), hdr.index("Maint"), hdr.index("Excess")
         for row in rendered["ledgerRows"]:
             assert n(row[iE]) == pytest.approx(n(row[iN]) - n(row[iM]), abs=1.0), row
+
+    def test_the_time_series_lines_break_over_closed_days(self, rendered, payload):
+        """
+        There are no bars overnight, at weekends or on holidays, and Plotly
+        joins the points either side. On the margin chart that drew a straight
+        multi-day plateau across every weekend, which reads as a level that was
+        observed throughout rather than two points with the market shut
+        between them.
+        """
+        ts = [pd.Timestamp(x) for x in payload["ledger"]["ts"]]
+        gaps = sum(1 for a, b in zip(ts, ts[1:]) if (b - a) > pd.Timedelta(hours=24))
+        assert gaps > 0, "this window has no closed days, so nothing to check"
+        for chart in rendered["lineBreaks"]:
+            for n in chart:
+                assert n == gaps, f"line has {n} breaks, expected {gaps}"
 
     def test_the_prose_medians_are_true_medians(self, rendered, payload):
         """

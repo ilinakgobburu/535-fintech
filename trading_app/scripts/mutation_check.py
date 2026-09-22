@@ -241,6 +241,10 @@ MUTATIONS = [
              '<th>Available</th>',
      "the ledger drops the excess-liquidity column the assignment's formulas list",
      TESTS_PAGE),
+    (APP_JS, 'if (i && tms(xs[i]) - tms(xs[i - 1]) > GAP_MS) { X.push(xs[i]); Y.push(null); }',
+             'if (false) { X.push(xs[i]); Y.push(null); }',
+     "NAV and margin are drawn straight across weekends, as though the level had "
+     "been observed while the market was shut", TESTS_PAGE),
 ]
 
 

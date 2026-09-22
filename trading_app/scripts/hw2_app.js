@@ -47,6 +47,21 @@
   // computed in Python; prose that quotes them reads them from here.
   const BOOKED = D.rule_sweep.find(r => r.rule === M.rule);
 
+  // The tape has no bars overnight, at weekends or on holidays. Plotly joins
+  // the points on either side, which drew a straight multi-day plateau across
+  // every weekend and read as though the level had been observed the whole
+  // time. A null at any gap longer than a day breaks the line there instead.
+  const GAP_MS = 24 * 3600 * 1000;
+  const tms = v => Date.parse(String(v).replace(" ", "T") + "Z");
+  function gapSplit(xs, ys) {
+    const X = [], Y = [];
+    for (let i = 0; i < xs.length; i++) {
+      if (i && tms(xs[i]) - tms(xs[i - 1]) > GAP_MS) { X.push(xs[i]); Y.push(null); }
+      X.push(xs[i]); Y.push(ys[i]);
+    }
+    return { x: X, y: Y };
+  }
+
 
 
   document.title = `Covered Call · ${M.ticker}`;
@@ -320,21 +335,21 @@
     if (open !== null) shade.push([open, L.ts[L.ts.length - 1]]);
 
     const traces = [
-      { x: L.ts, y: L.nav, name: "NAV", type: "scatter", mode: "lines",
+      { ...gapSplit(L.ts, L.nav), name: "NAV", type: "scatter", mode: "lines",
         line: { color: TH.mark, width: 2.2 },
         hovertemplate: "NAV %{y:$,.0f}<extra></extra>" },
       // Margin requirements sit near $15k while NAV sits near $50k. On a shared
       // axis the NAV line flattens into a straight stripe and the whole point
       // of plotting it is lost, so the requirements get their own scale.
-      { x: L.ts, y: L.initial_margin, name: `Initial (${(M.initial_rate * 100).toFixed(0)}% LMV)`, type: "scatter",
+      { ...gapSplit(L.ts, L.initial_margin), name: `Initial (${(M.initial_rate * 100).toFixed(0)}% LMV)`, type: "scatter",
         mode: "lines", yaxis: "y2", line: { color: TH.both, width: 1.4, dash: "dash" },
         hovertemplate: "initial %{y:$,.0f}<extra></extra>" },
-      { x: L.ts, y: L.maintenance_margin, name: `Maintenance (${(M.maint_rate * 100).toFixed(0)}% LMV)`, type: "scatter",
+      { ...gapSplit(L.ts, L.maintenance_margin), name: `Maintenance (${(M.maint_rate * 100).toFixed(0)}% LMV)`, type: "scatter",
         mode: "lines", yaxis: "y2", line: { color: TH.faint, width: 1.2, dash: "dot" },
         hovertemplate: "maint %{y:$,.0f}<extra></extra>" },
     ];
     if (D.buy_hold) {
-      traces.splice(1, 0, { x: D.buy_hold.ts, y: D.buy_hold.nav,
+      traces.splice(1, 0, { ...gapSplit(D.buy_hold.ts, D.buy_hold.nav),
         name: "Buy & hold 100 shares", type: "scatter", mode: "lines",
         line: { color: TH.print, width: 1.8 },
         hovertemplate: "buy &amp; hold %{y:$,.0f}<extra></extra>" });
@@ -356,10 +371,10 @@
   // Available funds / excess liquidity
   (function marginPlot() {
     draw("plot-margin", [
-      { x: L.ts, y: L.available_funds, name: "Available funds (NAV − initial)",
+      { ...gapSplit(L.ts, L.available_funds), name: "Available funds (NAV − initial)",
         type: "scatter", mode: "lines", line: { color: TH.mark, width: 2 },
         hovertemplate: "available %{y:$,.0f}<extra></extra>" },
-      { x: L.ts, y: L.excess_liquidity, name: "Excess liquidity (NAV − maint)",
+      { ...gapSplit(L.ts, L.excess_liquidity), name: "Excess liquidity (NAV − maint)",
         type: "scatter", mode: "lines", line: { color: TH.both, width: 1.6 },
         hovertemplate: "excess %{y:$,.0f}<extra></extra>" },
     ], baseLayout({
@@ -857,11 +872,13 @@
         : `In this window no cycle required shifting.`}
         A Monday holiday is handled symmetrically: the entry moves to Tuesday.</p></div>
 
-      <div class="qa"><p class="q">Ambiguous shape of flat LSEG responses</p>
+      <div class="qa"><p class="q">Mislabelled columns when a request returns a single series</p>
         <p class="a"><em>Motivation:</em> the fetcher reported more live series than it had requested, which
-        indicated that response labels were being misread. Assignment 1.1 documented that a multi-field request that loses all but one
-        field returns <em>flat columns of bare RICs</em>, indistinguishable from a valid
-        single-field response. Further probing identified the general rule: flat columns carry
+        indicated that response labels were being misread. LSEG returns a table whose column
+        headings are sometimes the contracts requested and sometimes the fields requested, with
+        nothing in the response to say which. Assignment 1.1 documented one form of this: a
+        request for several fields that loses all but one comes back with columns that look
+        like a healthy single-field response. Further probing identified the general rule: flat columns carry
         whichever axis has more than one member, and <strong>when both are singletons the
         columns are fields</strong>. One RIC with three fields returns columns
         <code>['BID','ASK','TRDPRC_1']</code> with the RIC in <code>columns.name</code>; two
