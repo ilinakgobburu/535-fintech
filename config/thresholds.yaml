@@ -11,7 +11,7 @@ changes_from_version_1:
   long_leg_roll: also replace the LEAP when its delta is below 0.50 (version 1 replaced it only on time)
   short_leg_strike: at or above the LEAP's break-even, not merely its strike
 bars: daily; decisions and fills use that day's closing quote
-prices: unadjusted_close          # total return adds dividends separately
+prices: unadjusted closes         # total return adds dividends separately
 split: none in the period
 rate: 3-month T-bill yield, on the entry date
 dividend_yield: trailing 12 months of dividends divided by the close, on the entry date
@@ -25,7 +25,7 @@ long_leg:
 
 short_leg:
   open: session after the prior short expires
-  expiry: the next monthly expiry (25 or 32 days out)
+  expiry: the next monthly expiry (24 to 32 days out)
   strike: listed strike with delta closest to 0.25, at or above the LEAP's break-even (LEAP strike plus the price paid for it); skip the cycle if none qualifies
   strike_reason: a call sold below break-even locks in a loss on the LEAP if it is assigned
   listed: a strike counts only if it has a two-sided quote on the entry date
