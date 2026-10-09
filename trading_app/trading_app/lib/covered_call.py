@@ -488,13 +488,14 @@ def run_backtest(
     start_cash: float = 50_000.0,
     contracts: int = 1,
     margin_rate: float = 0.0,
+    strike_rules: dict | None = None,
 ) -> dict:
     """
     Walk the weeks and book what the rules say. Returns the blotter and the
     per-week decision record; the ledger is built from the blotter afterwards
     so it cannot disagree with it.
     """
-    pick = STRIKE_RULES[rule]
+    pick = (strike_rules or STRIKE_RULES)[rule]
     blotter: list[dict] = []
     cycles: list[dict] = []
     shares = 0

@@ -98,6 +98,48 @@ def implied_vol(price: float, F: float, K: float, T: float, D: float,
         return np.nan
 
 
+GREEKS = ("delta", "gamma", "vega", "theta", "prob_itm")
+
+
+def bs_greeks(F: float, K: float, T: float, sigma: float, D: float,
+              cp: str = "C") -> dict:
+    """
+    Black-76 sensitivities of bs_price, all taken against the FORWARD.
+
+        delta     dV/dF                 call D*N(d1), put -D*N(-d1)
+        gamma     d2V/dF2
+        vega      dV/dsigma             per 1.00 of vol, not per vol point
+        theta     -dV/dT                per year, with F and D held fixed
+        prob_itm  N(d2) call, N(-d2) put: the RISK-NEUTRAL chance of
+                  finishing in the money
+
+    Holding D fixed in theta drops the carry term r*V. That is the same choice
+    atm_iv makes by setting D = 1, where the carry term is zero anyway: at a
+    weekly horizon the discount factor is not identified from these prices.
+
+    prob_itm sits beside delta on purpose. A call's delta is N(d1) and its
+    in-the-money probability is N(d2), with d1 = d2 + sigma*sqrt(T), so the
+    delta always overstates the probability -- by a little on a weekly and by
+    a lot on a long-dated option. Reading one as the other is a standard error.
+    """
+    if not (np.isfinite([F, K, T, sigma, D]).all()
+            and F > 0 and K > 0 and T > 0 and sigma > 0 and D > 0):
+        return dict.fromkeys(GREEKS, np.nan)
+    root_t = np.sqrt(T)
+    v = sigma * root_t
+    d1 = (np.log(F / K) + 0.5 * v * v) / v
+    d2 = d1 - v
+    pdf_d1 = np.exp(-0.5 * d1 * d1) / np.sqrt(2.0 * np.pi)
+    call = cp == "C"
+    return {
+        "delta": float(D * ndtr(d1) if call else -D * ndtr(-d1)),
+        "gamma": float(D * pdf_d1 / (F * v)),
+        "vega": float(D * F * pdf_d1 * root_t),
+        "theta": float(-D * F * pdf_d1 * sigma / (2.0 * root_t)),
+        "prob_itm": float(ndtr(d2) if call else ndtr(-d2)),
+    }
+
+
 # --------------------------------------------------------------------------
 # Put-call parity: the forward, model-free
 # --------------------------------------------------------------------------
