@@ -1,0 +1,33 @@
+# Term-structure seasonality screen: thresholds fixed before any screen result
+# was computed. Changes after this commit go in notes/screen_log.md with a reason.
+registered: 2026-10-08
+
+universe: [AAPL.O]
+stop_if_gap_share_above: 0.05      # share of trading days missing 30-day or 90-day IV, per period
+
+periods:
+  discovery: [2010, 2016]          # calendar years, inclusive
+  validation: [2017, 2023]
+
+spread:
+  definition: iv30 minus iv90, daily
+  iv30: mean of 30D_A_IM_C and 30D_A_IM_P on AAPLATMIV.U   # percent, annualized
+  iv90: mean of 90D_A_IM_C and 90D_A_IM_P on AAPLATMIV.U
+  aggregation: mean by calendar month within each year
+
+season_rule:
+  top_quartile: 3                  # the 3 highest of a year's 12 monthly averages
+  min_years: 5                     # of the 7 discovery years
+
+premium_rule:
+  entry: first trading day of the month with a 30-day IV   # one observation per month
+  premium: iv30 at entry minus realized volatility over the next 21 trading days
+  realized_volatility: sample std of daily log returns of the adjusted close, times sqrt(252), in percent
+  test: one-sample t-test of peak-month premiums against 0, one-sided (mean > 0)
+  alpha: 0.05
+  comparison: the same statistics for non-peak months, reported, not a pass condition
+
+event_rule:
+  flag: an earnings date falls from the entry date through 45 calendar days after it
+  earnings_field: TR.EventStartDate with EventType RES
+  report: premium results with and without flagged months

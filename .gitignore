@@ -47,3 +47,6 @@ trading_app/assets/external/
 
 # Personal presentation notes -- not part of the graded site
 notes/
+
+# Raw LSEG test pulls -- never committed
+cache/
