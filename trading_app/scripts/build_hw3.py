@@ -234,11 +234,12 @@ def rules_table() -> str:
 
     for key in ("version", "revised", "changes_from_version_1"):
         rules.pop(key, None)
-    # Comparisons the page no longer shows.
+    # Lines about comparisons and reports the page no longer carries.
     rules.get("earnings", {}).pop("comparison", None)
-    rules["reported"] = [x for x in rules.get("reported", []) if "Sharpe" not in x]
+    rules.get("assignment", {}).pop("report", None)
+    rules.pop("reported", None)
     walk("", rules)
-    return table(["Rule", "Registered value"], rows, left=2, cls="rules")
+    return table(["Rule", "Value"], rows, left=2, cls="rules")
 
 
 def cycles_table(R: dict, book: str = "pmcc") -> str:
