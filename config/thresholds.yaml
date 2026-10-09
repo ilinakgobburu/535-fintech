@@ -1,0 +1,53 @@
+# PMCC backtest rules. To be committed before any backtest output exists.
+
+underlying: DAL
+selection_reason: >
+  Chosen after the AAPL screen, on demand-season grounds and an earnings
+  calendar offset from Apple's.
+prior_attempt: AAPL was checked, screened and pulled first (2026-10-08 and 09), then dropped before any backtest was run on it
+period: {start: 2019-01-02, end: 2023-12-29}
+bars: daily; decisions and fills use that day's closing quote
+prices: unadjusted_close          # total return adds dividends separately
+split: none in the period
+rate: 3-month T-bill yield, on the entry date
+dividend_yield: trailing 12 months of dividends divided by the close, on the entry date
+iv_and_delta: implied vol inverted from the mid with Black-Scholes; delta from that vol; same formula all years
+
+long_leg:
+  expiry: January expiry nearest 12 months out at open
+  strike: listed strike with delta closest to 0.80
+  roll: when under 90 days remain, sell it and open the January expiry nearest 12 months out
+
+short_leg:
+  open: session after the prior short expires
+  expiry: the next monthly expiry (25 or 32 days out)
+  strike: listed strike with delta closest to 0.25, at or above the LEAP strike; skip the cycle and log it if none qualifies
+  listed: a strike counts only if it has a two-sided quote on the entry date
+  hold: to expiry; log any call in the money on the session before an ex-dividend date
+
+earnings:
+  primary: sell through earnings
+  comparison: skip any cycle with an earnings date between entry and expiry; the LEAP is still held
+
+fills:
+  primary: bid when selling, ask when buying
+  sensitivity: mid
+  commissions: none charged; stated on the page
+
+assignment:
+  rule: short 100 shares at the strike; bought back at the next session's open; the LEAP is kept
+  buy_back_price: next session's open plus $0.01 per share
+  margin: Reg T short-stock requirement (50% initial, 30% maintenance) counted in available funds until covered
+  report: every assignment listed separately with its close-to-open gap
+
+benchmarks:
+  covered_call: 100 shares bought at the first close, same short-leg rule, shares sold at the strike if assigned and rebought at the next session's open plus $0.01 per share
+  buy_and_hold: 100 shares, dividends added as cash on the ex-date
+
+reported:
+  - return on capital, with capital = cash needed to open (LEAP cost less first premium; share cost less first premium)
+  - smallest starting cash that keeps Reg T available funds at or above zero throughout
+  - max peak-to-trough drawdown
+  - worst month
+  - monthly Sharpe, annualized by sqrt(12), T-bill as risk-free
+  - skipped cycles and failed data requests, counted separately

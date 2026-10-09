@@ -1,5 +1,5 @@
 """
-Term-structure seasonality screen: does AAPL's 30-day minus 90-day implied
+Term-structure seasonality screen: does a stock's 30-day minus 90-day implied
 volatility peak in the same calendar months each year, and do those months pay
 a larger variance risk premium?
 
@@ -23,11 +23,13 @@ import yaml
 from scipy import stats
 
 REPO = Path(__file__).resolve().parents[2]
-CACHE = REPO / "cache" / "term_structure_AAPL.pkl"
-OUT = REPO / "cache" / "term_structure_results.json"
 CFG = yaml.safe_load((REPO / "config" / "screen_thresholds.yaml").read_text())
 
-IV_RIC = "AAPLATMIV.U"
+RIC = CFG["universe"][0]
+TICKER = RIC.split(".")[0]
+IV_RIC = f"{TICKER}ATMIV.U"
+CACHE = REPO / "cache" / f"term_structure_{TICKER}.pkl"
+OUT = REPO / "cache" / f"term_structure_results_{TICKER}.json"
 IV_FIELDS = ["30D_A_IM_C", "30D_A_IM_P", "90D_A_IM_C", "90D_A_IM_P"]
 RV_DAYS = 21
 EVENT_DAYS = 45
@@ -142,7 +144,7 @@ def main() -> int:
     args = ap.parse_args()
     if args.refresh or not CACHE.exists():
         CACHE.parent.mkdir(exist_ok=True)
-        pd.to_pickle(pull(CFG["universe"][0]), CACHE)
+        pd.to_pickle(pull(RIC), CACHE)
     res = screen(pd.read_pickle(CACHE))
     OUT.write_text(json.dumps(res, indent=1))
     print(json.dumps({k: v for k, v in res.items() if k != "observations"}, indent=1))
