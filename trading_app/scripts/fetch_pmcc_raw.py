@@ -57,6 +57,9 @@ UNDERLYINGS = {
     # Every short call this book can write is out of the money, hence the band.
     "DAL": {"stock": "DAL", "split": None,
             "monthly": ((0.97, 1.40), (0.5,)), "leap": ((0.50, 1.05), (1.0, 2.5))},
+    # BIIB trades between about $200 and $480 with $5 strikes, $2.50 in places.
+    "BIIB": {"stock": "BIIB.O", "split": None,
+             "monthly": ((0.97, 1.40), (2.5,)), "leap": ((0.50, 1.05), (5.0,))},
 }
 ROOT_SYM = "AAPL"
 CACHE = ROOT.parent / "cache" / "pmcc_raw"
