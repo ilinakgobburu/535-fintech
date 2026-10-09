@@ -34,13 +34,15 @@ RULES_FILE = REPO / "config" / "thresholds.yaml"
 BOOK_LABELS = {
     "pmcc": "PMCC (primary: mid fills)",
     "pmcc_cross": "PMCC, bid/ask fills (stress test)",
-    "pmcc_skip": "PMCC, skip earnings cycles",
-    "pmcc_v1": "PMCC, first version of the rules",
     "cc": "Covered call",
     "cc_cross": "Covered call, bid/ask fills",
     "hold": "Buy and hold, with dividends",
 }
-COLORS = {"pmcc": "#199e70", "pmcc_v1": "#9085e9", "cc": "#c98500", "hold": "#8792AB"}
+COMPANY = {"DAL": "Delta Air Lines"}
+REPO_URL = "https://github.com/ilinakgobburu/535-fintech/tree/main/trading_app"
+# One colour per book on every chart: the PMCC blue, the covered call pink.
+PMCC_BLUE, CC_PINK = "#19C3FF", "#FF3DA6"
+COLORS = {"pmcc": PMCC_BLUE, "cc": CC_PINK, "hold": "#8792AB"}
 
 
 def usd(x, dp=0, sign=False) -> str:
@@ -56,6 +58,13 @@ def pct(x, dp=1, sign=False) -> str:
         return "–"
     lead = "−" if x < 0 else ("+" if sign and x > 0 else "")
     return f"{lead}{abs(x):.{dp}f}%"
+
+
+def month(ym: str) -> str:
+    """ "2022-06" as "Jun 2022". """
+    import calendar
+    y, m = ym.split("-")[:2]
+    return f"{calendar.month_abbr[int(m)]} {y}"
 
 
 def num(x, dp=2) -> str:
@@ -94,11 +103,12 @@ def facts(R: dict) -> dict[str, str]:
         f.update({
             f"{k}_open_cash": usd(p["capital"]), f"{k}_regt_cash": usd(m["capital"]),
             f"{k}_pnl": usd(p["pnl"], sign=True),
+            f"{k}_pnl_abs": usd(abs(p["pnl"])),
             f"{k}_return_open": pct(p["return_pct"], sign=True),
             f"{k}_return_regt": pct(m["return_pct"], sign=True),
             f"{k}_drawdown": pct(m["max_drawdown_pct"]),
             f"{k}_worst_month": pct(m["worst_month_pct"]),
-            f"{k}_worst_month_name": m["worst_month"],
+            f"{k}_worst_month_name": month(m["worst_month"]),
             f"{k}_sharpe": num(m["sharpe"]),
             f"{k}_premium": usd(b["premium_collected"]),
             f"{k}_cover_cost": usd(b["cover_cost"]),
@@ -135,7 +145,7 @@ def facts(R: dict) -> dict[str, str]:
 # prose
 # --------------------------------------------------------------------------
 
-def load_prose(f: dict[str, str]) -> dict[str, str]:
+def load_prose(f: dict[str, str]) -> dict:
     """
     `## key` opens a section. Blank lines separate paragraphs, lines starting
     with "- " make a list, and lines starting with "//" are notes to the
@@ -159,8 +169,11 @@ def load_prose(f: dict[str, str]) -> dict[str, str]:
                              f"Run build_hw3.py --facts for the list.")
         return f[name]
 
-    out = {}
+    out = {"__raw__": {k: [re.sub(r"\{\{(.*?)\}\}", sub, x.strip()) for x in v]
+                       for k, v in sections.items()}}
     for key, lines in sections.items():
+        if key == "rules-short":
+            continue
         html, para, items = [], [], []
 
         def flush():
@@ -200,10 +213,9 @@ def summary_table(R: dict) -> str:
         p, m = b["performance"], b["performance_funded"]
         rows.append([escape(label), usd(p["capital"]), usd(m["capital"]), usd(p["pnl"], sign=True),
                      pct(p["return_pct"], sign=True), pct(m["return_pct"], sign=True),
-                     pct(m["max_drawdown_pct"]), f'{pct(m["worst_month_pct"])} ({m["worst_month"]})',
-                     num(m["sharpe"])])
+                     pct(m["max_drawdown_pct"]), f'{pct(m["worst_month_pct"])} ({month(m["worst_month"])})'])
     return table(["Book", "Cash to open", "Reg T cash", "P&L", "Return on cash to open",
-                  "Return on Reg T cash", "Worst fall", "Worst month", "Sharpe"], rows)
+                  "Return on Reg T cash", "Worst fall", "Worst month"], rows)
 
 
 def rules_table() -> str:
@@ -220,6 +232,11 @@ def rules_table() -> str:
         else:
             rows.append([escape(prefix.replace("_", " ")), escape(" ".join(str(v).split()))])
 
+    for key in ("version", "revised", "changes_from_version_1"):
+        rules.pop(key, None)
+    # Comparisons the page no longer shows.
+    rules.get("earnings", {}).pop("comparison", None)
+    rules["reported"] = [x for x in rules.get("reported", []) if "Sharpe" not in x]
     walk("", rules)
     return table(["Rule", "Registered value"], rows, left=2, cls="rules")
 
@@ -284,15 +301,16 @@ def blotter_table(R: dict) -> str:
 
 def chart_data(R: dict) -> dict:
     out = {"books": {}}
-    for k in ("pmcc", "pmcc_v1", "cc", "hold"):
+    for k in ("pmcc", "cc", "hold"):
         b = R["books"][k]
         cap = b["performance"]["capital"]
         L = b["ledger"]
         out["books"][k] = {"label": BOOK_LABELS[k], "color": COLORS[k], "date": L["date"],
                            "pnl": [round(v - cap, 2) for v in L["nav"]]}
     L = R["books"]["pmcc"]["ledger"]
-    out["pmcc"] = {k: L[k] for k in ("date", "stock_close", "long_mv", "cash",
+    out["pmcc"] = {k: L[k] for k in ("date", "nav", "stock_close", "long_mv", "cash",
                                      "available_funds", "delta", "vega")}
+    out["payoff"] = R["books"]["pmcc"].get("payoff")
     return out
 
 
@@ -315,23 +333,42 @@ if (typeof Plotly !== 'undefined') {
     base('Profit and loss since the first trade, one contract or 100 shares', 'dollars'), CFG);
   const P = D.pmcc;
   Plotly.newPlot('plot-leap', [
-    {x: P.date, y: P.long_mv, name: 'LEAP market value', mode: 'lines', line: {color: css('--mark'), width: 1.8},
+    {x: P.date, y: P.long_mv, name: 'LEAP market value', mode: 'lines', line: {color: '#19C3FF', width: 1.8},
      hovertemplate: '%{y:$,.0f}<extra>LEAP</extra>'},
     {x: P.date, y: P.stock_close, name: 'Stock close (right axis)', mode: 'lines', yaxis: 'y2',
      line: {color: css('--muted'), width: 1.2}, hovertemplate: '%{y:$.2f}<extra>stock</extra>'}],
     {...base('The LEAP and the stock', 'dollars'),
      yaxis2: {overlaying: 'y', side: 'right', showgrid: false, title: 'stock, dollars'}}, CFG);
   Plotly.newPlot('plot-funds', [
+    {x: P.date, y: P.nav, name: 'NAV', mode: 'lines',
+     line: {color: '#19C3FF', width: 1.6}, hovertemplate: '%{y:$,.0f}<extra>NAV</extra>'},
     {x: P.date, y: P.available_funds, name: 'Available funds', mode: 'lines',
      line: {color: css('--both'), width: 1.4}, hovertemplate: '%{y:$,.0f}<extra>available funds</extra>'}],
     base('Reg T available funds when the account holds only the cash to open', 'dollars'), CFG);
   Plotly.newPlot('plot-delta', [
     {x: P.date, y: P.delta, name: 'Net delta, share equivalents', mode: 'lines',
-     line: {color: css('--mark'), width: 1.4}, hovertemplate: '%{y:.0f} shares<extra>delta</extra>'},
+     line: {color: '#19C3FF', width: 1.4}, hovertemplate: '%{y:.0f} shares<extra>delta</extra>'},
     {x: P.date, y: P.vega, name: 'Net vega, dollars per vol point (right axis)', mode: 'lines', yaxis: 'y2',
      line: {color: css('--print'), width: 1.2}, hovertemplate: '%{y:$.1f}<extra>vega</extra>'}],
     {...base('Net delta and vega of the PMCC', 'share equivalents'),
      yaxis2: {overlaying: 'y', side: 'right', showgrid: false, title: 'dollars per vol point'}}, CFG);
+  if (D.payoff && document.getElementById('plot-payoff')) {
+    const Y = D.payoff, lay = base('', 'dollars');
+    lay.margin = {l: 56, r: 12, t: 8, b: 74};
+    lay.xaxis.title = {text: 'stock price at expiry', standoff: 6};
+    lay.legend = {orientation: 'h', y: -0.42};
+    lay.shapes = [['spot', css('--muted')], ['short_strike', css('--muted')]].map(([k, c]) => ({
+      type: 'line', x0: Y[k], x1: Y[k], yref: 'paper', y0: 0, y1: 1, line: {color: c, width: 1, dash: 'dot'}}));
+    lay.annotations = [['spot', 'entry price ', 'right'], ['short_strike', ' short strike', 'left']].map(([k, t, a]) => ({
+      x: Y[k], yref: 'paper', y: 1, text: t, showarrow: false, yanchor: 'bottom', xanchor: a,
+      font: {size: 10, color: css('--muted')}}));
+    lay.margin.t = 20;
+    Plotly.newPlot('plot-payoff', [
+      {x: Y.stock, y: Y.pmcc, name: 'PMCC', mode: 'lines', line: {color: '#19C3FF', width: 2.4},
+       hovertemplate: '%{y:$,.0f}<extra>PMCC</extra>'},
+      {x: Y.stock, y: Y.cc, name: 'Covered call', mode: 'lines', line: {color: '#FF3DA6', width: 2.4, dash: 'dash'},
+       hovertemplate: '%{y:$,.0f}<extra>covered call</extra>'}], lay, CFG);
+  }
 }
 // Tabs. A chart drawn in a hidden pane has no width until the pane is shown.
 document.querySelectorAll('.tabs button').forEach(btn => btn.addEventListener('click', () => {
@@ -360,12 +397,15 @@ EXTRA_CSS = """
   .bar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:14px;flex-wrap:wrap;
     padding:12px 0;background:var(--base);border-bottom:1px solid var(--line)}
   .bar .sym{font-family:var(--mono);font-weight:700;font-size:18px;letter-spacing:.02em}
+  .bar .co{font-weight:600;font-size:15px}
   .bar .name{color:var(--muted);font-size:var(--fs-sm)}
   .bar .right{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
   .chip{font-family:var(--mono);font-size:var(--fs-xs);color:var(--muted);border:1px solid var(--line);
     border-radius:999px;padding:4px 10px;background:var(--panel);white-space:nowrap}
   .chip b{color:var(--text);font-weight:600}
   .chip a{color:inherit;text-decoration:none}
+  .chip.hot{background:#FF3DA6;border-color:#FF3DA6;color:#0B1020;font-weight:700}
+  .chip.hot:hover{filter:brightness(1.1)}
   :root{--up:#199e70;--down:#e5604d}
   .kpis{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:10px;margin:14px 0}
   @media (max-width:1280px){.kpis{grid-template-columns:repeat(4,minmax(0,1fr))}}
@@ -377,7 +417,33 @@ EXTRA_CSS = """
   .grid{display:grid;gap:12px;margin-bottom:12px}
   .g-2-1{grid-template-columns:minmax(0,2fr) minmax(0,1fr)}
   .g-1-1{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
-  @media (max-width:980px){.g-2-1,.g-1-1{grid-template-columns:minmax(0,1fr)}}
+  .g-intro{margin:12px 0 0}
+  .g-intro .prose{font-size:14px;line-height:1.58;max-width:none}
+  .g-intro .prose + .prose{margin-top:8px}
+  .prose li strong:first-child{color:var(--both)}
+  .note-line{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+  .note-line p strong:first-child{color:var(--both)}
+  .g-4{grid-template-columns:minmax(0,1.5fr) repeat(3,minmax(0,1fr));margin:14px 0 0}
+  @media (max-width:1180px){.g-4{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media (max-width:640px){.g-4{grid-template-columns:minmax(0,1fr)}}
+  .g-4 .prose{font-size:14px;line-height:1.55}
+  .g-4 .panel > .ph{color:var(--both)}
+  .g-3{grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1.1fr);gap:22px}
+  @media (max-width:980px){.g-2-1,.g-1-1,.g-3{grid-template-columns:minmax(0,1fr)}}
+  .thesis{font-size:19px;line-height:1.45;font-weight:500;color:var(--text);max-width:80ch}
+  .thesis p{margin:0}
+  /* One line on a desktop screen: the size follows the window so it never wraps
+     there, and below 900px it wraps at a readable size instead of shrinking. */
+  .thesis.headline{margin:16px 0 2px;max-width:none;font-size:min(12.2px,.82vw);white-space:nowrap;
+    font-weight:500;letter-spacing:.005em}
+  @media (max-width:900px){.thesis.headline{font-size:14px;white-space:normal}}
+  .thesis.headline .lead{font-weight:700;color:var(--both)}
+  .thesis.headline.multi{white-space:normal;margin-top:6px;line-height:1.5}
+  .sub{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);
+    font-weight:600;margin-bottom:8px}
+  .cap{font-size:var(--fs-xs);color:var(--faint);line-height:1.5;margin-top:4px}
+  .cap.under{font-size:var(--fs-sm);color:var(--muted);padding:2px 6px 6px}
+  .g-3 table.tbl td{white-space:normal}
   .panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;min-width:0;
     display:flex;flex-direction:column}
   .panel > .ph{display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid var(--line);
@@ -387,15 +453,30 @@ EXTRA_CSS = """
   .panel > .pb{padding:12px 14px;min-width:0}
   .panel > .pb.flush{padding:4px}
   .panel .card{border:none;background:none;padding:0;margin:0}
-  .prose{color:var(--text);font-size:var(--fs-base);line-height:1.62;max-width:92ch}
+  .prose{color:var(--text);font-size:var(--fs-base);line-height:1.62;max-width:none}
   .prose p{margin:0 0 10px} .prose p:last-child{margin-bottom:0}
   .prose ul{padding-left:20px;margin:0 0 10px} .prose li{margin-bottom:6px}
   .todo{border:1px dashed var(--print);color:var(--print);padding:8px 12px;border-radius:6px;
     font-size:var(--fs-sm)}
-  dl.rules{margin:0;display:grid;grid-template-columns:auto minmax(0,1fr);gap:9px 14px;font-size:var(--fs-sm)}
-  dl.rules dt{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;
-    color:var(--both);padding-top:2px;white-space:nowrap}
-  dl.rules dd{margin:0;color:var(--text);line-height:1.5}
+  dl.rules{margin:0;display:grid;grid-template-columns:auto minmax(0,1fr);gap:16px 18px;font-size:15.5px}
+  dl.rules dt{font-family:var(--mono);font-size:12.5px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--both);padding-top:3px;white-space:nowrap}
+  dl.rules dd{margin:0;color:var(--text);line-height:1.55}
+  .tip{position:relative;display:inline-flex;align-items:center;justify-content:center;
+    width:15px;height:15px;margin-left:7px;border:1px solid var(--line);border-radius:50%;
+    font:600 10px/1 var(--mono);color:var(--muted);cursor:help;text-transform:none;letter-spacing:0;
+    vertical-align:middle;flex:none}
+  .tip:hover,.tip:focus{color:var(--text);border-color:var(--both);outline:none}
+  .tip .bubble{display:none;position:absolute;top:calc(100% + 8px);left:-10px;z-index:40;width:300px;
+    max-width:74vw;padding:11px 13px;background:var(--panel-hi);border:1px solid var(--line);
+    border-radius:8px;box-shadow:0 10px 28px rgba(0,0,0,.45);color:var(--text);cursor:default;
+    font:400 var(--fs-sm)/1.55 var(--font);text-align:left;white-space:normal}
+  .tip .bubble p{margin:0 0 8px} .tip .bubble p:last-child{margin:0}
+  .tip:hover .bubble,.tip:focus .bubble,.tip:focus-within .bubble{display:block}
+  .kpi:nth-child(n+6) .tip .bubble{left:auto;right:-10px}
+  /* In a tile the (i) sits in the corner, so a long label does not wrap around it. */
+  .kpi{position:relative}
+  .kpi .tip{position:absolute;top:10px;right:10px;margin:0}
   .tabs{display:flex;gap:2px;flex-wrap:wrap;padding:6px 8px 0;border-bottom:1px solid var(--line)}
   .tabs button{font:inherit;font-size:var(--fs-sm);color:var(--muted);background:none;border:none;
     border-bottom:2px solid transparent;padding:8px 12px;cursor:pointer}
@@ -407,21 +488,64 @@ EXTRA_CSS = """
 """
 
 
-def rule_card() -> str:
-    """The strategy in five lines, each the registered text from the rules file."""
+TIP_LABELS: list[str] = []      # every label that can carry a hover note, in page order
+
+
+def tip(prose: dict[str, str], label: str) -> str:
+    """
+    The hover note for `label`, from the "## tip: <label>" section of the prose
+    file, or nothing when that section is empty. Opens on hover, focus or tap.
+    """
+    if label not in TIP_LABELS:
+        TIP_LABELS.append(label)
+    body = prose.get(f"tip: {label}", "").strip()
+    if not body:
+        return ""
+    return (f'<span class="tip" tabindex="0" aria-label="About {escape(label)}">i'
+            f'<span class="bubble">{body}</span></span>')
+
+
+def short_rules(prose_raw: dict[str, list[str]]) -> dict[str, str]:
+    """ "Label: text" lines under "## rules-short": the author's wording for a rule line."""
+    out = {}
+    for line in prose_raw.get("rules-short", []):
+        if ":" in line:
+            label, text = line.split(":", 1)
+            if text.strip():
+                out[label.strip().lower()] = text.strip()
+    return out
+
+
+def one_paragraph(*blocks: str) -> str:
+    """Several prose sections run together as a single paragraph."""
+    text = " ".join(re.sub(r"</?p>", " ", re.sub(r'</?div[^>]*>', "", b)).strip()
+                    for b in blocks if b and 'class="todo"' not in b)
+    todo = "".join(b for b in blocks if b and 'class="todo"' in b)
+    return (f'<div class="prose"><p>{" ".join(text.split())}</p></div>' if text else "") + todo
+
+
+def rule_card(mine: dict[str, str] | None = None) -> str:
+    """
+    The strategy in five lines. Each is the author's short wording when
+    hw3_prose.md gives one, and the registered text from the rules file otherwise.
+    """
+    mine = mine or {}
     r = yaml.safe_load(RULES_FILE.read_text())
     lines = [
         ("Long leg", f'{r["long_leg"]["expiry"]}; {r["long_leg"]["strike"]}. Roll: {r["long_leg"]["roll"]}'),
         ("Short leg", f'{r["short_leg"]["expiry"]}; {r["short_leg"]["strike"]}'),
-        ("Earnings", f'{r["earnings"]["primary"]} (comparison: {r["earnings"]["comparison"]})'),
+        ("Earnings", r["earnings"]["primary"]),
         ("Fills", f'{r["fills"]["primary"]} (stress test: {r["fills"]["stress_test"]})'),
         ("Assigned", f'{r["assignment"]["rule"]}, at {r["assignment"]["buy_back_price"]}'),
     ]
+    shown = {"Long leg": "Long leg (LEAP)"}       # the label as displayed
+    cap = lambda text: text[:1].upper() + text[1:]  # each line starts with a capital
     return '<dl class="rules">' + "".join(
-        f"<dt>{escape(a)}</dt><dd>{escape(b)}</dd>" for a, b in lines) + "</dl>"
+        f"<dt>{escape(shown.get(a, a))}</dt><dd>{escape(cap(mine.get(a.lower(), b)))}</dd>"
+        for a, b in lines) + "</dl>"
 
 
-def kpis(R: dict) -> str:
+def kpis(R: dict, prose: dict[str, str]) -> str:
     b, c, h = R["books"]["pmcc"], R["books"]["cc"], R["books"]["hold"]
     p, m = b["performance"], b["performance_funded"]
     sc = b["status_counts"]
@@ -433,13 +557,13 @@ def kpis(R: dict) -> str:
         ("Cash to open", usd(p["capital"]), f'covered call {usd(c["performance"]["capital"])}', None),
         ("Reg T cash needed", usd(m["capital"]), f'covered call {usd(c["performance_funded"]["capital"])}', None),
         ("Worst fall", pct(m["max_drawdown_pct"]), "on Reg T cash", m["max_drawdown_pct"]),
-        ("Worst month", pct(m["worst_month_pct"]), m["worst_month"], m["worst_month_pct"]),
+        ("Worst month", pct(m["worst_month_pct"]), month(m["worst_month"]), m["worst_month_pct"]),
         ("Calls assigned", f'{sc.get("assigned", 0)} / {written}',
          f'{sum(v for k, v in sc.items() if k.startswith("skipped"))} cycles skipped', None),
         ("Premium vs cover cost", usd(b["premium_collected"]), f'cover cost {usd(b["cover_cost"])}', None),
     ]
     return '<div class="kpis">' + "".join(
-        f'<div class="kpi"><div class="k">{escape(k)}</div>'
+        f'<div class="kpi"><div class="k">{escape(k)}{tip(prose, k)}</div>'
         f'<div class="v {"" if x is None else ("neg" if x < 0 else "posv")}">{v}</div>'
         f'<div class="d">{escape(d)}</div></div>' for k, v, d, x in items) + "</div>"
 
@@ -459,7 +583,7 @@ def render(R: dict, prose: dict[str, str], draft: bool, blotter: bool = False) -
         return f'<div class="todo">Not yet written: {escape(key)}</div>' if draft else ""
 
     def panel(title: str, body: str, tag: str = "", flush: bool = False) -> str:
-        return (f'<section class="panel"><div class="ph">{escape(title)}'
+        return (f'<section class="panel"><div class="ph">{escape(title)}{tip(prose, title)}'
                 + (f'<span class="tag">{escape(tag)}</span>' if tag else "")
                 + f'</div><div class="pb{" flush" if flush else ""}">{body}</div></section>')
 
@@ -468,18 +592,18 @@ def render(R: dict, prose: dict[str, str], draft: bool, blotter: bool = False) -
 
     t = escape(R["ticker"])
     book = R["books"]["pmcc"]
+    pay = book.get("payoff")
     tabs = [
         ("Cycles", say("trades", optional=True) + cycles_table(R)),
-        ("Assignments", assignments_table(R)),
-        ("LEAP trades", leap_table(R)),
-        ("Earnings cycles", say("earnings", optional=True) + earnings_table(R)),
-        ("Exposure", say("greeks", optional=True) + plot("plot-delta", 360)),
-        ("Registered rules", rules_table()),
+        ("Exposure", plot("plot-delta", 360)
+         + (f'<div class="cap under">{re.sub(r"</?p>", "", prose["greeks"])}</div>'
+            if prose.get("greeks", "").strip() else "")),
+        ("Rules", rules_table()),
     ]
     if blotter:
         tabs.append(("Blotter", blotter_table(R)))
     tab_html = ('<div class="tabs">' + "".join(
-        f'<button data-tab="{i}" class="{"on" if i == 0 else ""}">{escape(name)}</button>'
+        f'<button data-tab="{i}" class="{"on" if i == 0 else ""}">{escape(name)}{tip(prose, name)}</button>'
         for i, (name, _) in enumerate(tabs)) + "</div>" + "".join(
         f'<div class="pane{" on" if i == 0 else ""}" data-pane="{i}">{body}</div>'
         for i, (_, body) in enumerate(tabs)))
@@ -495,25 +619,44 @@ def render(R: dict, prose: dict[str, str], draft: bool, blotter: bool = False) -
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
 <style>{css}{EXTRA_CSS}</style></head><body><div class="wrap">
 <div class="bar"><span class="sym">{t}</span>
+<span class="co">{escape(COMPANY.get(R["ticker"], ""))}</span>
 <span class="name">Poor Man's Covered Call · backtest</span>
 <div class="right"><span class="chip"><b>{R["period"][0]}</b> to <b>{R["period"][1]}</b></span>
 <span class="chip">daily bars · LSEG</span>
-<span class="chip">rules revised after a first run · <b>{escape(R["rules_commit"])}</b></span>
+<span class="chip hot"><a href="{REPO_URL}">Code (to GitHub Repo) ↗</a></span>
 <span class="chip"><a href="hw2.html">← covered call page</a></span></div></div>""",
-        kpis(R),
+        '<div class="grid g-4">',
+        panel("Purpose of the strategy", say("purpose")),
+        panel("Performance", say("performance")),
+        panel("Accuracy", say("accuracy")),
+        panel("Reporting", say("honest")),
+        "</div>",
+        '<div class="g-intro">',
+        panel("Stock choice", say("strategy")),
+        "</div>",
+        kpis(R, prose),
         '<div class="grid g-2-1">',
-        panel("Profit and loss", plot("plot-pnl", 400), "dollars, one contract or 100 shares", flush=True),
-        '<div class="grid" style="margin:0;align-content:start">',
+        panel("Profit and loss", plot("plot-pnl", 380), "dollars, one contract or 100 shares", flush=True),
         panel("Summary", say("summary")),
-        panel("Strategy", say("strategy") + rule_card(), "full rules in the tabs below"),
-        "</div></div>",
-        panel("Books", summary_table(R) + say("result"), "same engine, same data"),
+        "</div>",
+        panel("Strategy",
+              '<div class="grid g-1-1" style="margin:0;gap:26px">'
+              + f'<div><div class="sub">The rules</div>{rule_card(short_rules(prose["__raw__"]))}</div>'
+              + f'<div><div class="sub">Profit at the first call\'s expiry</div>{plot("plot-payoff", 290)}'
+              + (f'<div class="cap">Cycle entered {pay["entry"]}, stock {num(pay["spot"])}. The LEAP is '
+                 f'valued with Black-Scholes at its entry-date implied volatility, '
+                 f'{100 * pay["leap_iv"]:.0f}%.</div>' if pay else "")
+              + "</div></div>"
+              + (f'<div class="note-line">{say("strategy-note", optional=True)}</div>'
+                 if prose.get("strategy-note", "").strip() else ""),
+              "full rules in the tabs below"),
+        '<div style="height:12px"></div>',
+        panel("Books", summary_table(R), "same engine, same data"),
         '<div style="height:12px"></div><div class="grid g-1-1">',
-        panel("Reg T available funds", plot("plot-funds", 320), "account holding only the cash to open", flush=True),
+        panel("NAV and Reg T available funds", plot("plot-funds", 320), "account holding only the cash to open", flush=True),
         panel("LEAP value and the stock", plot("plot-leap", 320), flush=True),
         "</div>",
-        panel("Capital", say("capital")),
-        '<div style="height:12px"></div>',
+        '<div style="height:0"></div>',
         f'<section class="panel">{tab_html}</section>',
         '<div style="height:12px"></div>',
         panel("Limitations", say("limitations")),
@@ -529,6 +672,8 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--ticker", default=yaml.safe_load(RULES_FILE.read_text())["underlying"])
     ap.add_argument("--facts", action="store_true", help="print the placeholders and exit")
+    ap.add_argument("--tips", action="store_true",
+                    help="list every label that can carry a hover note and whether it has one")
     ap.add_argument("--draft", action="store_true", help="mark unwritten prose sections on the page")
     ap.add_argument("--blotter", action="store_true",
                     help="include the trade-by-trade blotter (every fill is an LSEG quote)")
@@ -540,7 +685,12 @@ def main() -> int:
         for k, v in f.items():
             print(f"{{{{{k}}}}}  =  {v}")
         return 0
-    html = render(R, load_prose(f), args.draft, args.blotter)
+    prose = load_prose(f)
+    html = render(R, prose, args.draft, args.blotter)
+    if args.tips:
+        for label in TIP_LABELS:
+            print(f'{"written" if prose.get(f"tip: {label}", "").strip() else "empty  "}  ## tip: {label}')
+        return 0
     args.out.write_text(html, encoding="utf-8")
     print(f"wrote {args.out} ({args.out.stat().st_size / 1e3:.0f} kB)")
     return 0

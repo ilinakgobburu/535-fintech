@@ -72,6 +72,41 @@ def short_leg_pnl(cycle: dict, assignments: dict) -> float | None:
     return cycle["premium"] - (a.get("cover_cost", 0.0) if a else 0.0)
 
 
+def payoff_example(market: dict, res: dict) -> dict | None:
+    """
+    Profit at the first short call's expiry, across stock prices, for the PMCC
+    and for a covered call writing the same call on the same day.
+
+    The covered call's line is arithmetic. The PMCC's needs a value for the
+    LEAP on that date at each stock price; it is priced with Black-Scholes at
+    the implied volatility the LEAP had on the entry date, with the rate and
+    dividend yield of that date. That is a model value, and the chart says so.
+    """
+    from trading_app.lib.pmcc import call_greeks
+    from trading_app.lib.vol import bs_price
+
+    cyc = next((c for c in res["cycles"] if "premium" in c), None)
+    leap = next((e for e in res["blotter"] if e["leg"] == "long" and e["side"] == "BUY"), None)
+    if cyc is None or leap is None or leap["date"] != cyc["entry"]:
+        return None
+    day, spot = cyc["entry"], cyc["spot"]
+    r, q = E.carry(market, day)
+    iv = call_greeks(leap["price"], spot, leap["strike"], (leap["expiry"] - day).days / 365.0, r, q)["iv"]
+    T = (leap["expiry"] - cyc["expiry"]).days / 365.0
+    grid = np.linspace(0.70 * spot, 1.30 * spot, 61)
+    short = np.maximum(grid - cyc["strike"], 0.0)
+    value = np.array([bs_price(s * np.exp((r - q) * T), leap["strike"], T, iv, np.exp(-r * T), "C")
+                      for s in grid])
+    return {
+        "entry": day, "expiry": cyc["expiry"], "spot": spot, "short_strike": cyc["strike"],
+        "premium": cyc["premium"], "leap_strike": leap["strike"], "leap_expiry": leap["expiry"],
+        "leap_cost": E.CONTRACT * leap["price"], "leap_iv": iv,
+        "stock": [round(float(x), 2) for x in grid],
+        "pmcc": [round(float(x), 2) for x in E.CONTRACT * (value - leap["price"] - short) + cyc["premium"]],
+        "cc": [round(float(x), 2) for x in E.CONTRACT * (grid - spot - short) + cyc["premium"]],
+    }
+
+
 def one_book(name: str, market: dict, start, end, ticker: str) -> dict:
     res = E.run(market, start=start, end=end, ticker=ticker, **BOOKS[name])
     capital = E.opening_capital(res)
@@ -94,6 +129,7 @@ def one_book(name: str, market: dict, start, end, ticker: str) -> dict:
     path = pd.concat([pd.Series([floor["min_cash"]]), nav], ignore_index=True)
     return {
         "name": name, "rules": BOOKS[name], "capital": capital, "performance": perf,
+        "payoff": payoff_example(market, res) if name == "pmcc" else None,
         "min_start_cash": floor, "performance_funded": perf_funded,
         "days_cash_negative": int((led["cash"] < -1e-9).sum()),
         "status_counts": status,
