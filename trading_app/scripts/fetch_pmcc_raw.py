@@ -60,6 +60,9 @@ UNDERLYINGS = {
     # BIIB trades between about $200 and $480 with $5 strikes, $2.50 in places.
     "BIIB": {"stock": "BIIB.O", "split": None,
              "monthly": ((0.97, 1.40), (2.5,)), "leap": ((0.50, 1.05), (5.0,))},
+    # NVS trades between about $70 and $105 with $2.50 and $5 strikes.
+    "NVS": {"stock": "NVS", "split": None,
+            "monthly": ((0.97, 1.40), (2.5,)), "leap": ((0.50, 1.05), (2.5,))},
 }
 ROOT_SYM = "AAPL"
 CACHE = ROOT.parent / "cache" / "pmcc_raw"

@@ -1,16 +1,16 @@
 # PMCC backtest rules. To be committed before any backtest output exists.
 
-underlying: BIIB
+underlying: NVS
 selection_reason: >
-  Chosen by the author. An interest in biotech and pharma; a price driven by dated
-  events such as trial results and approvals, the kind of stock where short-dated
-  options get expensive, so it is a real test of selling them; liquid options,
-  including long-dated ones, for the whole period; and no split or spin-off in
-  2019 to 2023, so prices need no adjustment.
-period: {start: 2019-01-02, end: 2023-12-29}
+  Chosen by the author. An interest in biotech and pharma, and listed options,
+  including long-dated ones, throughout the period.
+period: {start: 2019-04-09, end: 2023-10-03}
+period_reason: >
+  Novartis spun off Alcon on 2019-04-09 and Sandoz on 2023-10-04, and each spin-off
+  changed the option contracts open at the time. The backtest runs between the two.
 bars: daily; decisions and fills use that day's closing quote
 prices: unadjusted_close          # total return adds dividends separately
-split: none in the period
+split: none between the two spin-offs
 rate: 3-month T-bill yield, on the entry date
 dividend_yield: trailing 12 months of dividends divided by the close, on the entry date
 iv_and_delta: implied vol inverted from the mid with Black-Scholes; delta from that vol; same formula all years
