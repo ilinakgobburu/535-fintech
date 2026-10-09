@@ -1,0 +1,34 @@
+# Stock selection for the second PMCC backtest. Committed before any of these
+# series was pulled or looked at.
+registered: 2026-10-09
+theme: large-cap pharma and biotech, chosen by the author out of interest in the sector
+
+candidates:            # ticker: LSEG stock RIC
+  PFE: PFE
+  NVS: NVS
+  MRK: MRK
+  JNJ: JNJ
+  LLY: LLY
+  BMY: BMY
+  ABBV: ABBV
+  AMGN: AMGN.O
+  GILD: GILD.O
+  BIIB: BIIB.O
+  REGN: REGN.O
+  VRTX: VRTX.O
+
+window: [2010-01-01, 2018-12-31]     # ends before the backtest period starts (2019-01-02)
+
+measure:
+  primary: mean of daily (30-day ATM implied vol minus 90-day ATM implied vol), each the mean of the call and put series on {ticker}ATMIV.U
+  check: mean of (30-day implied vol on the first trading day of each month minus realized vol over the next 21 trading days); reported, not used to rank
+
+rule:
+  eligible: both implied-vol series present on at least 95% of the window's trading days
+  select: the eligible candidate with the highest primary measure
+  feasibility: >
+    if the selected stock had a split or spin-off between 2019-01-02 and 2023-12-29 that
+    changed its option contracts, take the next-ranked stock instead and say so. This uses
+    knowledge of corporate actions in the test period, not of returns.
+
+backtest: config/thresholds.yaml, unchanged except for the underlying
