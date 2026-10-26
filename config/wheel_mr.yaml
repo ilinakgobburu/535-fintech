@@ -1,0 +1,35 @@
+# The wheel's class run: the five stocks config/mr_screen.yaml picks, on a window nothing in this
+# project has touched (2024-2026). The windows, the train/test split, the screen and the count of
+# five were chosen by the user on 2026-10-26. Registered before the screen or any of these series
+# is pulled; the stocks are added below, under a dated key, when the screen has picked them.
+registered: 2026-10-26
+
+rules: config/wheel.yaml's rules, fills, grid, baseline, selection, benchmarks, reported and
+  decision, unchanged (monthlies, $100,000 of cash, whole contracts, mid with a bid stress test,
+  T-bill interest on cash, earnings sold through, Sharpe at mid picks per stock, ties to the earlier setting)
+
+windows:
+  train: {start: 2024-01-02, end: 2025-12-31}   # about 23 monthly cycles to pick on
+  test: {start: 2026-01-02, end: 2026-10-16}    # about 9 cycles, the last monthly expiry before the run
+  each_window: starts from $100,000 in cash
+  test_noise: about 9 cycles is a short test; its Sharpe ratios carry wide error and are reported as such
+
+grid:   # as config/wheel.yaml
+  put_delta: [0.15, 0.25, 0.35]
+  call_delta: [0.15, 0.25, 0.35]
+  floor: [true, false]
+baseline:
+  setting: {put_delta: 0.25, call_delta: 0.25, floor: true}
+selection:
+  score: Sharpe ratio on the training window at mid fills
+  per_stock: each stock gets its own pick, recorded in config/wheel_mr_picks before its test window is run
+
+data:
+  pull: scripts/fetch_wheel_raw.py, a cache per stock under cache/wheel_raw_{TICKER}_2024, the same
+    bands (puts 0.70-1.02, calls 0.97-1.40 times spot), contracts expiring inside the window only
+  strike_grid: >
+    by the price of the day, every $0.50 under $25, $1 under $100, $5 under $300 and $10 above: one
+    rule for every stock, from the AMD, DIS and COST probes, so no stock-by-stock probe is needed.
+    A coarser grid than a stock lists costs precision in delta, not data
+
+underlyings: {}   # filled under a dated key once config/mr_screen.yaml has run

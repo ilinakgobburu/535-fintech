@@ -1,0 +1,46 @@
+# Choose the stocks for the wheel's class run (config/wheel_mr.yaml) by how strongly their monthly
+# moves reversed over 2014-2023, before the run window. The wheel buys after falls (assignment) and
+# sells after rises (called away), so it is a mean-reversion bet; this asks which stocks reversed.
+# The window, the measures, the both-must-agree rule and the count of five were chosen by the user
+# on 2026-10-26; the rest are defaults set by Claude. Registered before any of these series is pulled.
+registered: 2026-10-26
+
+universe: >
+  the S&P 500 on 2023-12-29, from LSEG (.SPX, TR.IndexConstituentRIC with SDate 2023-12-29): 503
+  members as the index stood on the selection date, including the 51 since removed, so the list is
+  not today's survivors
+
+window: [2014-01-01, 2023-12-31]
+prices: LSEG default daily closes (TRDPRC_1, split-adjusted); the month-end close is the last close of each month
+returns: monthly log returns between month-end closes, December 2013 to December 2023 (120 months)
+
+measures:
+  variance_ratio: >
+    VR = variance of overlapping 3-month log returns / (3 x variance of monthly log returns), both
+    sample variances. 1 is a random walk; below 1, monthly moves partly reverse over the next two
+    months; above 1, they continue
+  autocorrelation: lag-1 autocorrelation of the monthly log returns; below 0, a month's move tends to reverse the next month
+noise: >
+  under a random walk, VR's sampling standard error with 120 months is about 0.14, so across 500
+  stocks some will rank low by chance alone. The top of the list is expected to look less
+  mean-reverting out of sample; the run in a later window is what tests whether any of it was real
+
+eligible: at least 114 of the 120 monthly returns
+rank: variance ratio, lowest first, among eligible stocks whose autocorrelation is also below 0 (both must agree)
+
+pick:
+  count: the five highest-ranked feasible stocks
+  feasibility: >
+    skip to the next-ranked stock, and say so, if over the run window (2024-01-02 to 2026-10-16) it
+    (a) stopped trading before 2026-10-16; (b) had a corporate action that adjusted its option
+    contracts other than a split, seen as a move of more than 1% in the ratio of LSEG's default close
+    to its unadjusted close that is not a whole split ratio (2, 3, 4, 5, 10, 20 or 3:2, either way);
+    (c) closed above $950 unadjusted (ric.py cannot encode strikes of $1,000 or more); or (d) after
+    its option pull, has more than 10% of cycles without two-sided quotes spanning 0.15-0.35 delta for
+    puts and calls. Splits are handled in the backtest's units, as for NVDA. These use listing,
+    corporate actions, price levels and data coverage, not returns
+  follow_ups: the next two feasible stocks are named in the output, run only if asked
+
+reported:
+  - the ranked table: variance ratio, autocorrelation, monthly volatility, months scored
+  - for each pick, after its wheel test is run, the same two measures over the run window (did the reversal persist?)
