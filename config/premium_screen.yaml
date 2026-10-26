@@ -1,0 +1,44 @@
+# Choose a stock by a rule on data from before 2019: the stock whose options were priced richest
+# against the moves it then made. The universe, ranking and window were chosen by the user; the
+# list itself was drawn up by Claude. Registered on 2026-10-23 and run that day; universe, screen
+# and pick below are copied unchanged from that registration. Adopted on 2026-10-26 to choose the
+# wheel's next stock (config/wheel.yaml), after the NVDA and AMD wheel results were seen and before
+# any wheel run on the stock it picks.
+registered: 2026-10-23
+
+universe:   # ticker: LSEG stock RIC. Three liquid large caps per sector; DAL, NVDA, AAPL, BIIB and NVS are excluded as already used
+  communication: {VZ: VZ, T: T, DIS: DIS}
+  consumer_discretionary: {HD: HD, MCD: MCD, NKE: NKE}
+  consumer_staples: {KO: KO, PG: PG, WMT: WMT}
+  energy: {XOM: XOM, CVX: CVX, SLB: SLB}
+  financials: {JPM: JPM, BAC: BAC, GS: GS}
+  health_care: {UNH: UNH, ABT: ABT, MDT: MDT}
+  industrials: {BA: BA, CAT: CAT, UPS: UPS}
+  airlines_and_travel: {UAL: UAL.O, LUV: LUV, MAR: MAR.O}
+  technology: {MSFT: MSFT.O, INTC: INTC.O, CSCO: CSCO.O}
+  utilities: {DUK: DUK, SO: SO, NEE: NEE}
+  ric_fallback: if a stock RIC returns nothing, try {ticker}.N, then {ticker}.O; record which was used
+
+screen:
+  window: [2010-01-01, 2018-12-31]   # ends before the test window starts
+  implied: iv30, the mean of 30D_A_IM_C and 30D_A_IM_P on {ticker}ATMIV.U (percent), as in config/selection.yaml
+  entry: the first trading day of each month with an iv30 value; one observation per month
+  realised: sample standard deviation of the 21 daily log returns after the entry close (LSEG default, split-adjusted closes), times sqrt(252), in percent
+  measure: the mean over months of (iv30 - realised) / iv30
+  also_reported: mean of iv30 - realised in vol points, share of months with iv30 above realised, months scored
+  eligible: iv30 present on at least 95% of the window's trading days and at least 100 of its 108 months scored
+
+pick:
+  rule: the eligible stock with the highest measure
+  feasibility: >
+    skip to the next-ranked stock, and say so, if the pick had a corporate action that adjusted its
+    option contracts between 2018-06-01 and 2025-01-31 (the span the pull needs), seen as a change of
+    more than 1% in the ratio of LSEG's default close to its unadjusted close; or if it closed above
+    $950 in that span (ric.py cannot encode strikes of $1,000 or more). This uses corporate actions
+    and price levels, not returns
+  follow_ups: the second- and third-ranked feasible stocks are named in the screen's output as the next tests, run only if asked, so that none can be picked later on its result
+
+used_by: config/wheel.yaml, which runs the pick under its registered rules, unchanged
+known_when_adopted: >
+  the screen's output (pick DIS; follow-ups MAR and LUV) was already known when it was adopted for
+  the wheel, since it was run on 2026-10-23. No wheel result on DIS, MAR or LUV existed then
