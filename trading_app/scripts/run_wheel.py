@@ -4,10 +4,12 @@ before its test window is run:
 
     python3 scripts/run_wheel.py --root NVDA --stage train   # 18 settings on 2019-2021 -> the pick
     python3 scripts/run_wheel.py --root NVDA --stage test    # the pick, the baseline and benchmarks on 2022-2023
+    python3 scripts/run_wheel.py --config config/wheel_mr.yaml --root XYZ --stage train
 
-The train stage writes config/wheel_picks/{ROOT}.json, which is committed
+The train stage writes config/{STEM}_picks/{ROOT}.json, which is committed
 before the test stage is run; the test stage refuses to run without it, and
-never re-picks. Results go to cache/wheel_results_{ROOT}.json.
+never re-picks. Results go to cache/{STEM}_results_{ROOT}.json. STEM is the
+config's file name: wheel for config/wheel.yaml.
 """
 
 from __future__ import annotations
@@ -27,13 +29,22 @@ REPO = ROOT.parent
 sys.path.insert(0, str(ROOT))
 from trading_app.lib import wheel as W  # noqa: E402
 
-CFG = yaml.safe_load((REPO / "config" / "wheel.yaml").read_text())
-PICKS = REPO / "config" / "wheel_picks"
-# The registered stocks, and any added later under a dated key, each with its cache.
-UNDERLYINGS = {**CFG["underlyings"],
-               **{t: v for k, block in CFG.items() if k.startswith("added_")
-                  for t, v in block.items() if isinstance(v, dict) and "cache" in v}}
 FILLS = ("mid", "cross")
+
+
+def use_config(path: Path) -> None:
+    """Point the run at one registered config: its windows, grid and stocks, its picks and results."""
+    global CFG, STEM, PICKS, UNDERLYINGS
+    CFG = yaml.safe_load(Path(path).read_text())
+    STEM = Path(path).stem
+    PICKS = REPO / "config" / f"{STEM}_picks"
+    # The registered stocks, and any added later under a dated key, each with its cache.
+    UNDERLYINGS = {**(CFG.get("underlyings") or {}),
+                   **{t: v for k, block in CFG.items() if k.startswith("added_")
+                      for t, v in block.items() if isinstance(v, dict) and "cache" in v}}
+
+
+use_config(REPO / "config" / "wheel.yaml")
 
 
 def window(name: str) -> tuple[str, str]:
@@ -129,7 +140,7 @@ def test(market, root: str) -> None:
                            for c in res["cycles"]],
                 "nav": {str(d.date()): float(v) for d, v in zip(res["ledger"]["date"], res["ledger"]["nav"])}}
 
-    (REPO / "cache" / f"wheel_results_{root}.json").write_text(json.dumps({
+    (REPO / "cache" / f"{STEM}_results_{root}.json").write_text(json.dumps({
         "root": root, "pick": setting, "baseline": base, "test": window("test"), "results": results,
         "test_grid_mid": test_grid, "pick_rank_of_18": rank, "spearman_train_test": rho,
         "selection_helped": helped, "books": {k: jsonable(v) for k, v in books.items()}},
@@ -137,7 +148,11 @@ def test(market, root: str) -> None:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser()
+    pre = argparse.ArgumentParser(add_help=False)
+    pre.add_argument("--config", type=Path, default=REPO / "config" / "wheel.yaml")
+    known, _ = pre.parse_known_args()
+    use_config(known.config if known.config.is_absolute() else REPO / known.config)
+    ap = argparse.ArgumentParser(parents=[pre])
     ap.add_argument("--root", required=True, choices=sorted(UNDERLYINGS))
     ap.add_argument("--stage", required=True, choices=("train", "test"))
     args = ap.parse_args()

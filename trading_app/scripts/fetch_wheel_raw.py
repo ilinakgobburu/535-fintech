@@ -89,8 +89,13 @@ UNDERLYINGS = {
 }
 
 
-def cache_dir(root: str) -> Path:
-    return ROOT.parent / "cache" / f"wheel_raw_{root}"
+def cache_dir(key: str) -> Path:
+    return ROOT.parent / "cache" / f"wheel_raw_{key}"
+
+
+def window(cfg: dict) -> tuple[dt.date, dt.date]:
+    """The backtest window a stock is pulled for: its own, or 2019-2023."""
+    return cfg.get("window", (START, END))
 
 
 def steps_at(tiers, price: float) -> tuple:
@@ -115,12 +120,18 @@ def strikes(px: pd.Series, lo_day, hi_day, band, tiers, expiry, splits) -> list[
     return sorted(out)
 
 
-def plan(closes: pd.Series, root: str) -> list[dict]:
-    """Every contract to request, with the window to request it over."""
-    cfg = UNDERLYINGS[root]
+def plan(closes: pd.Series, key: str) -> list[dict]:
+    """
+    Every contract to request, with the window to request it over: each monthly expiry inside the
+    window, banded on the sessions around the expiry before it. `key` names the entry in
+    UNDERLYINGS; its option root is the entry's `root`, or the key itself.
+    """
+    cfg = UNDERLYINGS[key]
+    root = cfg.get("root", key)
+    start, end = window(cfg)
     sessions = [t.date() for t in closes.index]
     px = pd.Series(closes.to_numpy(float), index=sessions)
-    months = pd.period_range(f"{START.year}-{START.month:02d}", f"{END.year + 1}-01", freq="M")
+    months = pd.period_range(f"{start.year}-{start.month:02d}", f"{end.year}-{end.month:02d}", freq="M")
     expiries = [expiry_session(third_friday(p.year, p.month), sessions) for p in months]
     jobs = []
     for prev, exp in zip(expiries[:-1], expiries[1:]):
@@ -192,9 +203,9 @@ def open_session(ld) -> None:
     ld.open_session()
 
 
-def pull_aux(ld, cache: Path, stock_ric: str) -> None:
+def pull_aux(ld, cache: Path, stock_ric: str, start: dt.date = START, end: dt.date = END) -> None:
     """Dividends as paid, earnings dates and the 3-month T-bill, in the form lib.wheel reads."""
-    lo, hi = str(START - dt.timedelta(days=400)), str(END + dt.timedelta(days=60))
+    lo, hi = str(start - dt.timedelta(days=400)), str(end + dt.timedelta(days=60))
     div = ld.get_data(stock_ric, ["TR.DivExDate", "TR.DivUnadjustedGross", "TR.DivPayDate"],
                       {"SDate": lo, "EDate": hi})
     earnings = ld.get_data(stock_ric, ["TR.EventStartDate"], {"SDate": lo, "EDate": hi, "EventType": "RES"})
@@ -229,15 +240,15 @@ def main() -> int:
             open_session(ld)
             if not stock_path.exists():
                 raw = ld.get_history(universe=cfg["stock"], fields=["TRDPRC_1", "OPEN_PRC"], interval="daily",
-                                     start=str(START - dt.timedelta(days=215)),
-                                     end=str(END + dt.timedelta(days=34)),
+                                     start=str(window(cfg)[0] - dt.timedelta(days=215)),
+                                     end=str(window(cfg)[1] + dt.timedelta(days=34)),
                                      adjustments=["exchangeCorrection"])
                 closes = pd.to_numeric(raw["TRDPRC_1"], errors="coerce").dropna()
                 closes.index = pd.DatetimeIndex(closes.index)
                 closes.to_pickle(stock_path)
                 raw.to_pickle(cache / "stock_unadjusted_ohlc.pkl")
             if not (cache / "aux.pkl").exists():
-                pull_aux(ld, cache, cfg["stock"])
+                pull_aux(ld, cache, cfg["stock"], *window(cfg))
     if cfg["units_after"] is not None and not (cache / "splits.json").exists():
         (cache / "splits.json").write_text(json.dumps(
             {"units_after": str(cfg["units_after"]), "splits": [[str(d), r] for d, r in cfg["splits"]]}))

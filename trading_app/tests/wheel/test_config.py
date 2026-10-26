@@ -35,3 +35,14 @@ def test_a_stock_added_later_is_run_like_the_first_ones():
     spec.loader.exec_module(mod)
     assert set(mod.UNDERLYINGS) == {"NVDA", "AMD", "DIS", "COST"}
     assert mod.UNDERLYINGS["DIS"]["cache"] == "cache/wheel_raw_DIS"
+
+
+def test_the_class_run_config_reads_its_own_windows_and_picks_folder():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("run_wheel", Path(__file__).resolve().parents[2] / "scripts" / "run_wheel.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    mod.use_config(Path(__file__).resolve().parents[3] / "config" / "wheel_mr.yaml")
+    assert mod.window("train") == ("2024-01-02", "2025-12-31") and mod.window("test") == ("2026-01-02", "2026-10-16")
+    assert mod.PICKS.name == "wheel_mr_picks" and mod.STEM == "wheel_mr"
+    assert mod.CFG["grid"] == CFG["grid"] and mod.CFG["baseline"]["setting"] == CFG["baseline"]["setting"]
