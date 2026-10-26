@@ -26,3 +26,12 @@ def test_the_test_window_starts_after_the_training_window_ends():
 
 def test_the_score_is_a_figure_the_summary_reports():
     assert CFG["selection"]["score"].split()[0].lower() == "sharpe"
+
+
+def test_a_stock_added_later_is_run_like_the_first_ones():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("run_wheel", Path(__file__).resolve().parents[2] / "scripts" / "run_wheel.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    assert set(mod.UNDERLYINGS) == {"NVDA", "AMD", "DIS"}
+    assert mod.UNDERLYINGS["DIS"]["cache"] == "cache/wheel_raw_DIS"

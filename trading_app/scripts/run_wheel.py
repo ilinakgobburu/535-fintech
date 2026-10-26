@@ -29,6 +29,10 @@ from trading_app.lib import wheel as W  # noqa: E402
 
 CFG = yaml.safe_load((REPO / "config" / "wheel.yaml").read_text())
 PICKS = REPO / "config" / "wheel_picks"
+# The registered stocks, and any added later under a dated key, each with its cache.
+UNDERLYINGS = {**CFG["underlyings"],
+               **{t: v for k, block in CFG.items() if k.startswith("added_")
+                  for t, v in block.items() if isinstance(v, dict) and "cache" in v}}
 FILLS = ("mid", "cross")
 
 
@@ -134,11 +138,11 @@ def test(market, root: str) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--root", required=True, choices=sorted(CFG["underlyings"]))
+    ap.add_argument("--root", required=True, choices=sorted(UNDERLYINGS))
     ap.add_argument("--stage", required=True, choices=("train", "test"))
     args = ap.parse_args()
     warnings.filterwarnings("ignore")
-    market = W.load_market(REPO / CFG["underlyings"][args.root]["cache"])
+    market = W.load_market(REPO / UNDERLYINGS[args.root]["cache"])
     (train if args.stage == "train" else test)(market, args.root)
     return 0
 

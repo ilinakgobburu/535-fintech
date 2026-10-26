@@ -73,6 +73,13 @@ UNDERLYINGS = {
     "AMD": {"stock": "AMD.O", "splits": [], "units_after": None, "seed": None,
             "C": [(25.0, (0.5,)), (100.0, (1.0,)), (math.inf, (5.0,))],
             "P": [(25.0, (0.5,)), (100.0, (1.0,)), (math.inf, (5.0,))]},
+    # DIS: config/premium_screen.yaml's pick. Calls repeat the PMCC pull's $1-and-$2.50 grid so they
+    # seed from cache/pmcc_raw_DIS. That pull's log shows which strikes were listed: $5 multiples
+    # almost always, $1 strikes about half the time under $100, $x2.50 strikes rarely under $150.
+    # Puts therefore take $1 under $100 and $5 above, AMD's rule above $100.
+    "DIS": {"stock": "DIS", "splits": [], "units_after": None, "seed": "pmcc_raw_DIS",
+            "C": [(math.inf, (1.0, 2.5))],
+            "P": [(100.0, (1.0,)), (math.inf, (5.0,))]},
 }
 
 

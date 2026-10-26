@@ -11,6 +11,16 @@ why_these: chosen by the user, to see how the same rules run on different names.
   high-volatility semiconductor stocks whose prices moved together over 2019-2023, so they are
   two names but not two very different ones
 
+added_2026_10_26:   # after the NVDA and AMD results were seen; nothing else in this file changes
+  DIS: {ric: DIS, cache: cache/wheel_raw_DIS, calls_seeded_from: cache/pmcc_raw_DIS}
+  why: >
+    chosen by a rule rather than by the user: config/premium_screen.yaml's pick, the stock in its
+    universe whose options were priced richest against its own moves over 2010-2018, before the
+    wheel's training window. NVDA's and AMD's options carried almost no such premium over
+    2019-2023, so the wheel on them mostly measured the stocks' direction
+  same_protocol: the windows, grid, baseline, score and decision above, unchanged; DIS gets its own
+    pick from its own training window, recorded before its test window is run
+
 windows:
   train: {start: 2019-01-02, end: 2021-12-31}   # picks the setting; about 35 monthly cycles
   test: {start: 2022-01-03, end: 2023-12-29}    # run once on the pick; about 23 cycles
