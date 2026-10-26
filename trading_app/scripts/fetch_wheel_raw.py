@@ -66,7 +66,10 @@ UNDERLYINGS = {
              "units_after": dt.date(2021, 7, 20), "seed": "pmcc_raw_NVDA",
              "C": [(math.inf, (2.5,))],
              "P": [(200.0, (2.5,)), (math.inf, (5.0,))]},
-    # AMD: no split. Grids from the probe of listed strikes (see the commit).
+    # AMD: no split. A probe of 52 puts on 2026-10-26 found $0.50 strikes at $24
+    # (March 2019) and $1 strikes, with no $0.50 or $2.50 in between, at $85, $108
+    # and $152 (March 2021, June 2023, December 2021). Above $100 only the $5
+    # multiples are asked for, which keeps the steps near 2-5% of spot.
     "AMD": {"stock": "AMD.O", "splits": [], "units_after": None, "seed": None,
             "C": [(25.0, (0.5,)), (100.0, (1.0,)), (math.inf, (5.0,))],
             "P": [(25.0, (0.5,)), (100.0, (1.0,)), (math.inf, (5.0,))]},
@@ -157,6 +160,25 @@ def seed(cache: Path, seed_dir: Path, jobs: list[dict]) -> int:
     return len(take)
 
 
+def open_session(ld) -> None:
+    """
+    Open the desktop session on whichever local port Workspace's proxy is
+    ready on. The library tries 9000 and 9060 only; after a restart the proxy
+    can come up on 9001 when 9000 is held.
+    """
+    import urllib.request
+    for port in (*range(9000, 9011), 9060):
+        try:
+            with urllib.request.urlopen(f"http://localhost:{port}/api/status", timeout=2) as resp:
+                if b"ST_PROXY_READY" in resp.read():
+                    ld.get_config().set_param("sessions.desktop.workspace.base-url",
+                                              f"http://localhost:{port}")
+                    break
+        except OSError:
+            continue
+    ld.open_session()
+
+
 def pull_aux(ld, cache: Path, stock_ric: str) -> None:
     """Dividends as paid, earnings dates and the 3-month T-bill, in the form lib.wheel reads."""
     lo, hi = str(START - dt.timedelta(days=400)), str(END + dt.timedelta(days=60))
@@ -191,7 +213,7 @@ def main() -> int:
             pass
         else:
             import lseg.data as ld
-            ld.open_session()
+            open_session(ld)
             if not stock_path.exists():
                 raw = ld.get_history(universe=cfg["stock"], fields=["TRDPRC_1", "OPEN_PRC"], interval="daily",
                                      start=str(START - dt.timedelta(days=215)),
@@ -229,7 +251,7 @@ def main() -> int:
 
     if ld is None:
         import lseg.data as ld
-        ld.open_session()
+        open_session(ld)
     frames_path = cache / "options.pkl"
     frames = pickle.loads(frames_path.read_bytes()) if frames_path.exists() else {}
     try:
