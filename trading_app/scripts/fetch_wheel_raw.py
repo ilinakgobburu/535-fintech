@@ -80,6 +80,12 @@ UNDERLYINGS = {
     "DIS": {"stock": "DIS", "splits": [], "units_after": None, "seed": "pmcc_raw_DIS",
             "C": [(math.inf, (1.0, 2.5))],
             "P": [(100.0, (1.0,)), (math.inf, (5.0,))]},
+    # COST: no split since 2000. A probe of 54 contracts on 2026-10-26 found $5 strikes to about
+    # 23% out of the money at $218 (March 2019) and only $10 beyond; and $5, rarely $2.50, within
+    # 16% at $492 and $540 (June 2023, December 2021). $10 above $300 keeps the steps at 1.5-3.3%.
+    "COST": {"stock": "COST.O", "splits": [], "units_after": None, "seed": None,
+             "C": [(300.0, (5.0,)), (math.inf, (10.0,))],
+             "P": [(300.0, (5.0,)), (math.inf, (10.0,))]},
 }
 
 

@@ -33,5 +33,5 @@ def test_a_stock_added_later_is_run_like_the_first_ones():
     spec = importlib.util.spec_from_file_location("run_wheel", Path(__file__).resolve().parents[2] / "scripts" / "run_wheel.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    assert set(mod.UNDERLYINGS) == {"NVDA", "AMD", "DIS"}
+    assert set(mod.UNDERLYINGS) == {"NVDA", "AMD", "DIS", "COST"}
     assert mod.UNDERLYINGS["DIS"]["cache"] == "cache/wheel_raw_DIS"

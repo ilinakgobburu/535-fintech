@@ -21,6 +21,20 @@ added_2026_10_26:   # after the NVDA and AMD results were seen; nothing else in 
   same_protocol: the windows, grid, baseline, score and decision above, unchanged; DIS gets its own
     pick from its own training window, recorded before its test window is run
 
+added_2026_10_26_cost:   # after the NVDA, AMD and DIS results were seen; nothing else in this file changes
+  COST: {ric: COST.O, cache: cache/wheel_raw_COST}
+  why: >
+    chosen by the user out of curiosity, like NVDA and AMD, and not by a rule: a large, steady
+    consumer staple, unlike the three stocks before it. It is not in config/premium_screen.yaml's
+    universe, so the screen says nothing about it
+  same_protocol: the windows, grid, baseline, score and decision above, unchanged; COST gets its own
+    pick from its own training window, recorded before its test window is run
+  special_dividends: >
+    $10 (ex-date 2020-12-01) and $15 (ex-date 2023-12-27), credited to shares held like any
+    dividend. The $10 is below the $12.50 at which listed contracts are adjusted, so a short call in
+    the money the day before would likely have been exercised early, which the engine does not model;
+    whether the book held one then is reported. The $15 falls after the window's last expiry
+
 windows:
   train: {start: 2019-01-02, end: 2021-12-31}   # picks the setting; about 35 monthly cycles
   test: {start: 2022-01-03, end: 2023-12-29}    # run once on the pick; about 23 cycles
