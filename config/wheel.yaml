@@ -1,0 +1,94 @@
+# The wheel: rules, the settings the training window chooses between, and how it chooses.
+# Committed before any wheel backtest output exists. The split, the grid, the score and the
+# per-stock pick were chosen by the user on 2026-10-25; the rest are defaults set by Claude
+# and stated here so they cannot move after a result is seen.
+registered: 2026-10-25
+
+underlyings:
+  NVDA: {ric: NVDA.O, cache: cache/wheel_raw_NVDA, calls_seeded_from: cache/pmcc_raw_NVDA}
+  AMD: {ric: AMD.O, cache: cache/wheel_raw_AMD}
+why_these: chosen by the user, to see how the same rules run on different names. Both are
+  high-volatility semiconductor stocks whose prices moved together over 2019-2023, so they are
+  two names but not two very different ones
+
+windows:
+  train: {start: 2019-01-02, end: 2021-12-31}   # picks the setting; about 35 monthly cycles
+  test: {start: 2022-01-03, end: 2023-12-29}    # run once on the pick; about 23 cycles
+  each_window: starts from $100,000 in cash, so the test result does not inherit the training book
+
+rules:
+  bars: daily; decisions and fills use that day's closing quote
+  prices: unadjusted closes; NVDA in shares after the 4:1 split of 2021-07-20 (prices, strikes and
+    dividends before it divided by 4)
+  rate: 3-month T-bill yield, on the decision date
+  dividend_yield: trailing 12 months of dividends divided by the close, on the decision date
+  iv_and_delta: implied vol inverted from the mid with Black-Scholes; delta from that vol
+  cycle: >
+    every monthly expiry opens a cycle on the next session, expiring on the next monthly expiry
+    (24 to 35 days out); held to expiry, no rolls, no early close
+  expiry_type_reason: >
+    monthlies, not weeklies. Weeklies would need about four times the option data, several days of
+    LSEG's daily request cap per stock
+  cash_phase: >
+    with no shares, sell puts at the strike whose |delta| is closest to the put delta, as many
+    contracts as the cash already in the account secures at the strike (contracts x 100 x strike);
+    a delta tie goes to the lower strike
+  share_phase: >
+    with shares, sell one call per 100 shares at the strike whose delta is closest to the call
+    delta; with the floor on, only strikes at or above the cost basis; a tie goes to the higher
+    strike; if no quoted strike qualifies, hold the shares with no call that cycle
+  cost_basis: the assigned put's strike, less its premium, less every call premium collected on
+    those shares since
+  listed: a strike counts only if it has a two-sided quote on the decision date
+  expiry: >
+    settles on the expiry day's close. A put with the close below its strike is assigned (the
+    shares are bought at the strike); a call with the close above its strike is called away (the
+    shares are sold at the strike); otherwise it expires. Early assignment is not modelled
+  earnings: sold through, for every setting; cycles with an earnings date are flagged in the output
+  contracts: whole real contracts. One NVDA contract before 2021-07-20 is 400 shares in the units above
+  cash: earns the 3-month T-bill over the calendar days between closes, collateral included
+  dividends: credited on the ex-date to shares held at the prior close
+  commissions: none charged
+
+fills:
+  primary: mid of the closing bid and ask
+  stress_test: bid when selling (the book never buys an option)
+  reason: the course convention is a fill at mid, and closing quotes are wider than quotes during the session
+
+grid:   # 18 settings
+  put_delta: [0.15, 0.25, 0.35]
+  call_delta: [0.15, 0.25, 0.35]
+  floor: [true, false]   # calls only at or above the cost basis, or by delta alone
+
+baseline:   # fixed without looking at data: the textbook wheel
+  setting: {put_delta: 0.25, call_delta: 0.25, floor: true}
+  reason: the middle of the grid, with the common rule never to sell a call below cost basis
+
+selection:
+  score: Sharpe ratio on the training window at mid fills, as defined under reported
+  per_stock: each stock gets its own pick, from its own training window
+  tie: to four decimals, the earlier setting in grid order (put delta, then call delta, floor on before off)
+  pick_is_final: >
+    the pick is recorded before its test window is run. The test window is run once for the pick
+    and the baseline; all 18 settings are also run on it, after the pick is recorded, only to
+    report where the pick ranked and how well training ranks predicted test ranks
+
+benchmarks:
+  buy_and_hold: the $100,000 in whole shares at the window's first close; dividends credited, the
+    leftover cash earns the T-bill
+  t_bills: the $100,000 in cash at the T-bill
+
+reported:
+  - P&L, and its parts: premium, T-bill interest, dividends, and the shares (bought and sold at
+    strikes, marked at the last close)
+  - return, max peak-to-trough drawdown of daily NAV, worst month
+  - monthly Sharpe, annualized by sqrt(12), T-bill as risk-free; monthly returns are month-end NAV
+    over the prior month-end, the first from $100,000
+  - puts written and assigned, calls written and called away, cycles held without a call, idle cycles
+  - share of sessions holding shares
+  - the pick's test result against the baseline, buy and hold and T-bills, at mid and at bid
+
+decision:   # stated before the run
+  per_stock: selection helped on a stock if the pick's test Sharpe beats the baseline's at mid and at bid
+  against_the_stock: reported, not judged; a wheel caps the upside, so in a window where the stock
+    rallies hard it is expected to trail buy and hold
