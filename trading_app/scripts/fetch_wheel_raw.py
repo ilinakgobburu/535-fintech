@@ -88,6 +88,18 @@ UNDERLYINGS = {
              "P": [(300.0, (5.0,)), (math.inf, (10.0,))]},
 }
 
+# The class run (config/wheel_mr.yaml): config/mr_screen.yaml's five picks on 2024-2026, one grid
+# for all of them, keyed {TICKER}_2024 so a stock can be in both runs. None split in the window.
+# Fiserv's options were listed as FI until the October 2025 expiry and as FISV from November 2025,
+# when it moved back to Nasdaq; a probe of 10 expiries on 2026-10-26 found the switch.
+GENERIC = [(25.0, (0.5,)), (100.0, (1.0,)), (300.0, (5.0,)), (math.inf, (10.0,))]
+CLASS_RUN = (dt.date(2024, 1, 2), dt.date(2026, 10, 16))
+for _ticker, _ric, _roots in (("MA", "MA.N", None), ("APA", "APA.OQ", None), ("V", "V.N", None),
+                              ("FISV", "FISV.OQ", [(dt.date(2025, 11, 1), "FISV")]), ("ADI", "ADI.OQ", None)):
+    UNDERLYINGS[f"{_ticker}_2024"] = {
+        "stock": _ric, "root": "FI" if _ticker == "FISV" else _ticker, "roots_from": _roots or [],
+        "splits": [], "units_after": None, "seed": None, "window": CLASS_RUN, "C": GENERIC, "P": GENERIC}
+
 
 def cache_dir(key: str) -> Path:
     return ROOT.parent / "cache" / f"wheel_raw_{key}"
@@ -127,8 +139,16 @@ def plan(closes: pd.Series, key: str) -> list[dict]:
     UNDERLYINGS; its option root is the entry's `root`, or the key itself.
     """
     cfg = UNDERLYINGS[key]
-    root = cfg.get("root", key)
     start, end = window(cfg)
+
+    def root(expiry):
+        """The option root a contract expiring then carries: the last change on or before it."""
+        name = cfg.get("root", key)
+        for day, renamed in cfg.get("roots_from", []):
+            if expiry >= day:
+                name = renamed
+        return name
+
     sessions = [t.date() for t in closes.index]
     px = pd.Series(closes.to_numpy(float), index=sessions)
     months = pd.period_range(f"{start.year}-{start.month:02d}", f"{end.year}-{end.month:02d}", freq="M")
@@ -140,7 +160,7 @@ def plan(closes: pd.Series, key: str) -> list[dict]:
             for k in strikes(px, lo_day, hi_day, band, cfg[cp], exp, cfg["splits"]):
                 jobs.append({"kind": "monthly", "cp": cp, "expiry": exp, "strike": k,
                              "start": exp - dt.timedelta(days=50), "end": exp,
-                             "ric": build_option_ric(root, exp, k, cp)})
+                             "ric": build_option_ric(root(exp), exp, k, cp)})
     return jobs
 
 

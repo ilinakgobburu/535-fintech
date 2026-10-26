@@ -82,3 +82,12 @@ def test_the_seed_is_copied_once_and_failed_records_are_not(tmp_path):
     assert set(logged) == {jobs[0]["ric"], jobs[1]["ric"]}
     assert logged[jobs[0]["ric"]]["seeded_from"] == "seed"
     assert list(pickle.loads((cache / "options.pkl").read_bytes())) == [jobs[0]["ric"]]
+
+
+def test_fiserv_contracts_carry_fi_until_october_2025_and_fisv_after():
+    days = pd.bdate_range("2023-06-01", "2026-10-23")
+    jobs = F.plan(pd.Series(150.0, index=days), "FISV_2024")
+    roots = {j["expiry"]: j["ric"][:4] for j in jobs}
+    assert roots[dt.date(2025, 10, 17)].startswith("FI") and not roots[dt.date(2025, 10, 17)].startswith("FISV")
+    assert roots[dt.date(2025, 11, 21)] == "FISV"
+    assert min(roots) == dt.date(2024, 2, 16) and max(roots) == dt.date(2026, 10, 16)

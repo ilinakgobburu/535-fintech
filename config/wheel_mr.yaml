@@ -33,3 +33,21 @@ data:
     A coarser grid than a stock lists costs precision in delta, not data
 
 underlyings: {}   # filled under a dated key once config/mr_screen.yaml has run
+
+added_2026_10_26:   # config/mr_screen.yaml's output (cache/mr_screen.json), recorded before any option pull for these
+  MA: {ric: MA.N, cache: cache/wheel_raw_MA_2024, rank: 1, vr: 0.572, rho: -0.175}
+  APA: {ric: APA.OQ, cache: cache/wheel_raw_APA_2024, rank: 2, vr: 0.580, rho: -0.344}
+  V: {ric: V.N, cache: cache/wheel_raw_V_2024, rank: 3, vr: 0.580, rho: -0.193}
+  FISV: {ric: FISV.OQ, cache: cache/wheel_raw_FISV_2024, rank: 5, vr: 0.582, rho: -0.217, options: FI until the October 2025 expiry, FISV after}
+  ADI: {ric: ADI.OQ, cache: cache/wheel_raw_ADI_2024, rank: 6, vr: 0.587, rho: -0.301}
+  skipped: >
+    BDX (rank 4): its contracts were adjusted on 2026-02-10 for something other than a split.
+    BKNG (rank 7): it closed above $950 (its 25-for-1 split of 2026-04-06 was also flagged as a
+    non-split adjustment, because 25 is not on the screen's list of split ratios; the price rule
+    excludes it either way)
+  follow_ups: MRSH.N (Marsh McLennan, rank 8) and AON.N (rank 9), run only if asked or if a pick fails the data check
+  context: >
+    396 of the 469 eligible stocks (84%) had a negative monthly autocorrelation over 2014-2023 and
+    the median variance ratio was 0.84, so reversal was common across the market in that decade, not
+    only in these five. The five scored 0.572-0.587 against 0.600 for the tenth, a spread well inside
+    the measure's noise of about 0.14

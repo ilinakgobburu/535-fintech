@@ -46,3 +46,17 @@ def test_the_class_run_config_reads_its_own_windows_and_picks_folder():
     assert mod.window("train") == ("2024-01-02", "2025-12-31") and mod.window("test") == ("2026-01-02", "2026-10-16")
     assert mod.PICKS.name == "wheel_mr_picks" and mod.STEM == "wheel_mr"
     assert mod.CFG["grid"] == CFG["grid"] and mod.CFG["baseline"]["setting"] == CFG["baseline"]["setting"]
+
+
+def test_the_class_run_has_the_screen_s_five_picks_each_with_a_pull():
+    import importlib.util
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+    import fetch_wheel_raw as F
+    spec = importlib.util.spec_from_file_location("run_wheel", Path(__file__).resolve().parents[2] / "scripts" / "run_wheel.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    mod.use_config(Path(__file__).resolve().parents[3] / "config" / "wheel_mr.yaml")
+    assert set(mod.UNDERLYINGS) == {"MA", "APA", "V", "FISV", "ADI"}
+    for t, v in mod.UNDERLYINGS.items():
+        assert v["cache"] == f"cache/wheel_raw_{t}_2024" and f"{t}_2024" in F.UNDERLYINGS
