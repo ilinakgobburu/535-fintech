@@ -79,8 +79,8 @@ benchmarks:
   t_bills: the $100,000 in cash at the T-bill
 
 reported:
-  - P&L, and its parts: premium, T-bill interest, dividends, and the shares (bought and sold at
-    strikes, marked at the last close)
+  - "P&L, and its parts: premium, T-bill interest, dividends, and the shares (bought and sold at
+    strikes, marked at the last close)"
   - return, max peak-to-trough drawdown of daily NAV, worst month
   - monthly Sharpe, annualized by sqrt(12), T-bill as risk-free; monthly returns are month-end NAV
     over the prior month-end, the first from $100,000
