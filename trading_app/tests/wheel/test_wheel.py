@@ -328,3 +328,24 @@ def test_the_pick_is_the_highest_sharpe_and_a_tie_goes_to_the_earlier_cell():
               {"cell": 3, "sharpe": np.nan}]
     assert W.pick(scores)["cell"] == 1
     assert W.pick([{"cell": 0, "sharpe": 0.8}, {"cell": 1, "sharpe": 0.80004}])["cell"] == 0
+
+
+# --------------------------------------------------------------------------
+# the data check, config/mr_screen.yaml (d)
+# --------------------------------------------------------------------------
+
+def test_every_cycle_of_a_full_chain_spans_the_delta_range():
+    cov = W.coverage(make_market(), START, END)
+    assert len(cov["cycles"]) == 5 and cov["short"] == 0
+    assert all(c["P_min"] <= 0.15 and c["P_max"] >= 0.35 for c in cov["cycles"])
+
+
+def test_a_put_chain_missing_its_near_strikes_fails_that_cycle_only():
+    m = make_market()
+    q = m["quotes"]
+    gone = (q["date"] == pd.Timestamp("2019-01-22")) & (q["cp"] == "P") & (q["strike"] >= 47.5)
+    m["quotes"] = q[~gone]
+    cov = W.coverage(m, START, END)
+    feb = next(c for c in cov["cycles"] if c["entry"] == pd.Timestamp("2019-01-22"))
+    assert not feb["P_spans"] and feb["C_spans"] and feb["P_max"] < 0.35
+    assert cov["short"] == 1 and cov["short_pct"] == pytest.approx(20.0)

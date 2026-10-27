@@ -202,6 +202,37 @@ def select(day_quotes: pd.DataFrame, cp: str, expiry, spot: float, day, r: float
     return c.sort_values(["miss", "strike"], ascending=[True, cp == PUT]).iloc[0]
 
 
+def coverage(market: dict, start, end, lo: float = 0.15, hi: float = 0.35) -> dict:
+    """
+    config/mr_screen.yaml's data check (d): on each cycle's entry day, as run()
+    opens it, do the two-sided puts and the two-sided calls of that cycle's
+    expiry each reach |delta| at or below `lo` and at or above `hi`? One record
+    per cycle, and how many cycles fall short.
+    """
+    stock, quotes = market["stock"], market["quotes"]
+    sessions = stock.index[(stock.index >= pd.Timestamp(start)) & (stock.index <= pd.Timestamp(end))]
+    expiries = monthly_expiries(sessions, start, end)
+    out = []
+    for prev, expiry in zip(expiries[:-1], expiries[1:]):
+        day = sessions[sessions > prev][0]
+        spot = float(stock.at[day, "close"])
+        r, q = carry(market, day)
+        chain = quotes[(quotes["date"] == day) & (quotes["expiry"] == expiry)
+                       & quotes["mid"].notna() & (quotes["mid"] > 0)]
+        rec = {"entry": day, "expiry": expiry, "spot": spot}
+        for cp in (PUT, CALL):
+            c = chain[chain["cp"] == cp]
+            d = [abs(option_greeks(float(m), spot, float(k), (expiry - day).days / DAYS_PER_YEAR, r, q, cp)["delta"])
+                 for m, k in zip(c["mid"], c["strike"])]
+            d = [x for x in d if np.isfinite(x)]
+            rec[f"{cp}_min"], rec[f"{cp}_max"] = (min(d), max(d)) if d else (np.nan, np.nan)
+            rec[f"{cp}_spans"] = bool(d) and min(d) <= lo + 1e-9 and max(d) >= hi - 1e-9
+        rec["ok"] = rec["P_spans"] and rec["C_spans"]
+        out.append(rec)
+    short = sum(not r["ok"] for r in out)
+    return {"cycles": out, "short": short, "short_pct": 100.0 * short / len(out) if out else np.nan}
+
+
 # --------------------------------------------------------------------------
 # the loop
 # --------------------------------------------------------------------------

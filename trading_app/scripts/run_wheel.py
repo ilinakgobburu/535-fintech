@@ -4,6 +4,7 @@ before its test window is run:
 
     python3 scripts/run_wheel.py --root NVDA --stage train   # 18 settings on 2019-2021 -> the pick
     python3 scripts/run_wheel.py --root NVDA --stage test    # the pick, the baseline and benchmarks on 2022-2023
+    python3 scripts/run_wheel.py --config config/wheel_mr.yaml --root XYZ --stage check   # data check (d)
     python3 scripts/run_wheel.py --config config/wheel_mr.yaml --root XYZ --stage train
 
 The train stage writes config/{STEM}_picks/{ROOT}.json, which is committed
@@ -80,6 +81,24 @@ def show(rows: list[dict], title: str) -> None:
               f"{r['share_days_pct']:8.0f}%")
 
 
+def check(market, root: str) -> None:
+    """config/mr_screen.yaml (d): more than 10% of cycles without puts and calls spanning 0.15-0.35 delta fails."""
+    cycles = []
+    for name in ("train", "test"):
+        cycles += W.coverage(market, *window(name))["cycles"]
+    short = [c for c in cycles if not c["ok"]]
+    pct = 100.0 * len(short) / len(cycles)
+    for c in short:
+        print(f"  short {c['entry'].date()} -> {c['expiry'].date()}  spot {c['spot']:.2f}  "
+              f"puts |delta| {c['P_min']:.2f}-{c['P_max']:.2f}  calls {c['C_min']:.2f}-{c['C_max']:.2f}")
+    verdict = "fails" if pct > 10.0 else "passes"
+    print(f"{root}: {len(short)} of {len(cycles)} cycles short ({pct:.1f}%): {verdict} the data check")
+    (REPO / "cache" / f"{STEM}_coverage_{root}.json").write_text(json.dumps({
+        "root": root, "cycles": len(cycles), "short": len(short), "short_pct": pct, "verdict": verdict,
+        "detail": [{k: (str(v.date()) if isinstance(v, pd.Timestamp) else v) for k, v in c.items()}
+                   for c in cycles]}, indent=1, default=float))
+
+
 def train(market, root: str) -> None:
     g = CFG["grid"]
     cells = W.grid_cells(g["put_delta"], g["call_delta"], g["floor"])
@@ -154,11 +173,11 @@ def main() -> int:
     use_config(known.config if known.config.is_absolute() else REPO / known.config)
     ap = argparse.ArgumentParser(parents=[pre])
     ap.add_argument("--root", required=True, choices=sorted(UNDERLYINGS))
-    ap.add_argument("--stage", required=True, choices=("train", "test"))
+    ap.add_argument("--stage", required=True, choices=("check", "train", "test"))
     args = ap.parse_args()
     warnings.filterwarnings("ignore")
     market = W.load_market(REPO / UNDERLYINGS[args.root]["cache"])
-    (train if args.stage == "train" else test)(market, args.root)
+    {"check": check, "train": train, "test": test}[args.stage](market, args.root)
     return 0
 
 
