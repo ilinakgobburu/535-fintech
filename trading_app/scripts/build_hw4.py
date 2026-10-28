@@ -788,15 +788,24 @@ function drawTabCharts() {
   if (typeof Plotly === 'undefined') return;
   const P = D.periods[period], cfg = {displayModeBar: false, responsive: true};
   if ($('plot-navc').offsetParent) {
+    // a line, so its axis fits the data rather than starting at zero
     const L = P.ledger, x = L.map(r => r[0]);
     Plotly.react('plot-navc', [
-      {x, y: L.map(r => r[2]), name: 'Cash (incl. put collateral)', stackgroup: 'held', mode: 'none',
-       fillcolor: 'rgba(125,133,144,0.35)', hovertemplate: '%{y:$,.0f}<extra>cash</extra>'},
-      {x, y: L.map(r => r[3] * r[1]), name: 'Mastercard shares', stackgroup: 'held', mode: 'none',
-       fillcolor: 'rgba(25,158,112,0.55)', hovertemplate: '%{y:$,.0f}<extra>shares</extra>'},
       {x, y: L.map(r => r[12]), name: 'Account value (NAV)', mode: 'lines', line: {color: css('--wheel'), width: 2},
        hovertemplate: '%{y:$,.0f}<extra>NAV</extra>'}],
-      layout({hovermode: 'x unified', yaxis: {tickformat: '$,.0f', rangemode: 'tozero'}}), cfg);
+      layout({showlegend: false, hovermode: 'x unified', margin: {l: 70, r: 16, t: 12, b: 36},
+              yaxis: {tickformat: '$,.0f', autorange: true}}), cfg);
+  }
+  if ($('plot-hold').offsetParent) {
+    // a breakdown, so it stays stacked from zero: the share of cash plus shares held in each
+    const L = P.ledger, x = L.map(r => r[0]);
+    const total = L.map(r => r[2] + r[3] * r[1]);
+    Plotly.react('plot-hold', [
+      {x, y: L.map((r, i) => 100 * r[2] / total[i]), name: 'Cash (incl. put collateral)', stackgroup: 'held', mode: 'none',
+       fillcolor: 'rgba(125,133,144,0.45)', hovertemplate: '%{y:.0f}%<extra>cash</extra>'},
+      {x, y: L.map((r, i) => 100 * r[3] * r[1] / total[i]), name: 'Mastercard shares', stackgroup: 'held', mode: 'none',
+       fillcolor: 'rgba(25,158,112,0.65)', hovertemplate: '%{y:.0f}%<extra>shares</extra>'}],
+      layout({hovermode: 'x unified', margin: {l: 70, r: 16, t: 30, b: 36}, yaxis: {ticksuffix: '%', range: [0, 100]}}), cfg);
   }
   if ($('plot-dd').offsetParent) {
     Plotly.react('plot-dd', [{x: P.drawdown.date, y: P.drawdown.dd.map(v => 100 * v), mode: 'lines', name: 'Drawdown',
@@ -902,8 +911,10 @@ def render(D: dict, prose: dict[str, str], draft: bool, P2: dict | None = None,
                     'made of: cash, which includes the cash securing an open put, and Mastercard shares at the close, '
                     'less the open option at its mid. Then how far it stood below its highest close, and the month-end '
                     'values the Sharpe ratio is computed from.</div>'
-                    '<div class="sub" style="margin-top:0">Account value and what it holds</div>'
-                    '<div id="plot-navc" class="tabplot" style="height:320px"></div>'
+                    '<div class="sub" style="margin-top:0">Account value</div>'
+                    '<div id="plot-navc" class="tabplot" style="height:300px"></div>'
+                    '<div class="sub">What the account holds, as a share of its value</div>'
+                    '<div id="plot-hold" class="tabplot" style="height:170px"></div>'
                     '<div class="sub">Drawdown from the highest close so far</div>'
                     '<div id="plot-dd" class="tabplot" style="height:200px"></div>'
                     '<div class="sub">Month-end account value</div><div id="navtable"></div>'
