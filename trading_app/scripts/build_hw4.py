@@ -1056,14 +1056,6 @@ def render(D: dict, prose: dict[str, str], draft: bool, P2: dict | None = None,
         panel("Setting choice", say("setting") + setting_verdict(D) + '<div class="sub">All 18 settings, at mid fills</div>' + grid_table(D),
               "highlighted: the pick"),
         "</div>",
-        '<div class="grid g-1-1">',
-        panel("Accuracy", say("accuracy")
-              + f'<div class="cap">Data: {data["requests"]:,} contracts requested from LSEG, {data.get("returned", 0):,} returned, '
-                f'{data.get("never_listed", 0):,} never listed; {data["quote_rows"]:,} daily quotes, '
-                f'{data["two_sided_rows"]:,} with both a bid and an ask.</div>'),
-        panel("Reporting", say("honest")),
-        "</div>",
-        panel("Limitations", say("limitations")),
         (f'<a class="next" href="{names[1]}">Next: Part II · Further exploration, the same wheel on five stocks →</a>'
          if P2 else ""),
         f"<script>{script}</script>",
