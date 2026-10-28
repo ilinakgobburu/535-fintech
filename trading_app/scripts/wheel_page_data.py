@@ -172,9 +172,23 @@ def run_period(market: dict, window: tuple[str, str], pick: dict, base: dict) ->
             c["occ"] = occ(c["cp"], c["strike"], c["expiry"])
         c["realised_vol"] = realised_vol(close, c["entry"], c["expiry"])
         cycles.append(c)
+    led = runs["wheel"]["ledger"]
+    navs = led.set_index("date")["nav"]
+    rt = W.reg_t(led)
+    low = int(rt["free_cash"].idxmin())
+    regt = {"rows": [[r.date, r.cash, r.put_collateral, r.free_cash, int(r.shares), int(r.call_shares_needed), bool(r.covered)]
+                     for r in rt.itertuples()],
+            "min_free_cash": float(rt.at[low, "free_cash"]), "min_free_date": rt.at[low, "date"],
+            "max_collateral": float(rt["put_collateral"].max()), "min_cash": float(rt["cash"].min()),
+            "put_days": int((led["short"] == W.PUT).sum()), "call_days": int((led["short"] == W.CALL).sum()),
+            "share_days": int((led["shares"] > 0).sum()), "sessions": int(len(led)),
+            "always_covered": bool(rt["covered"].all())}
+    drawdown = {"date": list(navs.index), "dd": list(navs / navs.cummax().clip(lower=runs["wheel"]["start_cash"]) - 1)}
     return {"window": [start, end], "books": books, "nav": nav, "runs": runs,
             "ledger": ledger_rows(runs["wheel"]), "blotter": blotter_rows(runs["wheel"]),
-            "hold_blotter": blotter_rows(runs["hold"]), "cycles": cycles}
+            "hold_blotter": blotter_rows(runs["hold"]), "cycles": cycles,
+            "monthly": W.monthly_nav(led, runs["wheel"]["start_cash"], market["tbill"]),
+            "drawdown": drawdown, "regt": regt}
 
 
 def reproduce(periods: dict, stored: dict, picked: dict) -> list[str]:

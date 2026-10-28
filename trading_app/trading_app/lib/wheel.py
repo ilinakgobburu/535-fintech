@@ -684,6 +684,45 @@ def summary(result: dict, tbill: pd.Series) -> dict:
     }
 
 
+def monthly_nav(ledger: pd.DataFrame, capital: float, tbill: pd.Series) -> list[dict]:
+    """
+    The month-end account values the Sharpe ratio is built from, as pmcc_daily.performance
+    builds it: each month's return is its last NAV over the last one before it (the first
+    from `capital`), less the month's average T-bill yield over twelve; the drawdown is the
+    month-end NAV against the highest close so far.
+    """
+    nav = ledger.set_index("date")["nav"]
+    me = nav.groupby(nav.index.to_period("M")).last()
+    ret = pd.concat([pd.Series([capital]), me], ignore_index=True).pct_change().dropna()
+    ret.index = me.index
+    rf = (tbill.reindex(nav.index).groupby(nav.index.to_period("M")).mean() / 12.0).reindex(ret.index)
+    peak = nav.cummax().clip(lower=capital).groupby(nav.index.to_period("M")).last()
+    return [{"month": str(mo), "nav": float(me[mo]), "ret": float(ret[mo]), "rf": float(rf[mo]),
+             "excess": float(ret[mo] - rf[mo]), "cum_ret": float(me[mo] / capital - 1.0),
+             "drawdown": float(me[mo] / peak[mo] - 1.0)} for mo in me.index]
+
+
+def reg_t(ledger: pd.DataFrame) -> pd.DataFrame:
+    """
+    The account under Reg T as a cash account, which is what a cash-secured wheel is:
+    an open put must have its strike times its shares set aside in cash, and an open call
+    must be covered by shares held; nothing is borrowed.
+
+        put_collateral      strike x shares under the open put, 0 otherwise
+        free_cash           cash - put_collateral; never below zero if every put is secured
+        call_shares_needed  shares under the open call, 0 otherwise
+        covered             shares held >= call_shares_needed
+    """
+    put = ledger["short"] == PUT
+    call = ledger["short"] == CALL
+    collateral = np.where(put, ledger["short_strike"] * ledger["short_units"], 0.0)
+    needed = np.where(call, ledger["short_units"], 0).astype(int)
+    return pd.DataFrame({"date": ledger["date"], "cash": ledger["cash"], "put_collateral": collateral,
+                         "free_cash": ledger["cash"] - collateral, "shares": ledger["shares"],
+                         "call_shares_needed": needed, "covered": ledger["shares"] >= needed,
+                         "stock_mv": ledger["stock_mv"], "nav": ledger["nav"]})
+
+
 def grid_cells(put_deltas, call_deltas, floors) -> list[dict]:
     """Every combination, in a fixed order: put delta, then call delta, then floor on before off."""
     return [{"put_delta": p, "call_delta": c, "floor": f}

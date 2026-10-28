@@ -48,7 +48,7 @@ Pick any session to see the account as it stood at that day's close. The open op
 Every option is held to expiry by rule, so the blotter contains **no rolls and no early buy-backs**: each position closes by expiring, by assignment, or by being called away.
 
 ## accuracy
-The code behind this page is checked by **{{tests}} tests**. The engine's tests run on a market small enough to verify by hand, including that no decision reads a later row than the one it trades on. Before this page was built, the committed setting was re-run and reproduced all **{{reproduced}}** recorded figures exactly.
+The code behind this page is checked by **{{tests}} tests**. The engine's tests run on a market small enough to verify by hand, including that no decision reads a later row than the one it trades on. The blotter and ledger are also audited independently: on {{audit_markets}} random markets, the cash and shares are rebuilt from the blotter and every fill, expiry, strike and dividend is checked; and for Mastercard, every trade, every session's cash and a random sample of sessions' account values are checked against the raw LSEG files. Before this page was built, the committed setting was re-run and reproduced all **{{reproduced}}** recorded figures exactly.
 
 ## honest
 Each decision uses **only that day's closing quotes**: the strike is chosen from contracts quoted that day, and expiry settles on that day's close. The stock ({{screen_commit}}), the setting ({{pick_commit}}) and the test window were each committed before the 2026 test was run.

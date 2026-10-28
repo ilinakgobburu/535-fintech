@@ -23,6 +23,7 @@ import sys
 from html import escape
 from pathlib import Path
 
+import pandas as pd
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -132,6 +133,8 @@ def facts(D: dict) -> dict[str, str]:
         "band_at_bid": pct(f["at_or_below_bid_pct"], 0), "band_outside": pct(f["outside_pct"], 0),
         "band_volume": f'{D["fills"]["in_band_volume_median"]:,.0f}', "band_oi": f'{D["fills"]["in_band_oi_median"]:,.0f}',
         "tests": str(D["tests"]), "reproduced": str(len(D["reproduced"])),
+        "audit_markets": str(len(eval(re.search(r"SEEDS = (range\(\d+\))",
+                                                (ROOT / "tests" / "wheel" / "test_audit.py").read_text()).group(1)))),
     }
 
 
@@ -323,7 +326,11 @@ def page_data(D: dict) -> dict:
             "nav": {k: [round(x, 2) for x in v] if k != "date" else v for k, v in P["nav"].items()},
             "ledger": [[r["date"], r["close"], r["cash"], r["shares"], r["basis"], r["short"], r["occ"], r["strike"],
                         r["expiry"], r["contracts"], r["mark"], r["option_mv"], r["nav"]] for r in L],
-            "blotter": P["blotter"], "cycles": P["cycles"]}
+            "blotter": P["blotter"], "cycles": P["cycles"],
+            "monthly": P["monthly"], "drawdown": P["drawdown"], "regt": P["regt"],
+            # the window ends before its month does (2026 stops on 16 October)
+            "partial_last_month": bool((pd.Timestamp(P["window"][1]) + pd.offsets.BDay(1)).month
+                                       == pd.Timestamp(P["window"][1]).month)}
     F = D["fills"]["scatter"]
     out["scatter"] = F
     return rounded(out)
@@ -744,6 +751,59 @@ function tables() {
     '</tbody></table></div>';
 }
 
+function navTab() {
+  const P = D.periods[period], rows = P.monthly;
+  $('navtable').innerHTML = '<div class="tbl-wrap"><table class="tbl small"><thead><tr>' +
+    ['Month', 'Month-end NAV', 'Return', 'T-bill', 'Excess', 'Cumulative', 'Drawdown']
+      .map((h, i) => `<th class="${i === 0 ? 'l' : ''}">${h}</th>`).join('') + '</tr></thead><tbody>' +
+    rows.map(r => `<tr><td class="l num">${r.month}</td><td>${money(r.nav)}</td>
+      <td class="${cls(r.ret)}">${pct(100 * r.ret, 2, true)}</td><td>${pct(100 * r.rf, 2)}</td>
+      <td class="${cls(r.excess)}">${pct(100 * r.excess, 2, true)}</td><td>${pct(100 * r.cum_ret, 2, true)}</td>
+      <td>${pct(100 * r.drawdown, 2)}</td></tr>`).join('') + '</tbody></table></div>';
+  const ex = rows.map(r => r.excess), n = ex.length, mean = ex.reduce((a, b) => a + b, 0) / n;
+  const sd = Math.sqrt(ex.reduce((a, b) => a + (b - mean) ** 2, 0) / (n - 1));
+  $('sharpe-line').innerHTML = `Sharpe ratio = mean monthly excess return ${pct(100 * mean, 3, true)} ÷ its standard deviation `
+    + `${pct(100 * sd, 3)} × √12 = <b class="num">${num(mean / sd * Math.sqrt(12))}</b>, over ${n} months.`
+    + (D.periods[period].partial_last_month ? ' The last month is partial but is charged a full month of the T-bill.' : '');
+}
+
+function regtTab() {
+  const R = D.periods[period].regt;
+  $('regt-summary').innerHTML = '<div class="pf" style="margin-top:0">' + [
+    ['Free cash, lowest', money(R.min_free_cash), 'on ' + R.min_free_date + (R.min_free_cash >= 0 ? ', never below zero' : '')],
+    ['Cash set aside, largest', money(R.max_collateral), 'to secure one put'],
+    ['Sessions with a put / a call open', R.put_days + ' / ' + R.call_days, 'of ' + R.sessions + ' sessions'],
+    ['Every call covered', R.always_covered ? '✓ Yes' : '✕ No', 'shares held on ' + R.share_days + ' sessions'],
+  ].map(([k, v, d]) => `<div class="cell"><div class="k">${esc(k)}</div><div class="v">${v}</div><div class="d">${esc(d)}</div></div>`)
+   .join('') + '</div>';
+  $('regt-table').innerHTML = '<div class="tbl-wrap"><table class="tbl small"><thead><tr>' +
+    ['Date', 'Cash', 'Set aside for the put', 'Free cash', 'Shares', 'Shares the call needs', 'Covered']
+      .map((h, i) => `<th class="${i === 0 ? 'l' : ''}">${h}</th>`).join('') + '</tr></thead><tbody>' +
+    R.rows.map(([d, cash, coll, free, sh, need, cov]) => `<tr><td class="l num">${d}</td><td>${money(cash)}</td>
+      <td>${coll ? money(coll) : '–'}</td><td>${money(free)}</td><td>${sh}</td><td>${need || '–'}</td>
+      <td>${need ? (cov ? 'yes' : 'NO') : '–'}</td></tr>`).join('') + '</tbody></table></div>';
+}
+
+function drawTabCharts() {
+  if (typeof Plotly === 'undefined') return;
+  const P = D.periods[period], cfg = {displayModeBar: false, responsive: true};
+  if ($('plot-dd').offsetParent) {
+    Plotly.react('plot-dd', [{x: P.drawdown.date, y: P.drawdown.dd.map(v => 100 * v), mode: 'lines', name: 'Drawdown',
+      fill: 'tozeroy', line: {color: css('--wheel'), width: 1.5}, fillcolor: 'rgba(57,135,229,0.15)',
+      hovertemplate: '%{y:.2f}%<extra>drawdown</extra>'}],
+      layout({showlegend: false, hovermode: 'x unified', margin: {l: 56, r: 16, t: 10, b: 36}, yaxis: {ticksuffix: '%'}}), cfg);
+  }
+  if ($('plot-regt').offsetParent) {
+    const R = P.regt.rows;
+    Plotly.react('plot-regt', [
+      {x: R.map(r => r[0]), y: R.map(r => r[1]), name: 'Cash', mode: 'lines', line: {color: css('--cash'), width: 1.5},
+       hovertemplate: '%{y:$,.0f}<extra>cash</extra>'},
+      {x: R.map(r => r[0]), y: R.map(r => r[2]), name: 'Set aside for the open put', mode: 'lines', line: {color: css('--wheel'), width: 2, shape: 'hv'},
+       hovertemplate: '%{y:$,.0f}<extra>set aside</extra>'}],
+      layout({hovermode: 'x unified', yaxis: {tickformat: '$,.0f', rangemode: 'tozero'}}), cfg);
+  }
+}
+
 function scatter() {
   const S = D.scatter, put = S.cp.map(c => c === 'P');
   const pick = (arr, want) => arr.filter((_, i) => put[i] === want);
@@ -765,8 +825,8 @@ function show(p) {
   document.querySelectorAll('[data-window]').forEach(el => el.textContent = D.periods[p].window.join(' to '));
   const L = D.periods[p].ledger;
   $('pf-range').max = L.length - 1; $('pf-date').min = L[0][0]; $('pf-date').max = L[L.length - 1][0];
-  kpis(); tables();
-  if (typeof Plotly !== 'undefined') navChart();
+  kpis(); tables(); navTab(); regtTab();
+  if (typeof Plotly !== 'undefined') { navChart(); drawTabCharts(); }
   setDay(L.length - 1);
 }
 
@@ -784,6 +844,7 @@ document.querySelectorAll('.tabs button').forEach(btn => btn.addEventListener('c
   const root = btn.closest('.panel');
   root.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b === btn));
   root.querySelectorAll('.pane').forEach(p => p.classList.toggle('on', p.dataset.pane === btn.dataset.tab));
+  drawTabCharts();                    // a chart drawn in a hidden tab has no width, so tabs draw when shown
 }));
 show('test');
 if (typeof Plotly !== 'undefined') scatter();
@@ -821,6 +882,20 @@ def render(D: dict, prose: dict[str, str], draft: bool, P2: dict | None = None,
     tabs = [("Blotter", say("blotter") + '<div id="blotter" style="margin-top:8px"></div>'),
             ("Ledger", '<div class="cap" style="margin:0 0 8px">One row per session, at the close. '
                        'Click a row to see that day in the portfolio panel.</div><div id="ledger"></div>'),
+            ("NAV", '<div class="cap" style="margin:0 0 10px">The account value at each month-end, the returns the '
+                    'Sharpe ratio is computed from, and how far the account stood below its highest close.</div>'
+                    '<div class="sub" style="margin-top:0">Drawdown from the highest close so far</div>'
+                    '<div id="plot-dd" class="tabplot" style="height:240px"></div>'
+                    '<div class="sub">Month-end account value</div><div id="navtable"></div>'
+                    '<div id="sharpe-line" class="cap"></div>'),
+            ("Reg T", '<div class="cap" style="margin:0 0 10px">The wheel runs in a cash account under Reg T: an open '
+                      'put must have its strike times its shares set aside in cash, and an open call must be covered '
+                      'by shares held. Nothing is borrowed, so there is no margin requirement; what Reg T asks is that '
+                      'free cash never goes below zero and that every call is covered.</div>'
+                      '<div id="regt-summary"></div>'
+                      '<div class="sub">Cash against the cash set aside for the open put</div>'
+                      '<div id="plot-regt" class="tabplot" style="height:280px"></div>'
+                      '<div class="sub">Every session</div><div id="regt-table"></div>'),
             ("Cycles", '<div id="cycles"></div>'),
             ("Rules", rules_list(D))]
     tab_html = ('<div class="tabs">' + "".join(
