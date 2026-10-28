@@ -285,22 +285,27 @@ function layout(o = {}) {
     ...o, xaxis: {...axis, ...(o.xaxis || {})}, yaxis: {...axis, ...(o.yaxis || {})}};
 }
 
+// ▼ put sold, ▲ call sold, ✕ assigned or called away, each on the account-value line at its date
+function tradeMarkers(blotter, dates, values) {
+  const idx = new Map(dates.map((d, i) => [d, i]));
+  return [['Put sold', e => e.cp === 'P' && e.side === 'SELL', 'triangle-down'],
+          ['Call sold', e => e.cp === 'C' && e.side === 'SELL', 'triangle-up'],
+          ['Assigned or called away', e => e.side === 'ASSIGN', 'x']].map(([name, f, sym]) => {
+    const ev = blotter.filter(f);
+    return {x: ev.map(e => e.date), y: ev.map(e => values[idx.get(e.date)]), name, mode: 'markers',
+      marker: {symbol: sym, size: 9, color: css('--text'), line: {color: css('--panel'), width: 2}},
+      text: ev.map(e => esc((e.kind === 'put' ? 'put ' : 'call ') + (e.occ || '') + ' at ' + num(e.price))),
+      hovertemplate: '%{text}<extra>' + name + '</extra>'};
+  });
+}
+
 function navChart() {
   const P = D.periods[period], N = P.nav;
   const traces = ['cash', 'hold', 'wheel_bid', 'wheel'].map(k => ({
     x: N.date, y: N[k], name: LABELS[k], mode: 'lines',
     line: {color: css(COLORS[k]), width: k === 'wheel' ? 2 : 1.5, dash: k === 'wheel_bid' ? 'dot' : 'solid'},
     hovertemplate: '%{y:$,.0f}<extra>' + LABELS[k] + '</extra>'}));
-  const idx = new Map(N.date.map((d, i) => [d, i]));
-  const groups = [['Put sold', e => e.cp === 'P' && e.side === 'SELL', 'triangle-down'],
-                  ['Call sold', e => e.cp === 'C' && e.side === 'SELL', 'triangle-up'],
-                  ['Assigned or called away', e => e.side === 'ASSIGN', 'x']];
-  groups.forEach(([name, f, sym]) => {
-    const ev = P.blotter.filter(f);
-    traces.push({x: ev.map(e => e.date), y: ev.map(e => N.wheel[idx.get(e.date)]), name, mode: 'markers',
-      marker: {symbol: sym, size: 9, color: css('--text'), line: {color: css('--panel'), width: 2}},
-      text: ev.map(e => esc(e.occ || '')), hovertemplate: '%{text}<extra>' + name + '</extra>'});
-  });
+  traces.push(...tradeMarkers(P.blotter, N.date, N.wheel));
   Plotly.react('plot-nav', traces, layout({hovermode: 'x unified', yaxis: {tickformat: '$,.0f'}}),
     {displayModeBar: false, responsive: true});
 }
@@ -420,11 +425,12 @@ function drawTabCharts() {
   if ($('plot-navc').offsetParent) {
     // a line, so its axis fits the data rather than starting at zero
     const L = P.ledger, x = L.map(r => r[0]);
+    const nav = L.map(r => r[12]);
     Plotly.react('plot-navc', [
-      {x, y: L.map(r => r[12]), name: 'Account value (NAV)', mode: 'lines', line: {color: css('--wheel'), width: 2},
-       hovertemplate: '%{y:$,.0f}<extra>NAV</extra>'}],
-      layout({showlegend: false, hovermode: 'x unified', margin: {l: 70, r: 16, t: 12, b: 36},
-              yaxis: {tickformat: '$,.0f', autorange: true}}), cfg);
+      {x, y: nav, name: 'Account value (NAV)', mode: 'lines', line: {color: css('--wheel'), width: 2},
+       hovertemplate: '%{y:$,.0f}<extra>NAV</extra>'},
+      ...tradeMarkers(P.blotter, x, nav)],
+      layout({hovermode: 'x unified', yaxis: {tickformat: '$,.0f', autorange: true}}), cfg);
   }
   if ($('plot-hold').offsetParent) {
     // a breakdown, so it stays stacked from zero: the share of cash plus shares held in each
