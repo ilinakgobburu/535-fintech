@@ -81,4 +81,11 @@ adjustments_round_1:   # 2026-10-27, after stage 1 (none of the three rules pass
   unstick_2_reason: the rule changed the result in only 2 of 9 training windows; acting a month sooner lets it act more often
   judged: as stage 1, each alone and all three together against the plain wheel on the 9 training windows
 
-decisions: {}   # filled after the training stage, committed before stage 2
+decisions:   # 2026-10-27, by the user, after both training rounds; committed before stage 2
+  version: {iv_over_rv: 63}
+  named: 11b, a new put only when its implied vol is above the last 63 sessions' realised vol
+  why: >
+    the only rule to pass the training bar, and only just: 5 of 9 at mid and at the stress fills, which a
+    coin flip would match half the time. It skipped 82 of the 172 puts the plain wheel sold and cut the
+    median return by 25 points for a median Sharpe gain of 0.09. 10b, 12b and the combination did not pass
+  not_carried: skip_earnings, iv_over_rv (21 sessions), unstick (3), close_before_earnings (10b), unstick_2 (12b)
