@@ -890,20 +890,21 @@ function fillScatter() {
   const S = D.scatter, put = S.cp.map(c => c === 'P');
   const pick = (arr, want) => arr.filter((_, i) => put[i] === want);
   const z = S.zoom, h = S.half_spread;
+  const guideColor = k => css(k > 0 ? '--mk-call' : '--mk-put');        // ask pink, bid amber
   const guide = (k, name) => ({x: [0, z * 1.05], y: [0, z * 1.05 * (1 + k * h)], name, mode: 'lines', hoverinfo: 'skip',
-    line: {color: css('--muted'), width: 1}, showlegend: false});
+    line: {color: guideColor(k), width: 1.5}});
   const pts = (want, name, color) => ({x: pick(S.mid, want), y: pick(S.trade, want), name, mode: 'markers',
     marker: {size: 5, color, opacity: 0.55}, text: pick(S.date, want),
     hovertemplate: 'mid %{x:$.2f} → trade %{y:$.2f}<br>%{text}<extra>' + name.toLowerCase() + '</extra>'});
   Plotly.newPlot('plot-scatter', [
     pts(true, 'Puts', css('--wheel')), pts(false, 'Calls', css('--aqua')),
     {x: [0, z * 1.05], y: [0, z * 1.05], name: 'Trade = mid', mode: 'lines', line: {color: css('--text-2'), width: 1}, hoverinfo: 'skip'},
-    guide(-1, 'typical bid'), guide(1, 'typical ask')],
+    guide(-1, 'Typical bid'), guide(1, 'Typical ask')],
     layout({hovermode: 'closest', margin: {l: 58, r: 16, t: 34, b: 46},
             annotations: [[1, 'typical ask'], [-1, 'typical bid']].map(([k, text]) => ({x: z * 0.8, y: z * 0.8 * (1 + k * h),
-              text, showarrow: true, arrowhead: 0, arrowcolor: css('--muted'), ax: k > 0 ? -46 : 46, ay: k > 0 ? -30 : 30,
-              bgcolor: css('--panel'), bordercolor: css('--axis'), borderpad: 3,
-              font: {family: css('--mono'), size: 10.5, color: css('--text-2')}})),
+              text, showarrow: true, arrowhead: 0, arrowcolor: guideColor(k), ax: k > 0 ? -46 : 46, ay: k > 0 ? -30 : 30,
+              bgcolor: css('--panel'), bordercolor: guideColor(k), borderpad: 3,
+              font: {family: css('--mono'), size: 10.5, color: guideColor(k)}})),
             xaxis: {title: {text: 'closing mid'}, tickformat: '$,.0f', range: [0, z]},
             yaxis: {title: {text: 'last trade of the day'}, tickformat: '$,.0f', range: [0, z]}}),
     {displayModeBar: false, responsive: true});
