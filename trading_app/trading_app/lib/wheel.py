@@ -357,22 +357,27 @@ def run(market: dict, *, start, end, mode: str = "wheel", put_delta: float = 0.2
                                delta=float(pick["delta"]), iv=float(pick["iv"]), premium=n * p,
                                otm_pct=100.0 * (k / close - 1.0), status="open")
                     option = {"ric": pick["ric"], "cp": cp, "strike": k, "expiry": expiry,
-                              "units": n, "fill": p, "cycle": rec}
+                              "contracts": contracts, "units": n, "fill": p, "cycle": rec}
 
         # ---- mark --------------------------------------------------------
-        option_mv = 0.0
+        option_mv, mark = 0.0, np.nan
         if option is not None:
             today = by_day.get(day, empty)
             m = today.loc[today["ric"] == option["ric"], "mid"].dropna()
             if len(m):
                 marks[option["ric"]] = float(m.iloc[0])
-            option_mv = -option["units"] * marks.get(option["ric"], option["fill"])
+            mark = marks.get(option["ric"], option["fill"])
+            option_mv = -option["units"] * mark
         rows.append({"date": day, "cash": cash, "shares": shares, "stock_close": close,
                      "stock_mv": shares * close, "option_mv": option_mv,
                      "nav": cash + shares * close + option_mv,
                      "short": None if option is None else option["cp"],
                      "short_strike": np.nan if option is None else option["strike"],
-                     "basis": basis})
+                     "short_ric": None if option is None else option["ric"],
+                     "short_expiry": None if option is None else option["expiry"],
+                     "short_contracts": np.nan if option is None else option["contracts"],
+                     "short_units": np.nan if option is None else option["units"],
+                     "short_mark": mark, "basis": basis})
         prev_day = day
 
     ledger = pd.DataFrame(rows)

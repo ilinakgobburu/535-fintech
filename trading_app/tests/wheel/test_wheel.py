@@ -349,3 +349,27 @@ def test_a_put_chain_missing_its_near_strikes_fails_that_cycle_only():
     feb = next(c for c in cov["cycles"] if c["entry"] == pd.Timestamp("2019-01-22"))
     assert not feb["P_spans"] and feb["C_spans"] and feb["P_max"] < 0.35
     assert cov["short"] == 1 and cov["short_pct"] == pytest.approx(20.0)
+
+
+# --------------------------------------------------------------------------
+# the ledger: the whole portfolio on every session
+# --------------------------------------------------------------------------
+
+def test_the_ledger_names_the_open_contract_and_its_mark_and_they_sum_to_nav():
+    m = make_market(path={"2019-02-11": 44.0})          # assigned at the February expiry, then calls
+    res = W.run(m, start=START, end=END)
+    L = res["ledger"]
+    held = L[L["short_ric"].notna()]
+    assert set(held["short"]) == {"P", "C"} and (L["shares"] > 0).any()
+    q = m["quotes"].set_index(["date", "ric"])["mid"]
+    for _, row in held.iterrows():
+        assert row["short_units"] == 100 * row["short_contracts"]
+        mid = q.get((row["date"], row["short_ric"]), np.nan)
+        if np.isfinite(mid):                  # with no two-sided quote the last mark carries
+            assert row["short_mark"] == pytest.approx(mid)
+    rebuilt = L["cash"] + L["shares"] * L["stock_close"] - L["short_units"].fillna(0) * L["short_mark"].fillna(0)
+    assert np.allclose(rebuilt, L["nav"])
+    first = cycle(res, "2019-01-22")
+    on_entry = L[L["date"] == pd.Timestamp("2019-01-22")].iloc[0]
+    assert on_entry["short_ric"] == next(e["instrument"] for e in res["blotter"] if e["date"] == first["entry"])
+    assert pd.Timestamp(on_entry["short_expiry"]) == FEB
