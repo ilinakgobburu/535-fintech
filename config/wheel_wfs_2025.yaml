@@ -24,3 +24,10 @@ selection:
   record: config/wheel_wfs_2025_picks/{TICKER}.json, committed before this fold's test stage is run
 
 underlyings: {}   # filled under a dated key once config/wf_screen.yaml has picked this fold's stock
+
+added_2026_10_28:   # cache/wf_screen.json's pick for this fold, recorded before any check or training run here
+  APA: {ric: APA.OQ, cache: cache/wheel_raw_APA_2024, rank: 1, vr: 0.563, rho: -0.355}
+  note: >
+    ranked first, with nothing above it skipped; BDX (2) and V (3) are the follow-ups; MA ranked 5. APA's options for 2024-01-02 to 2026-10-16
+    are already cached from the class run, so nothing is pulled. Its 2024-2025 training grid and its
+    2026 test were seen in the class run (config/wheel_mr.yaml)
