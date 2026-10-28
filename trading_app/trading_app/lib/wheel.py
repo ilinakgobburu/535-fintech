@@ -267,6 +267,9 @@ def run(market: dict, *, start, end, mode: str = "wheel", put_delta: float = 0.2
         early_assignment  American exercise: a put with EARLY_PUT_TIME_VALUE or less of
                           time value; a call whose time value is below the next session's dividend
         trend_sma         no new put while the close is below the average of this many closes
+        redeploy          after a take-profit close, sell into the next monthly at once
+                          (from the first session it is quoted) instead of at the next entry
+        roll_lower        roll only to a strike below the current one
     """
     manage = manage or {}
     stock, quotes = market["stock"], market["quotes"]
@@ -303,6 +306,7 @@ def run(market: dict, *, start, end, mode: str = "wheel", put_delta: float = 0.2
 
     cash, shares, basis = float(start_cash), 0, np.nan
     option = None            # the open short: ric, cp, strike, expiry, units, fill, credit, rolls, cycle
+    pending = None           # after a take-profit close with `redeploy`: the expiry to re-sell into
     blotter, cycles, rows = [], [], []
     totals = {"premium": 0.0, "interest": 0.0, "dividends": 0.0}
     prev_day = None
@@ -368,6 +372,28 @@ def run(market: dict, *, start, end, mode: str = "wheel", put_delta: float = 0.2
                    otm_pct=100.0 * (float(pick["strike"]) / close - 1.0), status="open")
         return {"ric": pick["ric"], "cp": cp, "strike": float(pick["strike"]), "expiry": rec["expiry"],
                 "contracts": contracts, "units": n, "fill": p, "credit": p, "rolls": 0, "cycle": rec}
+
+    def choose(day, expiry, close):
+        """What the rules would sell on `day` into `expiry`: (cp, target, floor, pick, contracts, per, filtered)."""
+        r, q = carry(market, day)
+        per = int(lot.get(day, CONTRACT))
+        if shares == 0:
+            cp, target, lo = PUT, put_delta, None
+        else:
+            cp, target, lo = CALL, call_delta, (basis if floor else None)
+        filtered = cp == PUT and sma is not None and close < float(sma.loc[day])
+        pick = None if filtered else select(by_day.get(day, empty), cp, expiry, close, day, r, q, target, lo)
+        contracts = 0
+        if pick is not None:
+            k = float(pick["strike"])
+            contracts = int(cash // (per * k)) if cp == PUT else shares // per
+        return cp, target, lo, pick, contracts, per, filtered
+
+    def note_for(cp, contracts, target, pick, close, why=""):
+        side = "put" if cp == PUT else "call"
+        return (f"write {contracts} {side}{'s' if contracts > 1 else ''}{why}: delta closest to "
+                f"{target:.2f} (delta {pick['delta']:.2f}, implied vol {100 * pick['iv']:.1f}%), "
+                f"spot {close:.2f}; quote {pick['bid']:.2f}/{pick['ask']:.2f}")
 
     def new_record(day, expiry, close):
         rec = {"entry": day, "expiry": expiry, "spot": close, "dte": (expiry - day).days,
@@ -444,6 +470,8 @@ def run(market: dict, *, start, end, mode: str = "wheel", put_delta: float = 0.2
                                           f"{100 * p / option['fill']:.0f}% of the {option['fill']:.2f} it was sold at",
                              "take_profit")
                     option["cycle"]["status"] = "closed early"
+                    if manage.get("redeploy") and option["expiry"] in next_expiry:
+                        pending = next_expiry[option["expiry"]]
                     option = None
 
         # ---- roll a challenged put down and out for a credit ------------
@@ -454,8 +482,9 @@ def run(market: dict, *, start, end, mode: str = "wheel", put_delta: float = 0.2
             if row is not None and np.isfinite(buy_price(row)):
                 pb = buy_price(row)
                 chain = by_day.get(day, empty)
+                below = (chain["strike"] < k - 1e-9) if manage.get("roll_lower") else (chain["strike"] <= k + 1e-9)
                 c = chain[(chain["cp"] == PUT) & (chain["expiry"] == nxt) & chain["mid"].notna()
-                          & (chain["mid"] > 0) & (chain["strike"] <= k + 1e-9)]
+                          & (chain["mid"] > 0) & below]
                 if not c.empty:
                     c = c[np.array([price(r) for _, r in c.iterrows()]) >= pb - 1e-12]
                 if not c.empty:
@@ -476,34 +505,41 @@ def run(market: dict, *, start, end, mode: str = "wheel", put_delta: float = 0.2
                                    f"a net credit of {price(new) - pb:.2f}", reason="roll")
                     option.update(credit=old["credit"] + option["fill"], rolls=old["rolls"] + 1)
 
+        # ---- re-sell after a take-profit close (redeploy) --------------
+        if mode == "wheel" and option is None and pending is not None and day not in entries:
+            if day >= pending:
+                pending = None
+            else:
+                cp, target, lo, pick, contracts, per, filtered = choose(day, pending, close)
+                if filtered:
+                    pending = None              # the trend filter: the cash waits for the next entry
+                elif pick is not None and contracts > 0:
+                    rec = new_record(day, pending, close)
+                    rec["redeployed"] = True
+                    if cp == CALL:
+                        rec["floor"] = lo
+                    option = write(day, pick, cp, contracts, contracts * per, close, rec,
+                                   note_for(cp, contracts, target, pick, close, ", re-sold after the 50% close"),
+                                   reason="redeploy")
+                    pending = None
+
         # ---- entry: open the cycle --------------------------------------
         if mode == "wheel" and day in entries and option is None:
             expiry = entries[day]
-            r, q = carry(market, day)
-            per = int(lot.get(day, CONTRACT))
+            pending = None
+            cp, target, lo, pick, contracts, per, filtered = choose(day, expiry, close)
             rec = new_record(day, expiry, close)
-            if shares == 0:
-                cp, target, lo = PUT, put_delta, None
-            else:
-                cp, target, lo = CALL, call_delta, (basis if floor else None)
+            if cp == CALL:
                 rec["floor"] = lo
-            filtered = cp == PUT and sma is not None and close < float(sma.loc[day])
             if filtered:
                 rec.update(status=f"skipped: below the {trend_n}-close average", sma=float(sma.loc[day]))
-            pick = None if filtered else select(by_day.get(day, empty), cp, expiry, close, day, r, q, target, lo)
-            if pick is None and not filtered:
+            elif pick is None:
                 rec["status"] = ("held: no qualifying call" if cp == CALL else "idle: no quoted put")
-            elif pick is not None:
-                k = float(pick["strike"])
-                contracts = int(cash // (per * k)) if cp == PUT else shares // per
-                if contracts == 0:
-                    rec["status"] = "idle: cash secures no contract"
-                else:
-                    side = "put" if cp == PUT else "call"
-                    option = write(day, pick, cp, contracts, contracts * per, close, rec,
-                                   f"write {contracts} {side}{'s' if contracts > 1 else ''}: delta closest to "
-                                   f"{target:.2f} (delta {pick['delta']:.2f}, implied vol {100 * pick['iv']:.1f}%), "
-                                   f"spot {close:.2f}; quote {pick['bid']:.2f}/{pick['ask']:.2f}")
+            elif contracts == 0:
+                rec["status"] = "idle: cash secures no contract"
+            else:
+                option = write(day, pick, cp, contracts, contracts * per, close, rec,
+                               note_for(cp, contracts, target, pick, close))
 
         # ---- mark --------------------------------------------------------
         option_mv, mark = 0.0, np.nan

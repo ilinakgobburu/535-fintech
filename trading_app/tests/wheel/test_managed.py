@@ -12,7 +12,7 @@ import pandas as pd
 import pytest
 
 from trading_app.lib import wheel as W
-from test_wheel import APR, END, FEB, MAR, START, cycle, make_market
+from test_wheel import APR, END, FEB, MAR, START, cycle, make_market, nearest
 
 ROLLS = {"roll_days": 7, "max_rolls": 2}
 
@@ -184,3 +184,67 @@ def test_an_option_nobody_bids_for_can_still_be_bought_back_at_its_ask():
     res = W.run(m, start=START, end=END, fill="cross", manage={"take_profit": 0.5})
     back = events(res, side="BUY", reason="take_profit")
     assert back and all(np.isfinite(e["price"]) for e in back)
+
+
+
+# --------------------------------------------------------------------------
+# the fixed versions (added_2026_10_27_fixed): re-sell after a close, roll lower only
+# --------------------------------------------------------------------------
+
+REDEPLOY = {"take_profit": 0.5, "redeploy": True}
+
+
+def test_after_a_half_premium_close_the_next_monthly_put_is_sold_at_once():
+    m = make_market()
+    res = W.run(m, start=START, end=END, manage=REDEPLOY)
+    back = events(res, side="BUY", reason="take_profit")[0]
+    again = events(res, side="SELL", reason="redeploy")[0]
+    assert again["date"] == back["date"] and pd.Timestamp(again["expiry"]) == MAR
+    assert again["strike"] == nearest(50.0, back["date"], MAR, "P", 0.25)
+    # the entry session after February finds March already sold, so it opens nothing
+    assert not [e for e in events(res, side="SELL") if e["date"] == pd.Timestamp("2019-02-19") and "reason" not in e]
+
+
+def test_the_re_sale_waits_until_the_next_monthly_is_quoted():
+    m = make_market()
+    day = events(W.run(m, start=START, end=END, manage=REDEPLOY), side="BUY", reason="take_profit")[0]["date"]
+    q = m["quotes"]
+    m["quotes"] = q[~((q["expiry"] == MAR) & (q["date"] >= day) & (q["date"] < day + pd.Timedelta(days=3)))]
+    res = W.run(m, start=START, end=END, manage=REDEPLOY)
+    again = events(res, side="SELL", reason="redeploy")[0]
+    assert again["date"] == min(d for d in m["stock"].index if d >= day + pd.Timedelta(days=3))
+
+
+def test_a_covered_call_closed_at_half_is_replaced_by_a_call_above_the_cost_basis():
+    m = make_market(path={"2019-02-14": 45.0})
+    res = W.run(m, start=START, end=END, manage=REDEPLOY)
+    calls = [e for e in events(res, side="SELL", reason="redeploy") if e["cp"] == "C"]
+    assert calls
+    led = res["ledger"].set_index("date")
+    for e in calls:
+        before = led.loc[led.index < e["date"], "basis"].iloc[-1]
+        assert e["strike"] >= before - 1e-9
+
+
+def test_rolling_lower_only_refuses_a_same_strike_roll_and_holds_the_put():
+    m = make_market(path={"2019-02-04": 46.0})
+    res = W.run(m, start=START, end=END, manage={**ROLLS, "roll_lower": True})
+    first = cycle(res, "2019-01-22")
+    day = pd.Timestamp("2019-02-08")
+    buyback = quotes_of(m, events(res, side="SELL")[0]["instrument"]).loc[day, "mid"]
+    q = m["quotes"]
+    lower = q[(q["date"] == day) & (q["expiry"] == MAR) & (q["cp"] == "P") & (q["strike"] < first["strike"])]
+    assert (lower["mid"].dropna() < buyback).all()          # on this market no lower strike pays for it
+    assert not events(res, reason="roll") and first["status"] == "assigned"
+
+
+def test_rolling_lower_takes_the_highest_lower_strike_that_pays_for_the_buy_back():
+    m = make_market(path={"2019-02-04": 46.0})
+    q = m["quotes"].copy()
+    day = pd.Timestamp("2019-02-08")
+    k45 = (q["date"] == day) & (q["expiry"] == MAR) & (q["cp"] == "P") & (q["strike"] == 45.0)
+    q.loc[k45, ["bid", "ask", "mid"]] = [4.95, 5.05, 5.00]
+    m["quotes"] = q
+    res = W.run(m, start=START, end=END, manage={**ROLLS, "roll_lower": True})
+    new = events(res, side="SELL", reason="roll")[0]
+    assert new["date"] == day and new["strike"] == 45.0 and new["price"] == pytest.approx(5.00)

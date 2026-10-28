@@ -30,6 +30,11 @@ VERSIONS = {
     "v1": {},
     "A": {"take_profit": 0.5, "roll_days": 7, "max_rolls": 2, "early_assignment": True},
     "B": {"take_profit": 0.5, "roll_days": 7, "max_rolls": 2, "early_assignment": True, "trend_sma": 200},
+    # added_2026_10_27_fixed: designed after A's and B's results, so not out of sample
+    "A2": {"take_profit": 0.5, "roll_days": 7, "max_rolls": 2, "early_assignment": True,
+           "redeploy": True, "roll_lower": True},
+    "B2": {"take_profit": 0.5, "roll_days": 7, "max_rolls": 2, "early_assignment": True, "trend_sma": 200,
+           "redeploy": True, "roll_lower": True},
 }
 FILLS = ("mid", "cross")
 COUNTS = ("puts_written", "assigned", "calls_written", "called_away", "closed_early", "rolled",
@@ -74,12 +79,12 @@ def main() -> int:
         row["hold"] = figures(W.summary(hold, m["tbill"]))
         rows.append(row)
         print(f"{sw['stock']:5} {sw['window_name']:5} Sharpe at mid: v1 {row['v1_mid']['sharpe']:5.2f}  "
-              f"A {row['A_mid']['sharpe']:5.2f}  B {row['B_mid']['sharpe']:5.2f}   return v1 "
-              f"{row['v1_mid']['return_pct']:6.1f}%  A {row['A_mid']['return_pct']:6.1f}%  B {row['B_mid']['return_pct']:6.1f}%",
+              + "  ".join(f"{v} {row[v + '_mid']['sharpe']:5.2f}" for v in VERSIONS if v != "v1")
+              + "   return " + "  ".join(f"{v} {row[v + '_mid']['return_pct']:6.1f}%" for v in VERSIONS),
               flush=True)
 
     helped = {f"{v}_{fill}": sum(r[f"{v}_{fill}"]["sharpe"] > r[f"v1_{fill}"]["sharpe"] for r in rows)
-              for v in ("A", "B") for fill in FILLS}
+              for v in VERSIONS if v != "v1" for fill in FILLS}
     others = [r for r in rows if r["stock"] != PAGE_STOCK]
     med = {v: float(np.median([r[f"{v}_mid"]["sharpe"] for r in others])) for v in ("A", "B")}
     lead = "B" if med["B"] > med["A"] else "A"
