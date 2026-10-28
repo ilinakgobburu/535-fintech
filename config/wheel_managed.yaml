@@ -81,3 +81,30 @@ data:
     the 200-close average needs about 10 months of closes before each window, and the cached stock
     series start about 7 months before. Unadjusted daily closes from a year before each window are
     pulled into stock_history.pkl in each cache, one request per stock
+
+added_2026_10_27_fixed:   # after A's and B's results were seen; nothing above changes
+  why: >
+    designed from A's and B's results, at the user's request, so these are not out-of-sample tests.
+    Run one rule at a time, the 50% close cut the median return by about 5 points, because on a monthly
+    cadence the account waited in cash for the next cycle and so gave up the second half of each
+    premium; and a same-strike roll could postpone an assignment to a worse price (DIS, March 2022:
+    a $140 put that expired worthless in v1 was rolled and then assigned at $140)
+  versions:
+    A2: A + redeploy + roll_lower
+    B2: B + redeploy + roll_lower
+  rules:
+    redeploy: >
+      after a 50% close, sell the next option at once rather than at the next entry session: on the
+      first session from the close on (the same session included) on which the monthly after the closed
+      option's expiry is quoted, sell a put (no shares) or a call (shares, cost-basis floor as before)
+      in that expiry at the target delta, as at entry. Version B2's trend filter applies to these puts
+      as to any. The practitioner version of the 50% rule re-opens at once; waiting was a choice made
+      for the monthly cadence of the option pull
+    roll_lower: >
+      a challenged put is rolled only to a strike below the current one, the highest that still gives a
+      net credit; if none does, the put is held to expiry. A same-strike roll only moves the assignment
+      to a later date at the same price
+  judged: >
+    against v1 on the same 18 stock-windows, at mid and at the stress fills, and against A and B to
+    show what the two changes did. The page still leads with B, as registered above; A2 and B2 appear
+    as a follow-up section labelled as designed after the results
