@@ -59,4 +59,24 @@ judging:
     the test windows have already been seen under the plain wheel and the managed versions, though not
     under these rules, so stage 2 is a cleaner check than stage 1 but not a fresh one
 
-decisions: {}   # filled after stage 1, committed before stage 2
+adjustments_round_1:   # 2026-10-27, after stage 1 (none of the three rules passed); training windows only
+  chosen_by: the user chose one adjustment round; each change below answers why its rule failed in stage 1
+  close_before_earnings: >
+    (10b, replacing skip_earnings) puts are sold every cycle as in the plain wheel. When an earnings date
+    falls before the next session's close and on or before the open put's expiry, the put is bought back
+    at that close (the mid, the ask in the stress test). At the close of the first session after the
+    earnings date, a new put is sold into the same expiry at the target delta if at least 7 calendar days
+    remain; otherwise the cash waits for the next entry session. Calls are unchanged
+  close_before_earnings_reason: >
+    skipping the whole cycle gave up about a third of the year's premium (62 of 172 puts) for the sake of
+    one day; this sidesteps only the announcement and keeps most of the month's premium
+  iv_over_rv_63: >
+    (11b) as iv_over_rv, but against realised volatility over the last 63 sessions (about three months)
+  iv_over_rv_63_reason: >
+    the 21-session realised volatility jumps after a single sharp move, which is when puts pay most and
+    when a mean-reversion strategy wants to sell; a three-month window is steadier
+  unstick_2: (12b) as unstick, after 2 call cycles rather than 3
+  unstick_2_reason: the rule changed the result in only 2 of 9 training windows; acting a month sooner lets it act more often
+  judged: as stage 1, each alone and all three together against the plain wheel on the 9 training windows
+
+decisions: {}   # filled after the training stage, committed before stage 2
