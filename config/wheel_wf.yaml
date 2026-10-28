@@ -1,0 +1,51 @@
+# Walk-forward on the setting, for the class run's stock (Mastercard). The class run
+# (config/wheel_mr.yaml) picked the setting once, on 2024-2025, and judged it once, on 2026: out of
+# sample, but a single split. A walk-forward makes the same choice again at each step, with only the
+# data before that step, and judges each choice on the year after it. Anchored, yearly, two folds:
+#
+#   fold 1 (this file):                         pick on 2024,      judge on 2025
+#   fold 2 (config/wheel_mr.yaml, already run): pick on 2024-2025, judge on 2026
+#
+# Chosen by the user on 2026-10-28 (yearly, anchored), after the 2026 test had been run. The rule,
+# grid, baseline and fills are config/wheel.yaml's, unchanged, so nothing in the walk-forward is
+# tuned. Registered before fold 1's training stage is run.
+registered: 2026-10-28
+
+rules: config/wheel.yaml's rules, fills, grid, baseline, selection, benchmarks, reported and
+  decision, unchanged, as in config/wheel_mr.yaml
+
+windows:
+  train: {start: 2024-01-02, end: 2024-12-31}   # about 12 monthly cycles to pick on: half of fold 2's
+  test: {start: 2025-01-02, end: 2025-12-31}    # about 12 cycles
+  each_window: starts from $100,000 in cash, as fold 2's, so fold 2's 2026 result is unchanged
+
+grid:   # as config/wheel.yaml
+  put_delta: [0.15, 0.25, 0.35]
+  call_delta: [0.15, 0.25, 0.35]
+  floor: [true, false]
+baseline:
+  setting: {put_delta: 0.25, call_delta: 0.25, floor: true}
+selection:
+  score: Sharpe ratio on the training window at mid fills
+  ties: to 4 decimals, the earlier setting in the grid's order
+  record: config/wheel_wf_picks/MA.json, committed before fold 1's test stage is run
+
+underlyings:
+  MA: {ric: MA.N, cache: cache/wheel_raw_MA_2024}   # the class run's cache, already passed data check (d)
+
+out_of_sample: >
+  The walk-forward record is fold 1's 2025 and fold 2's 2026, each from $100,000. Their month-end
+  returns are put end to end (about 21 months) for one Sharpe ratio, as config/wheel.yaml defines it,
+  and their returns are compounded. Buy and hold, T-bills and the Cboe PutWrite index are joined the
+  same way. Each fold's pick, and whether the two folds picked the same setting, are reported.
+
+what_was_seen: >
+  2025 is not unseen data. It sat inside fold 2's training window: the 18 settings' 2024-2025 results,
+  the class-run pick's 2024-2025 run (on the page), and the managed-wheel and strategy-choice runs all
+  covered it. What is new is the pick made on 2024 alone and that pick's result on 2025. Fold 1's
+  training window is 12 cycles, so its pick rests on less evidence than fold 2's.
+
+stock: >
+  Mastercard stays fixed: config/mr_screen.yaml chose it once, on 2014-2023, before the run. A
+  walk-forward on the stock as well (re-screening each year) is a separate idea, to be registered
+  on its own if it is run.
