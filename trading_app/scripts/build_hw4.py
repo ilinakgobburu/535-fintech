@@ -1059,7 +1059,7 @@ def render(D: dict, prose: dict[str, str], draft: bool, P2: dict | None = None,
               'from $100,000 · <span data-window></span>', flush=True),
         panel("Benchmarks", '<div id="bench"></div><div class="cap">The Cboe S&amp;P 500 PutWrite index sells a '
               'one-month at-the-money S&amp;P 500 put each month, secured by cash in T-bills: the industry standard for '
-              'systematic put selling. Added as a benchmark after the test; nothing was chosen from it.</div>',
+              'systematic put selling. Added as a benchmark after the test.</div>',
               '<span data-window></span>'),
         "</div>",
         panel("Portfolio on any date",
