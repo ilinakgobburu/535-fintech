@@ -754,7 +754,7 @@ function tables() {
 function navTab() {
   const P = D.periods[period], rows = P.monthly;
   $('navtable').innerHTML = '<div class="tbl-wrap"><table class="tbl small"><thead><tr>' +
-    ['Month', 'Month-end NAV', 'Return', 'T-bill', 'Excess', 'Cumulative', 'Drawdown']
+    ['Month', 'Month-end NAV', 'Return', 'T-bill return (month)', 'Excess return', 'Cumulative return', 'Drawdown at month-end']
       .map((h, i) => `<th class="${i === 0 ? 'l' : ''}">${h}</th>`).join('') + '</tr></thead><tbody>' +
     rows.map(r => `<tr><td class="l num">${r.month}</td><td>${money(r.nav)}</td>
       <td class="${cls(r.ret)}">${pct(100 * r.ret, 2, true)}</td><td>${pct(100 * r.rf, 2)}</td>
@@ -771,22 +771,33 @@ function regtTab() {
   const R = D.periods[period].regt;
   $('regt-summary').innerHTML = '<div class="pf" style="margin-top:0">' + [
     ['Free cash, lowest', money(R.min_free_cash), 'on ' + R.min_free_date + (R.min_free_cash >= 0 ? ', never below zero' : '')],
-    ['Cash set aside, largest', money(R.max_collateral), 'to secure one put'],
+    ['Cash set aside, largest', money(R.max_collateral), `for ${R.max_collateral_contracts} put contract${R.max_collateral_contracts > 1 ? 's' : ''} at ${money(R.max_collateral_strike)}, ${R.max_collateral_date}`],
     ['Sessions with a put / a call open', R.put_days + ' / ' + R.call_days, 'of ' + R.sessions + ' sessions'],
     ['Every call covered', R.always_covered ? '✓ Yes' : '✕ No', 'shares held on ' + R.share_days + ' sessions'],
   ].map(([k, v, d]) => `<div class="cell"><div class="k">${esc(k)}</div><div class="v">${v}</div><div class="d">${esc(d)}</div></div>`)
    .join('') + '</div>';
   $('regt-table').innerHTML = '<div class="tbl-wrap"><table class="tbl small"><thead><tr>' +
-    ['Date', 'Cash', 'Set aside for the put', 'Free cash', 'Shares', 'Shares the call needs', 'Covered']
+    ['Date', 'Cash', 'Set aside for the put', 'Free cash', 'Shares', 'Shares value', 'Call covered']
       .map((h, i) => `<th class="${i === 0 ? 'l' : ''}">${h}</th>`).join('') + '</tr></thead><tbody>' +
-    R.rows.map(([d, cash, coll, free, sh, need, cov]) => `<tr><td class="l num">${d}</td><td>${money(cash)}</td>
-      <td>${coll ? money(coll) : '–'}</td><td>${money(free)}</td><td>${sh}</td><td>${need || '–'}</td>
-      <td>${need ? (cov ? 'yes' : 'NO') : '–'}</td></tr>`).join('') + '</tbody></table></div>';
+    R.rows.map(([d, cash, coll, free, sh, smv, need, cov]) => `<tr><td class="l num">${d}</td><td>${money(cash)}</td>
+      <td>${coll ? money(coll) : '–'}</td><td>${money(free)}</td><td>${sh}</td><td>${sh ? money(smv) : '–'}</td>
+      <td>${need ? (cov ? 'yes, ' + sh + ' of ' + need : 'NO') : '–'}</td></tr>`).join('') + '</tbody></table></div>';
 }
 
 function drawTabCharts() {
   if (typeof Plotly === 'undefined') return;
   const P = D.periods[period], cfg = {displayModeBar: false, responsive: true};
+  if ($('plot-navc').offsetParent) {
+    const L = P.ledger, x = L.map(r => r[0]);
+    Plotly.react('plot-navc', [
+      {x, y: L.map(r => r[2]), name: 'Cash (incl. put collateral)', stackgroup: 'held', mode: 'none',
+       fillcolor: 'rgba(125,133,144,0.35)', hovertemplate: '%{y:$,.0f}<extra>cash</extra>'},
+      {x, y: L.map(r => r[3] * r[1]), name: 'Mastercard shares', stackgroup: 'held', mode: 'none',
+       fillcolor: 'rgba(25,158,112,0.55)', hovertemplate: '%{y:$,.0f}<extra>shares</extra>'},
+      {x, y: L.map(r => r[12]), name: 'Account value (NAV)', mode: 'lines', line: {color: css('--wheel'), width: 2},
+       hovertemplate: '%{y:$,.0f}<extra>NAV</extra>'}],
+      layout({hovermode: 'x unified', yaxis: {tickformat: '$,.0f', rangemode: 'tozero'}}), cfg);
+  }
   if ($('plot-dd').offsetParent) {
     Plotly.react('plot-dd', [{x: P.drawdown.date, y: P.drawdown.dd.map(v => 100 * v), mode: 'lines', name: 'Drawdown',
       fill: 'tozeroy', line: {color: css('--wheel'), width: 1.5}, fillcolor: 'rgba(57,135,229,0.15)',
@@ -794,13 +805,18 @@ function drawTabCharts() {
       layout({showlegend: false, hovermode: 'x unified', margin: {l: 56, r: 16, t: 10, b: 36}, yaxis: {ticksuffix: '%'}}), cfg);
   }
   if ($('plot-regt').offsetParent) {
-    const R = P.regt.rows;
+    // one bar per cycle, on the close its option was sold (or, with nothing sold, its entry close)
+    const byDate = new Map(P.regt.rows.map(r => [r[0], r]));
+    const sold = new Map(P.blotter.filter(e => e.cp && e.side === 'SELL').map(e => [e.date, e]));
+    const bars = P.cycles.map(c => byDate.get(c.entry)).filter(Boolean);
+    const x = bars.map(r => r[0]);
+    const seg = (name, y, color, what) => ({type: 'bar', name, x, y, marker: {color, line: {color: css('--panel'), width: 1}},
+      hovertemplate: '%{y:$,.0f}<extra>' + what + '</extra>'});
     Plotly.react('plot-regt', [
-      {x: R.map(r => r[0]), y: R.map(r => r[1]), name: 'Cash', mode: 'lines', line: {color: css('--cash'), width: 1.5},
-       hovertemplate: '%{y:$,.0f}<extra>cash</extra>'},
-      {x: R.map(r => r[0]), y: R.map(r => r[2]), name: 'Set aside for the open put', mode: 'lines', line: {color: css('--wheel'), width: 2, shape: 'hv'},
-       hovertemplate: '%{y:$,.0f}<extra>set aside</extra>'}],
-      layout({hovermode: 'x unified', yaxis: {tickformat: '$,.0f', rangemode: 'tozero'}}), cfg);
+      seg('Set aside for the put', bars.map(r => r[2]), css('--wheel'), 'set aside for the put'),
+      seg('Shares held (value)', bars.map(r => r[5]), css('--aqua'), 'shares'),
+      seg('Free cash', bars.map(r => r[3]), 'rgba(125,133,144,0.45)', 'free cash')],
+      layout({barmode: 'stack', bargap: 0.35, hovermode: 'x unified', yaxis: {tickformat: '$,.0f'}}), cfg);
   }
 }
 
@@ -882,10 +898,14 @@ def render(D: dict, prose: dict[str, str], draft: bool, P2: dict | None = None,
     tabs = [("Blotter", say("blotter") + '<div id="blotter" style="margin-top:8px"></div>'),
             ("Ledger", '<div class="cap" style="margin:0 0 8px">One row per session, at the close. '
                        'Click a row to see that day in the portfolio panel.</div><div id="ledger"></div>'),
-            ("NAV", '<div class="cap" style="margin:0 0 10px">The account value at each month-end, the returns the '
-                    'Sharpe ratio is computed from, and how far the account stood below its highest close.</div>'
-                    '<div class="sub" style="margin-top:0">Drawdown from the highest close so far</div>'
-                    '<div id="plot-dd" class="tabplot" style="height:240px"></div>'
+            ("NAV", '<div class="cap" style="margin:0 0 10px">The account value (NAV) at every close and what it is '
+                    'made of: cash, which includes the cash securing an open put, and Mastercard shares at the close, '
+                    'less the open option at its mid. Then how far it stood below its highest close, and the month-end '
+                    'values the Sharpe ratio is computed from.</div>'
+                    '<div class="sub" style="margin-top:0">Account value and what it holds</div>'
+                    '<div id="plot-navc" class="tabplot" style="height:320px"></div>'
+                    '<div class="sub">Drawdown from the highest close so far</div>'
+                    '<div id="plot-dd" class="tabplot" style="height:200px"></div>'
                     '<div class="sub">Month-end account value</div><div id="navtable"></div>'
                     '<div id="sharpe-line" class="cap"></div>'),
             ("Reg T", '<div class="cap" style="margin:0 0 10px">The wheel runs in a cash account under Reg T: an open '
@@ -893,8 +913,11 @@ def render(D: dict, prose: dict[str, str], draft: bool, P2: dict | None = None,
                       'by shares held. Nothing is borrowed, so there is no margin requirement; what Reg T asks is that '
                       'free cash never goes below zero and that every call is covered.</div>'
                       '<div id="regt-summary"></div>'
-                      '<div class="sub">Cash against the cash set aside for the open put</div>'
-                      '<div id="plot-regt" class="tabplot" style="height:280px"></div>'
+                      '<div class="sub">What the account held at the start of each monthly cycle</div>'
+                      '<div id="plot-regt" class="tabplot" style="height:300px"></div>'
+                      '<div class="cap">One bar per cycle, at the close on which its option was sold. Between one put '
+                      'expiring on a Friday and the next being sold on the Monday, the account holds only cash for a '
+                      'session; the daily table below shows those sessions.</div>'
                       '<div class="sub">Every session</div><div id="regt-table"></div>'),
             ("Cycles", '<div id="cycles"></div>'),
             ("Rules", rules_list(D))]

@@ -176,10 +176,13 @@ def run_period(market: dict, window: tuple[str, str], pick: dict, base: dict) ->
     navs = led.set_index("date")["nav"]
     rt = W.reg_t(led)
     low = int(rt["free_cash"].idxmin())
-    regt = {"rows": [[r.date, r.cash, r.put_collateral, r.free_cash, int(r.shares), int(r.call_shares_needed), bool(r.covered)]
-                     for r in rt.itertuples()],
+    top = int(rt["put_collateral"].idxmax())
+    regt = {"rows": [[r.date, r.cash, r.put_collateral, r.free_cash, int(r.shares), r.stock_mv,
+                      int(r.call_shares_needed), bool(r.covered)] for r in rt.itertuples()],
             "min_free_cash": float(rt.at[low, "free_cash"]), "min_free_date": rt.at[low, "date"],
-            "max_collateral": float(rt["put_collateral"].max()), "min_cash": float(rt["cash"].min()),
+            "max_collateral": float(rt.at[top, "put_collateral"]), "max_collateral_date": rt.at[top, "date"],
+            "max_collateral_contracts": int(led.at[top, "short_contracts"]),
+            "max_collateral_strike": float(led.at[top, "short_strike"]), "min_cash": float(rt["cash"].min()),
             "put_days": int((led["short"] == W.PUT).sum()), "call_days": int((led["short"] == W.CALL).sum()),
             "share_days": int((led["shares"] > 0).sum()), "sessions": int(len(led)),
             "always_covered": bool(rt["covered"].all())}

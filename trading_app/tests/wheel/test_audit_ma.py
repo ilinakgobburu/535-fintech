@@ -136,6 +136,8 @@ def test_the_page_shows_exactly_what_a_fresh_run_of_the_engine_books(raw):
 
 def test_reg_t_every_put_was_secured_and_every_call_covered(raw):
     for _, P in periods(raw):
-        for d, cash, coll, free, shares, need, covered in P["regt"]["rows"]:
+        closes = {r["date"]: r["close"] for r in P["ledger"]}
+        for d, cash, coll, free, shares, stock_value, need, covered in P["regt"]["rows"]:
             assert free == pytest.approx(cash - coll) and free >= -1e-6
             assert shares >= need and covered
+            assert stock_value == pytest.approx(shares * closes[d])
