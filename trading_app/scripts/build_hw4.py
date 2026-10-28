@@ -194,7 +194,7 @@ def verdict_table(D: dict) -> str:
     w, h, c, b = t["wheel"], t["hold"], t["cash"], t["baseline"]
     over, n, iv, rv = premium_split(D, "test")
     run = D["reversal"]["run"]
-    held, missed = '<span class="ok">Held</span>', '<span class="no">Did not hold</span>'
+    held, missed = '<span class="st st-good">✓ Held</span>', '<span class="st st-bad">✕ Did not hold</span>'
     gap = w["return_pct"] - h["return_pct"]
     rows = [
         ["Options are priced above the moves that follow",
@@ -209,7 +209,7 @@ def verdict_table(D: dict) -> str:
          held if w["max_drawdown_pct"] > h["max_drawdown_pct"] else missed],
         ["A return close to the stock's", "Return over the test",
          f"{pct(w['return_pct'], sign=True)} against {pct(h['return_pct'], sign=True)}",
-         f'<span class="mid">{"ahead" if gap >= 0 else "behind"} by {abs(gap):.1f} points</span>'],
+         f'<span class="st st-neutral">≈ {"ahead" if gap >= 0 else "behind"} by {abs(gap):.1f} pts</span>'],
         ["Beats T-bills", "Return over the test", f"{pct(w['return_pct'], sign=True)} against {pct(c['return_pct'], sign=True)}",
          held if w["return_pct"] > c["return_pct"] else missed],
         ["Mastercard's monthly moves keep reversing",
@@ -224,19 +224,24 @@ def verdict_table(D: dict) -> str:
 
 
 def screen_table(D: dict) -> str:
-    rows = []
+    rows, skipped = [], []
     for r in D["reversal"]["top"]:
         status = r["status"]
-        why = ("closed above $950" if "950" in status else "contracts adjusted, not a split"
-               if "adjusted" in status else "stopped trading" if "stopped" in status else "")
-        tag = ('<span class="ok">pick</span>' if status == "pick" else
-               '<span class="mid">follow-up</span>' if status == "follow-up" else
-               f'<span class="faint">skipped: {why}</span>' if why else "")
+        why = ("closed above $950, which the option symbols cannot encode" if "950" in status
+               else "its contracts were adjusted for something other than a split" if "adjusted" in status
+               else "it stopped trading" if "stopped" in status else "")
+        tag = ('<span class="st st-good">✓ Pick</span>' if status == "pick" else
+               '<span class="st st-neutral">Follow-up</span>' if status == "follow-up" else
+               '<span class="faint">Skipped</span>' if why else "")
         name = re.sub(r"\s+Ord$", "", str(r["name"]).title())
-        row = [str(r["rank"]), escape(r["ric"]), escape(name), num(r["vr"], 3), num(r["rho"], 2),
-               pct(100 * r["vol"], 0), tag]
+        if why:
+            skipped.append(f"{escape(r['ric'].split('.')[0])}: {why}")
+        row = [str(r["rank"]), f'<span class="code">{escape(r["ric"])}</span>', escape(name), num(r["vr"], 3),
+               num(r["rho"], 2), pct(100 * r["vol"], 0), tag]
         rows.append(row + (["__hi__"] if r["ric"] == D["ric"] else []))
-    return table(["#", "RIC", "Company", "Variance ratio", "Autocorr.", "Vol", ""], rows, left=3, cls="small")
+    note = (f'<div class="cap">Skipped, by rules fixed before the screen ran: {"; ".join(skipped)}.</div>'
+            if skipped else "")
+    return table(["#", "RIC", "Company", "Variance ratio", "Autocorr.", "Vol", ""], rows, left=3, cls="small screen") + note
 
 
 def grid_table(D: dict) -> str:
@@ -266,7 +271,7 @@ def fill_tables(D: dict) -> tuple[str, str]:
              pct(F[k]["at_or_below_bid_pct"], 0), pct(F[k]["outside_pct"], 0)] for k, label in names]
     stats = table(["Sample", "n", "Median location", "Slope", "R²", "Median spread", "of mid",
                    "Within ¼-spread", "At or below bid", "Outside quote"], rows, cls="small")
-    own = [[o["date"], escape(o["occ"]), "put" if o["cp"] == "P" else "call", str(o["contracts"]),
+    own = [[o["date"], f'<span class="code">{escape(o["occ"])}</span>', "put" if o["cp"] == "P" else "call", str(o["contracts"]),
             f'{num(o["bid"])} / {num(o["ask"])}', num(o["fill"], 3), pct(o["spread_pct"]),
             num(o["trade"]), f'{o["volume"]:,.0f}' if o["volume"] is not None else "–",
             f'{o["oi"]:,.0f}' if o["oi"] is not None else "–", num(o["location"])] for o in F["own"]]
@@ -378,13 +383,19 @@ if (typeof Plotly !== 'undefined') {
   const css2 = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
   [['train', 'p2-train'], ['test', 'p2-test']].forEach(([k, id]) => {
     const d = P2[k];
+    const axis = {gridcolor: css2('--line-soft'), linecolor: css2('--axis'), zeroline: false, tickfont: {color: css2('--muted')}};
     Plotly.newPlot(id, [
-      {x: d.date, y: d.cash, name: 'T-bills', mode: 'lines', line: {color: css2('--cash'), width: 1.4}},
-      {x: d.date, y: d.hold, name: 'Five stocks held', mode: 'lines', line: {color: css2('--hold'), width: 1.4}},
-      {x: d.date, y: d.wheel, name: 'Five wheels together', mode: 'lines', line: {color: css2('--wheel'), width: 2.2}}],
+      {x: d.date, y: d.cash, name: 'T-bills', mode: 'lines', line: {color: css2('--cash'), width: 1.5},
+       hovertemplate: '%{y:$,.0f}<extra>T-bills</extra>'},
+      {x: d.date, y: d.hold, name: 'Five stocks held', mode: 'lines', line: {color: css2('--hold'), width: 1.5},
+       hovertemplate: '%{y:$,.0f}<extra>Five stocks held</extra>'},
+      {x: d.date, y: d.wheel, name: 'Five wheels together', mode: 'lines', line: {color: css2('--wheel'), width: 2},
+       hovertemplate: '%{y:$,.0f}<extra>Five wheels together</extra>'}],
       {paper_bgcolor: css2('--panel'), plot_bgcolor: css2('--panel'), font: {family: css2('--font'), color: css2('--muted'), size: 12},
-       margin: {l: 70, r: 12, t: 10, b: 36}, hovermode: 'x unified', legend: {orientation: 'h', y: -0.16},
-       xaxis: {gridcolor: css2('--line-soft')}, yaxis: {tickformat: '$,.0f', gridcolor: css2('--line-soft')}},
+       margin: {l: 74, r: 18, t: 34, b: 42}, hovermode: 'x unified',
+       hoverlabel: {bgcolor: css2('--panel-hover'), bordercolor: css2('--axis'), font: {family: css2('--font'), color: css2('--text'), size: 12}},
+       legend: {orientation: 'h', x: 0, xanchor: 'left', y: 1.0, yanchor: 'bottom', font: {color: css2('--text-2'), size: 12}},
+       xaxis: axis, yaxis: {...axis, tickformat: '$,.0f'}},
       {displayModeBar: false, responsive: true});
   });
 }
@@ -392,148 +403,186 @@ if (typeof Plotly !== 'undefined') {
 
 
 STYLE = """
-  /* ---- colours and type: restyle the page here ----------------------- */
+  /* ---- design tokens: restyle the page here -------------------------------
+     Dark, neutral-cool surfaces; one accent; series colours validated for this
+     surface (dataviz validate_palette.js: blue, orange, aqua pass every check). */
   :root{
-    --base:#0B1020; --panel:#141A2E; --panel-hi:#1B2340; --line:#26304A; --line-soft:#1D2438;
-    --text:#E8ECF5; --muted:#8792AB; --faint:#5A6580;
-    --accent:#9085e9; --wheel:#19C3FF; --wheel-bid:#7FDBFF; --hold:#FF3DA6; --cash:#8792AB;
-    --up:#199e70; --down:#e5604d; --warn:#c98500;
-    --font:'Inter',ui-sans-serif,system-ui,-apple-system,sans-serif;
-    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-    --fs-xs:12px; --fs-sm:13px; --fs-base:15px;
+    color-scheme:dark;
+    --base:#0B0C0F; --panel:#111318; --panel-hi:#171A20; --panel-hover:#1C2027;
+    --line:rgba(255,255,255,.08); --line-soft:#1F232A; --axis:#2E333B;
+    --text:#ECEEF1; --text-2:#A8AEB9; --muted:#7D8490; --faint:#5F6672;
+    --accent:#3987e5; --accent-soft:rgba(57,135,229,.14);
+    --wheel:#3987e5; --wheel-bid:#7FB0EE; --hold:#d95926; --cash:#7D8490; --aqua:#199e70;
+    --up:#22b35e; --down:#e5605d; --warn:#e0a526;
+    --font:'Inter',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;
+    --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+    --fs-xs:11.5px; --fs-sm:13px; --fs-base:14.5px;
+    --radius:10px;
   }
   *{box-sizing:border-box} html,body{margin:0;padding:0}
-  body{background:var(--base);color:var(--text);font-family:var(--font);font-size:var(--fs-base);
-    line-height:1.6;-webkit-font-smoothing:antialiased}
-  .wrap{max-width:1440px;margin:0 auto;padding:0 24px 80px}
-  @media (max-width:640px){.wrap{padding:0 16px 60px}}
-  a{color:var(--wheel)}
+  body{background:var(--base);color:var(--text);font-family:var(--font);font-size:var(--fs-base);line-height:1.6;
+    -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;font-feature-settings:"cv11","ss01"}
+  .wrap{max-width:1400px;margin:0 auto;padding:0 28px 72px}
+  @media (max-width:640px){.wrap{padding:0 16px 56px}}
+  a{color:var(--accent);text-decoration:none} a:hover{text-decoration:underline}
+  ::selection{background:var(--accent-soft)}
 
-  .site{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:18px;flex-wrap:wrap;
-    padding:10px 0;background:var(--base);border-bottom:1px solid var(--line)}
-  .site .brand{display:flex;align-items:baseline;gap:10px;color:var(--text);text-decoration:none}
-  .site .brand .sym{font-family:var(--mono);font-weight:700;font-size:18px}
-  .site .brand .co{font-weight:600}
+  /* ---- site header ---------------------------------------------------------- */
+  .site{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:22px;flex-wrap:wrap;
+    margin:0 -28px;padding:12px 28px;background:rgba(11,12,15,.82);backdrop-filter:saturate(140%) blur(12px);
+    -webkit-backdrop-filter:saturate(140%) blur(12px);border-bottom:1px solid var(--line)}
+  .site .brand{display:flex;align-items:center;gap:10px;color:var(--text);text-decoration:none}
+  .site .brand:hover{text-decoration:none}
+  .site .brand .sym{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:8px;
+    background:linear-gradient(135deg,#3987e5,#2a5fb0);color:#fff;font:700 11.5px/1 var(--font);letter-spacing:.02em}
+  .site .brand .co{font-weight:600;font-size:15px;letter-spacing:-.01em}
   .site .brand .name{color:var(--muted);font-size:var(--fs-sm)}
-  .site .right{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
-  .site a.chip{text-decoration:none}
-  .pages{display:flex;gap:4px;flex-wrap:wrap}
-  .pages a{color:var(--muted);text-decoration:none;font-size:var(--fs-sm);font-weight:600;padding:7px 12px;
-    border-radius:8px;border:1px solid transparent}
-  .pages a:hover{color:var(--text);background:var(--panel-hi)}
-  .pages a.on{color:var(--text);background:var(--panel-hi);border-color:var(--line);box-shadow:inset 0 -2px 0 var(--wheel)}
-  .meta{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 0}
-  a.next{display:block;margin:18px 0 0;padding:14px 16px;border:1px solid var(--line);border-radius:8px;
-    background:var(--panel);color:var(--text);text-decoration:none;font-weight:600}
-  a.next:hover{border-color:var(--wheel)}
-  .chip{font-family:var(--mono);font-size:var(--fs-xs);color:var(--muted);border:1px solid var(--line);
-    border-radius:999px;padding:4px 10px;background:var(--panel);white-space:nowrap}
-  .chip b{color:var(--text);font-weight:600} .chip a{color:inherit;text-decoration:none}
-  .chip.hot{background:var(--hold);border-color:var(--hold);color:#0B1020;font-weight:700}
-  @media (max-width:640px){.site{position:static} .site .right{margin-left:0}}
+  .pages{display:flex;gap:2px;padding:3px;background:var(--panel);border:1px solid var(--line);border-radius:9px}
+  .pages a{color:var(--text-2);font-size:var(--fs-sm);font-weight:500;padding:6px 14px;border-radius:7px;white-space:nowrap}
+  .pages a:hover{color:var(--text);text-decoration:none;background:var(--panel-hi)}
+  .pages a.on{color:var(--text);background:var(--panel-hover);box-shadow:inset 0 0 0 1px var(--line)}
+  .site .right{margin-left:auto;display:flex;gap:8px;align-items:center}
+  .site .right a{font-size:var(--fs-sm);font-weight:500;padding:6px 12px;border-radius:8px;white-space:nowrap}
+  .site .right a.hot{color:#fff;background:var(--accent)} .site .right a.hot:hover{filter:brightness(1.08);text-decoration:none}
+  .site .right a:not(.hot){color:var(--text-2);border:1px solid var(--line)}
+  .site .right a:not(.hot):hover{color:var(--text);text-decoration:none;background:var(--panel)}
+  @media (max-width:900px){.site{position:static;margin:0 -16px;padding:12px 16px}.site .right{margin-left:0}
+    .pages{overflow-x:auto;max-width:100%}}
 
-  .grid{display:grid;gap:12px;margin:12px 0}
+  /* ---- page heading ------------------------------------------------------- */
+  .part{margin:34px 0 18px;scroll-margin-top:80px}
+  .part .no{display:block;font-size:var(--fs-xs);font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+  .part h2{margin:6px 0 6px;font-size:28px;line-height:1.2;font-weight:650;letter-spacing:-.02em}
+  .part .what{display:block;color:var(--text-2);font-size:15px;max-width:80ch}
+  .meta{display:flex;gap:28px;flex-wrap:wrap;margin:18px 0 6px;padding-top:16px;border-top:1px solid var(--line)}
+  .meta .chip{display:flex;flex-direction:column;gap:2px;font-size:var(--fs-sm);color:var(--text-2)}
+  .meta .chip i{font-style:normal;font-size:var(--fs-xs);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+  .meta .chip b{color:var(--text);font-weight:500;font-variant-numeric:tabular-nums}
+
+  /* ---- layout ------------------------------------------------------------- */
+  .grid{display:grid;gap:14px;margin:14px 0}
   .g-2-1{grid-template-columns:minmax(0,2fr) minmax(0,1fr)}
   .g-1-1{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
-  .g-3-2{grid-template-columns:minmax(0,3fr) minmax(0,2fr)}
-  .g-4{grid-template-columns:repeat(4,minmax(0,1fr))}
-  @media (max-width:1180px){.g-4{grid-template-columns:repeat(2,minmax(0,1fr))}}
-  @media (max-width:980px){.g-2-1,.g-1-1,.g-3-2,.g-4{grid-template-columns:minmax(0,1fr)}}
-
-  .panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;min-width:0;display:flex;flex-direction:column}
-  .panel > .ph{display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid var(--line);
-    font-size:11px;letter-spacing:.11em;text-transform:uppercase;color:var(--muted);font-weight:600}
-  .panel > .ph .tag{margin-left:auto;font-family:var(--mono);letter-spacing:0;text-transform:none;font-weight:400;color:var(--faint)}
-  .panel > .pb{padding:12px 14px;min-width:0}
-  .panel > .pb.flush{padding:4px}
+  @media (max-width:1000px){.g-2-1,.g-1-1{grid-template-columns:minmax(0,1fr)}}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);min-width:0;
+    display:flex;flex-direction:column;scroll-margin-top:80px}
+  .panel > .ph{display:flex;align-items:center;gap:10px;padding:13px 18px 0;font-size:14px;font-weight:600;
+    letter-spacing:-.005em;color:var(--text)}
+  .panel > .ph .tag{margin-left:auto;font-size:var(--fs-xs);font-weight:400;color:var(--muted);text-align:right}
+  .panel > .pb{padding:12px 18px 16px;min-width:0}
+  .panel > .pb.flush{padding:6px 8px 8px}
+  .prose{color:var(--text-2);line-height:1.68;max-width:none}
+  .prose strong{color:var(--text);font-weight:600}
   .prose p{margin:0 0 10px} .prose p:last-child{margin-bottom:0}
-  .prose ul{padding-left:20px;margin:0} .prose li{margin-bottom:6px}
-  .prose li strong:first-child{color:var(--accent)}
-  .lead{font-size:16.5px;line-height:1.6}
-  .sub{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600;margin:14px 0 8px}
-  .cap{font-size:var(--fs-sm);color:var(--muted);margin-top:8px}
-  .todo{border:1px dashed var(--warn);color:var(--warn);padding:8px 12px;border-radius:6px;font-size:var(--fs-sm)}
+  .prose ul{padding-left:18px;margin:0} .prose li{margin-bottom:8px} .prose li::marker{color:var(--faint)}
+  .prose li strong:first-child{color:var(--text)}
+  .prose.lead{font-size:16px;color:var(--text);line-height:1.65}
+  .prose.lead strong{color:#fff}
+  .sub{font-size:var(--fs-xs);letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:600;margin:18px 0 8px}
+  .cap{font-size:var(--fs-sm);color:var(--muted);margin-top:10px;line-height:1.55}
+  .todo{border:1px dashed var(--warn);color:var(--warn);padding:8px 12px;border-radius:8px;font-size:var(--fs-sm)}
+  .code{font-family:var(--mono);font-size:12px;color:var(--text-2);letter-spacing:-.01em}
 
-  .switch{display:flex;gap:6px;flex-wrap:wrap;margin:18px 0 0}
-  .switch button{font:inherit;font-size:var(--fs-sm);color:var(--muted);background:var(--panel);border:1px solid var(--line);
-    border-radius:999px;padding:6px 14px;cursor:pointer}
-  .switch button.on{color:#0B1020;background:var(--wheel);border-color:var(--wheel);font-weight:600}
-
-  .kpis{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:10px;margin:12px 0}
+  /* ---- period switch and KPI tiles --------------------------------------- */
+  .switch{display:inline-flex;gap:2px;padding:3px;margin:22px 0 0;background:var(--panel);border:1px solid var(--line);
+    border-radius:9px;scroll-margin-top:80px;max-width:100%;overflow-x:auto}
+  .switch button{font:inherit;font-size:var(--fs-sm);font-weight:500;color:var(--text-2);background:none;border:none;
+    border-radius:7px;padding:6px 14px;cursor:pointer;white-space:nowrap}
+  .switch button:hover{color:var(--text);background:var(--panel-hi)}
+  .switch button.on{color:var(--text);background:var(--panel-hover);box-shadow:inset 0 0 0 1px var(--line)}
+  .kpis{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:1px;margin:14px 0;background:var(--line);
+    border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
   @media (max-width:1280px){.kpis{grid-template-columns:repeat(4,minmax(0,1fr))}}
   @media (max-width:640px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
-  .kpi{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px;min-width:0;position:relative}
-  .kpi .k{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);padding-right:18px}
-  .kpi .v{font-family:var(--mono);font-size:20px;font-weight:700;margin-top:5px}
-  .kpi .d{font-family:var(--mono);font-size:var(--fs-xs);color:var(--faint);margin-top:4px}
-  .kpi .tip{position:absolute;top:10px;right:10px;margin:0}
+  .kpi{background:var(--panel);padding:14px 16px 15px;min-width:0;position:relative}
+  .kpi .k{font-size:var(--fs-xs);color:var(--muted);font-weight:500;padding-right:20px;line-height:1.35}
+  .kpi .v{font-size:24px;font-weight:600;letter-spacing:-.02em;margin-top:6px;line-height:1.15}
+  .kpi .d{font-size:12px;color:var(--muted);margin-top:5px;font-variant-numeric:tabular-nums}
+  .kpi .tip{position:absolute;top:13px;right:12px;margin:0}
   .pos{color:var(--up)} .neg{color:var(--down)}
 
+  /* ---- tables ------------------------------------------------------------- */
   .tbl-wrap{overflow-x:auto;max-width:100%}
-  table.tbl{border-collapse:collapse;width:100%;font-size:var(--fs-sm)}
-  table.tbl th,table.tbl td{padding:6px 10px;border-bottom:1px solid var(--line-soft);text-align:right;white-space:nowrap}
-  table.tbl th{color:var(--muted);font-weight:600;font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.05em}
-  table.tbl td{font-family:var(--mono)}
+  table.tbl{border-collapse:collapse;width:100%;font-size:var(--fs-sm);font-variant-numeric:tabular-nums}
+  table.tbl th,table.tbl td{padding:8px 12px;border-bottom:1px solid var(--line-soft);text-align:right;white-space:nowrap}
+  table.tbl th{color:var(--muted);font-weight:500;font-size:var(--fs-xs);letter-spacing:.04em;text-transform:uppercase;
+    background:var(--panel)}
+  table.tbl td{color:var(--text)}
   table.tbl .l{text-align:left}
-  table.tbl td.l{font-family:var(--font)}
-  table.tbl tr.hi td{background:rgba(25,195,255,.10)}
-  table.tbl.verdict td{white-space:normal} table.tbl.verdict td:nth-child(3){font-family:var(--mono)}
-  table.tbl.small td,table.tbl.small th{padding:5px 8px}
-  table.tbl tbody tr.click{cursor:pointer} table.tbl tbody tr.click:hover td{background:var(--panel-hi)}
-  table.tbl tbody tr.sel td{background:rgba(144,133,233,.18)}
-  .note{display:block;min-width:280px;white-space:normal;color:var(--faint);font-size:var(--fs-xs);font-family:var(--font);line-height:1.45}
-  .ok{color:var(--up);font-weight:600} .no{color:var(--down);font-weight:600} .mid{color:var(--warn)} .faint{color:var(--faint)}
-  .ev-open{color:var(--wheel)} .ev-close{color:var(--muted)} .ev-assign{color:var(--warn)} .ev-stock{color:var(--up)}
-  .ev-div{color:var(--accent)}
+  table.tbl tbody tr:hover td{background:var(--panel-hi)}
+  table.tbl tbody tr:last-child td{border-bottom:none}
+  table.tbl tr.hi td{background:var(--accent-soft)} table.tbl tr.hi td:first-child{box-shadow:inset 2px 0 0 var(--accent)}
+  table.tbl.verdict td{white-space:normal;vertical-align:top;padding-top:11px;padding-bottom:11px}
+  table.tbl.verdict td:first-child{color:var(--text);font-weight:500;width:24%}
+  table.tbl.verdict td:nth-child(2){color:var(--text-2)}
+  table.tbl.small td,table.tbl.small th{padding:7px 10px}
+  table.tbl.screen th,table.tbl.screen td{padding:7px 8px} table.tbl.screen td:last-child{text-align:left}
+  table.tbl tbody tr.click{cursor:pointer}
+  table.tbl tbody tr.sel td{background:var(--accent-soft)}
+  .note{display:block;min-width:280px;white-space:normal;color:var(--muted);font-size:12px;line-height:1.45}
+  .st{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;
+    white-space:nowrap;border:1px solid transparent}
+  .st-good{color:var(--up);background:rgba(34,179,94,.10);border-color:rgba(34,179,94,.25)}
+  .st-bad{color:var(--down);background:rgba(229,96,93,.10);border-color:rgba(229,96,93,.25)}
+  .st-neutral{color:var(--warn);background:rgba(224,165,38,.10);border-color:rgba(224,165,38,.25)}
+  .faint{color:var(--muted)}
+  .ev-open{color:var(--accent)} .ev-close{color:var(--muted)} .ev-assign{color:var(--warn)} .ev-stock{color:var(--up)}
+  .ev-div{color:var(--text-2)}
 
-  dl.rules{margin:0;display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px 18px}
-  dl.rules dt{font-family:var(--mono);font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);padding-top:2px;white-space:nowrap}
-  dl.rules dd{margin:0;line-height:1.5}
-  @media (max-width:640px){dl.rules{grid-template-columns:minmax(0,1fr)} dl.rules dt{padding-top:8px}}
-
-  .tabs{display:flex;gap:2px;flex-wrap:wrap;padding:6px 8px 0;border-bottom:1px solid var(--line)}
-  .tabs button{font:inherit;font-size:var(--fs-sm);color:var(--muted);background:none;border:none;
-    border-bottom:2px solid transparent;padding:8px 12px;cursor:pointer}
-  .tabs button.on{color:var(--text);border-bottom-color:var(--wheel)}
-  .pane{display:none;padding:10px} .pane.on{display:block}
-  .pane .tbl-wrap{max-height:560px;overflow-y:auto}
+  /* ---- rules, tabs, details ----------------------------------------------- */
+  dl.rules{margin:0;display:grid;grid-template-columns:150px minmax(0,1fr);gap:0;font-size:var(--fs-sm)}
+  dl.rules dt,dl.rules dd{padding:9px 0;border-bottom:1px solid var(--line-soft)}
+  dl.rules dt{color:var(--muted);font-weight:500;padding-right:14px}
+  dl.rules dd{margin:0;color:var(--text-2);line-height:1.55}
+  @media (max-width:640px){dl.rules{grid-template-columns:minmax(0,1fr)} dl.rules dt{border-bottom:none;padding-bottom:0}}
+  .tabs{display:flex;gap:4px;flex-wrap:wrap;padding:8px 14px 0;border-bottom:1px solid var(--line)}
+  .tabs button{font:inherit;font-size:var(--fs-sm);font-weight:500;color:var(--text-2);background:none;border:none;
+    border-bottom:2px solid transparent;padding:9px 12px 10px;cursor:pointer;margin-bottom:-1px}
+  .tabs button:hover{color:var(--text)}
+  .tabs button.on{color:var(--text);border-bottom-color:var(--accent)}
+  .pane{display:none;padding:12px 14px 14px} .pane.on{display:block}
+  .pane .tbl-wrap{max-height:560px;overflow-y:auto;border:1px solid var(--line-soft);border-radius:8px}
   .pane table.tbl thead th{position:sticky;top:0;background:var(--panel-hi);z-index:1}
-  details summary{cursor:pointer;color:var(--muted);font-size:var(--fs-sm);margin:10px 0 6px}
+  details{margin-top:12px}
+  details summary{cursor:pointer;color:var(--text-2);font-size:var(--fs-sm);font-weight:500;padding:6px 0;list-style:none}
+  details summary::before{content:"›";display:inline-block;width:14px;color:var(--muted);transition:transform .15s}
+  details[open] summary::before{transform:rotate(90deg)}
+  details summary::-webkit-details-marker{display:none}
 
-  /* the portfolio on any date */
+  /* ---- the portfolio on any date ----------------------------------------- */
   .pf-controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-  .pf-controls input[type=range]{flex:1 1 260px;accent-color:var(--wheel)}
-  .pf-controls input[type=date]{font:inherit;font-size:var(--fs-sm);background:var(--panel-hi);color:var(--text);
-    border:1px solid var(--line);border-radius:6px;padding:4px 8px;color-scheme:dark}
-  .pf-controls button{font:inherit;font-size:var(--fs-sm);background:var(--panel-hi);color:var(--text);
-    border:1px solid var(--line);border-radius:6px;padding:4px 10px;cursor:pointer}
-  .pf-controls button:hover{border-color:var(--wheel)}
-  .pf{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:12px}
-  @media (max-width:980px){.pf{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  .pf-controls input[type=range]{flex:1 1 260px;accent-color:var(--accent)}
+  .pf-controls input[type=date],.pf-controls button{font:inherit;font-size:var(--fs-sm);background:var(--panel-hi);
+    color:var(--text);border:1px solid var(--line);border-radius:8px;padding:6px 11px;cursor:pointer;color-scheme:dark}
+  .pf-controls button:hover{background:var(--panel-hover)}
+  .pf{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;margin-top:14px;background:var(--line);
+    border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+  @media (max-width:1000px){.pf{grid-template-columns:repeat(2,minmax(0,1fr))}}
   @media (max-width:520px){.pf{grid-template-columns:minmax(0,1fr)}}
-  .pf .cell{background:var(--panel-hi);border:1px solid var(--line);border-radius:8px;padding:10px 12px;min-width:0}
-  .pf .cell .k{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
-  .pf .cell .v{font-family:var(--mono);font-size:19px;font-weight:700;margin-top:4px}
-  .pf .cell .d{font-family:var(--mono);font-size:var(--fs-xs);color:var(--faint);margin-top:3px;line-height:1.5}
-  .pf-eq{font-family:var(--mono);font-size:var(--fs-sm);color:var(--muted);margin-top:10px;overflow-wrap:anywhere}
-  .pf-eq b{color:var(--text)}
-  .pf-events{margin-top:10px;font-size:var(--fs-sm);color:var(--muted)}
-  .pf-events div{padding:3px 0;border-top:1px solid var(--line-soft)}
+  .pf .cell{background:var(--panel-hi);padding:13px 15px;min-width:0}
+  .pf .cell .k{font-size:var(--fs-xs);color:var(--muted);font-weight:500}
+  .pf .cell .v{font-size:21px;font-weight:600;letter-spacing:-.02em;margin-top:4px}
+  .pf .cell .d{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.55;font-variant-numeric:tabular-nums}
+  .pf-eq{font-size:var(--fs-sm);color:var(--muted);margin-top:12px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+  .pf-eq b{color:var(--text);font-weight:600}
+  .pf-events{margin-top:10px;font-size:var(--fs-sm);color:var(--text-2);font-variant-numeric:tabular-nums}
+  .pf-events div{padding:5px 0;border-top:1px solid var(--line-soft)}
+  .pf-events .sub{border-top:none}
 
-  /* Part I and Part II */
-  .part{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin:30px 0 4px;padding-top:18px;
-    border-top:2px solid var(--line);scroll-margin-top:70px}
-  .meta + .part{border-top:none;padding-top:0;margin-top:18px}
-  .part .no{font-family:var(--mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#0B1020;
-    background:var(--accent);border-radius:6px;padding:3px 9px;font-weight:700}
-  .part h2{margin:0;font-size:22px;font-weight:600;letter-spacing:-.01em}
-  .part .what{color:var(--muted);font-size:var(--fs-sm);flex-basis:100%}
-  .tip{position:relative;display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;
-    margin-left:7px;border:1px solid var(--line);border-radius:50%;font:600 10px/1 var(--mono);color:var(--muted);
+  /* ---- next / previous page ----------------------------------------------- */
+  a.next{display:flex;align-items:center;justify-content:space-between;margin:22px 0 0;padding:16px 18px;
+    border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);color:var(--text);font-weight:500}
+  a.next:hover{text-decoration:none;border-color:rgba(57,135,229,.5);background:var(--panel-hi)}
+
+  /* ---- hover notes -------------------------------------------------------- */
+  .tip{position:relative;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;
+    margin-left:7px;border:1px solid var(--axis);border-radius:50%;font:600 10px/1 var(--font);color:var(--muted);
     cursor:help;text-transform:none;letter-spacing:0;flex:none}
+  .tip:hover,.tip:focus{color:var(--text);border-color:var(--accent);outline:none}
   .tip .bubble{display:none;position:absolute;top:calc(100% + 8px);right:-10px;z-index:40;width:290px;max-width:74vw;
-    padding:10px 12px;background:var(--panel-hi);border:1px solid var(--line);border-radius:8px;
-    box-shadow:0 10px 28px rgba(0,0,0,.45);color:var(--text);font:400 var(--fs-sm)/1.5 var(--font);text-align:left;white-space:normal}
+    padding:11px 13px;background:var(--panel-hover);border:1px solid var(--line);border-radius:10px;
+    box-shadow:0 16px 40px rgba(0,0,0,.55);color:var(--text-2);font:400 var(--fs-sm)/1.55 var(--font);text-align:left;
+    white-space:normal}
   .tip:hover .bubble,.tip:focus .bubble{display:block}
 """
 
@@ -578,11 +627,22 @@ function kpis() {
     `<div class="kpi"><div class="k">${esc(k)}${TIPS[k] || ''}</div><div class="v ${cls(x)}">${v}</div><div class="d">${esc(d)}</div></div>`).join('');
 }
 
+// One chart style: the page's surface and type, hairline grid, legend above the plot, a dark tooltip.
+function layout(o = {}) {
+  const axis = {gridcolor: css('--line-soft'), linecolor: css('--axis'), zeroline: false, tickfont: {color: css('--muted')},
+                title: {font: {color: css('--muted'), size: 12}}};
+  return {paper_bgcolor: css('--panel'), plot_bgcolor: css('--panel'),
+    font: {family: css('--font'), color: css('--muted'), size: 12}, margin: {l: 70, r: 18, t: 34, b: 42},
+    hoverlabel: {bgcolor: css('--panel-hover'), bordercolor: css('--axis'), font: {family: css('--font'), color: css('--text'), size: 12}},
+    legend: {orientation: 'h', x: 0, xanchor: 'left', y: 1.0, yanchor: 'bottom', font: {color: css('--text-2'), size: 12}},
+    ...o, xaxis: {...axis, ...(o.xaxis || {})}, yaxis: {...axis, ...(o.yaxis || {})}};
+}
+
 function navChart() {
   const P = D.periods[period], N = P.nav;
   const traces = ['cash', 'hold', 'wheel_bid', 'wheel'].map(k => ({
     x: N.date, y: N[k], name: LABELS[k], mode: 'lines',
-    line: {color: css(COLORS[k]), width: k === 'wheel' ? 2.2 : 1.4, dash: k === 'wheel_bid' ? 'dot' : 'solid'},
+    line: {color: css(COLORS[k]), width: k === 'wheel' ? 2 : 1.5, dash: k === 'wheel_bid' ? 'dot' : 'solid'},
     hovertemplate: '%{y:$,.0f}<extra>' + LABELS[k] + '</extra>'}));
   const idx = new Map(N.date.map((d, i) => [d, i]));
   const groups = [['Put sold', e => e.cp === 'P' && e.side === 'SELL', 'triangle-down'],
@@ -591,15 +651,11 @@ function navChart() {
   groups.forEach(([name, f, sym]) => {
     const ev = P.blotter.filter(f);
     traces.push({x: ev.map(e => e.date), y: ev.map(e => N.wheel[idx.get(e.date)]), name, mode: 'markers',
-      marker: {symbol: sym, size: 9, color: sym === 'x' ? css('--warn') : css('--text')},
-      text: ev.map(e => esc(e.note)), hovertemplate: '%{text}<extra>' + name + '</extra>'});
+      marker: {symbol: sym, size: 9, color: css('--text'), line: {color: css('--panel'), width: 2}},
+      text: ev.map(e => esc(e.occ || '')), hovertemplate: '%{text}<extra>' + name + '</extra>'});
   });
-  Plotly.react('plot-nav', traces, {
-    paper_bgcolor: css('--panel'), plot_bgcolor: css('--panel'),
-    font: {family: css('--font'), color: css('--muted'), size: 12},
-    margin: {l: 64, r: 16, t: 10, b: 36}, hovermode: 'closest', legend: {orientation: 'h', y: -0.14},
-    xaxis: {gridcolor: css('--line-soft')}, yaxis: {title: 'account value', tickformat: '$,.0f', gridcolor: css('--line-soft')},
-  }, {displayModeBar: false, responsive: true});
+  Plotly.react('plot-nav', traces, layout({hovermode: 'x unified', yaxis: {tickformat: '$,.0f'}}),
+    {displayModeBar: false, responsive: true});
 }
 
 // ---- the portfolio on any date -------------------------------------------
@@ -613,7 +669,7 @@ function setDay(i) {
   const opt = short == null
     ? `<div class="v">none</div><div class="d">no option open after this close</div>`
     : `<div class="v">${contracts} ${short === 'P' ? 'short put' : 'covered call'}${contracts > 1 ? 's' : ''}</div>
-       <div class="d">${esc(occ)}<br>strike ${money(strike, 2)}, expires ${esc(expiry)}<br>
+       <div class="d"><span class="code">${esc(occ)}</span><br>strike ${money(strike, 2)}, expires ${esc(expiry)}<br>
        mark ${money(mark, 3)} per share, owed ${money(optVal, 0)}</div>`;
   const prem = D.periods[period].blotter.filter(e => e.cp && e.side === 'SELL' && e.date <= date)
     .reduce((s, e) => s + e.cash_delta, 0);
@@ -644,11 +700,11 @@ function tables() {
   const P = D.periods[period];
   $('blotter').innerHTML = '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
     ['Date', 'Event', 'Instrument', 'Side', 'Quantity', 'Bid / ask', 'Fill', 'Cash', 'Rule that fired']
-      .map((h, i) => `<th class="${i < 4 ? 'l' : ''}">${h}</th>`).join('') + '</tr></thead><tbody>' +
+      .map((h, i) => `<th class="${i < 4 || i === 8 ? 'l' : ''}">${h}</th>`).join('') + '</tr></thead><tbody>' +
     P.blotter.map(e => {
       const [name, c] = eventName(e);
       const qty = e.cp ? `${e.contracts} contract${e.contracts > 1 ? 's' : ''} (${e.qty} sh)` : `${e.qty.toLocaleString()} sh`;
-      return `<tr><td class="l">${esc(e.date)}</td><td class="l ${c}">${esc(name)}</td><td class="l">${esc(e.occ || 'MA (stock)')}</td>
+      return `<tr><td class="l">${esc(e.date)}</td><td class="l ${c}">${esc(name)}</td><td class="l">${e.occ ? '<span class="code">' + esc(e.occ) + '</span>' : 'MA (stock)'}</td>
         <td class="l">${esc(e.side)}</td><td>${qty}</td><td>${e.bid != null ? num(e.bid) + ' / ' + num(e.ask) : '–'}</td>
         <td>${e.price ? num(e.price, 3) : '–'}</td><td class="${cls(e.cash_delta)}">${money(e.cash_delta, 2, true)}</td>
         <td class="l"><span class="note">${esc(e.note)}</span></td></tr>`;
@@ -659,7 +715,7 @@ function tables() {
       .map((h, i) => `<th class="${i === 0 || i === 5 ? 'l' : ''}">${h}</th>`).join('') + '</tr></thead><tbody>' +
     P.ledger.map(([date, close, cash, shares, basis, short, occ, strike, expiry, contracts, mark, optMv, nav], j) =>
       `<tr class="click" data-i="${j}"><td class="l">${date}</td><td>${num(close)}</td><td>${money(cash)}</td><td>${shares}</td>
-       <td>${shares ? num(basis) : '–'}</td><td class="l">${occ ? esc(occ) : '–'}</td><td>${contracts ?? '–'}</td>
+       <td>${shares ? num(basis) : '–'}</td><td class="l">${occ ? '<span class="code">' + esc(occ) + '</span>' : '–'}</td><td>${contracts ?? '–'}</td>
        <td>${mark != null ? num(mark, 3) : '–'}</td><td>${optMv ? money(-optMv) : '–'}</td><td>${money(nav)}</td></tr>`).join('') +
     '</tbody></table></div>';
   $('ledger').querySelectorAll('tr.click').forEach(tr => tr.addEventListener('click', () => {
@@ -670,7 +726,7 @@ function tables() {
     ['Entry', 'Expiry', 'Days', 'Sold', 'Contract', 'Strike', 'From spot', 'Delta', 'Implied vol', 'Realised vol',
      'Premium', 'Close at expiry', 'Outcome'].map((h, i) => `<th class="${i < 2 || i === 3 || i === 4 || i === 12 ? 'l' : ''}">${h}</th>`).join('') +
     '</tr></thead><tbody>' + P.cycles.map(c => `<tr><td class="l">${c.entry}</td><td class="l">${c.expiry}</td><td>${c.dte}</td>
-      <td class="l">${c.cp === 'P' ? 'put' : c.cp === 'C' ? 'call' : '–'}</td><td class="l">${esc(c.occ || '–')}</td>
+      <td class="l">${c.cp === 'P' ? 'put' : c.cp === 'C' ? 'call' : '–'}</td><td class="l">${c.occ ? '<span class="code">' + esc(c.occ) + '</span>' : '–'}</td>
       <td>${c.strike != null ? num(c.strike) : '–'}</td><td>${c.otm_pct != null ? pct(c.otm_pct, 1, true) : '–'}</td>
       <td>${c.delta != null ? num(c.delta) : '–'}</td><td>${c.iv != null ? pct(100 * c.iv) : '–'}</td>
       <td>${c.realised_vol != null ? pct(100 * c.realised_vol) : '–'}</td><td>${c.premium != null ? money(c.premium) : '–'}</td>
@@ -683,15 +739,13 @@ function scatter() {
   const pick = (arr, want) => arr.filter((_, i) => put[i] === want);
   const hi = Math.max(...S.mid, ...S.trade);
   Plotly.newPlot('plot-fill', [
-    {x: pick(S.mid, true), y: pick(S.trade, true), name: 'puts', mode: 'markers', marker: {size: 4, color: css('--wheel'), opacity: .55},
+    {x: pick(S.mid, true), y: pick(S.trade, true), name: 'Puts', mode: 'markers', marker: {size: 5, color: css('--wheel'), opacity: .55},
      text: pick(S.date, true), hovertemplate: 'mid %{x:$.2f} → trade %{y:$.2f}<br>%{text}<extra>put</extra>'},
-    {x: pick(S.mid, false), y: pick(S.trade, false), name: 'calls', mode: 'markers', marker: {size: 4, color: css('--hold'), opacity: .55},
+    {x: pick(S.mid, false), y: pick(S.trade, false), name: 'Calls', mode: 'markers', marker: {size: 5, color: css('--aqua'), opacity: .55},
      text: pick(S.date, false), hovertemplate: 'mid %{x:$.2f} → trade %{y:$.2f}<br>%{text}<extra>call</extra>'},
-    {x: [0, hi], y: [0, hi], name: 'trade = mid', mode: 'lines', line: {color: css('--faint'), dash: 'dot', width: 1}, hoverinfo: 'skip'}],
-    {paper_bgcolor: css('--panel'), plot_bgcolor: css('--panel'), font: {family: css('--font'), color: css('--muted'), size: 12},
-     margin: {l: 56, r: 12, t: 10, b: 44}, hovermode: 'closest', legend: {orientation: 'h', y: -0.2},
-     xaxis: {title: 'closing mid', tickformat: '$,.0f', gridcolor: css('--line-soft')},
-     yaxis: {title: 'last trade of the day', tickformat: '$,.0f', gridcolor: css('--line-soft')}},
+    {x: [0, hi], y: [0, hi], name: 'Trade = mid', mode: 'lines', line: {color: css('--muted'), width: 1}, hoverinfo: 'skip'}],
+    layout({hovermode: 'closest', margin: {l: 62, r: 18, t: 34, b: 48},
+            xaxis: {title: {text: 'closing mid'}, tickformat: '$,.0f'}, yaxis: {title: {text: 'last trade of the day'}, tickformat: '$,.0f'}}),
     {displayModeBar: false, responsive: true});
 }
 
@@ -777,23 +831,30 @@ def render(D: dict, prose: dict[str, str], draft: bool, P2: dict | None = None,
 <title>{escape(title)}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
 <style>{STYLE}</style></head><body><div class="wrap">
 <header class="site"><a class="brand" href="{names[0]}"><span class="sym">MA</span><span class="co">{escape(D["company"])}</span>
 <span class="name">Wheel strategy · backtest</span></a>
 <nav class="pages" aria-label="Pages">{nav}</nav>
 <div class="right"><a class="chip hot" href="{REPO_URL}">Code (to GitHub Repo) ↗</a>
-<a class="chip" href="hw3.html">← PMCC page</a></div></header>
-<div class="meta"><span class="chip">test <b>{T["window"][0]}</b> to <b>{T["window"][1]}</b></span>
-<span class="chip">trained <b>{R["window"][0]}</b> to <b>{R["window"][1]}</b></span>
-<span class="chip">daily closes · LSEG</span></div>"""
+<a class="chip" href="hw3.html">← PMCC page</a></div></header>"""
+
+    def heading(anchor: str, eyebrow: str, title: str, what: str, facts: list[tuple[str, str]]) -> str:
+        """A page's heading: what part it is, its title, one line on what it holds, and its key facts."""
+        return (f'<div class="part" id="{anchor}"><span class="no">{escape(eyebrow)}</span><h2>{escape(title)}</h2>'
+                f'<span class="what">{escape(what)}</span></div>'
+                + '<div class="meta">' + "".join(f'<span class="chip"><i>{escape(k)}</i><b>{escape(v)}</b></span>'
+                                               for k, v in facts) + "</div>")
 
     parts = [
         page_top("Wheel Strategy · MA", "1"),
-        '<div class="part" id="part1"><span class="no">Part I</span><h2>The assignment: the wheel on Mastercard</h2>'
-        '<span class="what">Everything the assignment asks for: the thesis and whether it held, the blotter, '
-        'the ledger, the portfolio on any date, and the evidence for the fill prices.</span></div>',
+        heading("part1", "Part I · The assignment", "The wheel on Mastercard (MA)",
+                "Everything the assignment asks for: the thesis and whether it held, the blotter, the ledger, "
+                "the portfolio on any date, and the evidence for the fill prices.",
+                [("Test period", f'{T["window"][0]} → {T["window"][1]}'),
+                 ("Setting chosen on", f'{R["window"][0]} → {R["window"][1]}'),
+                 ("Starting cash", "$100,000"), ("Data", "Daily closes · LSEG")]),
         '<div style="height:12px"></div>',
         panel("Thesis", say("thesis", "lead")),
         '<div style="height:12px"></div>',
@@ -819,7 +880,7 @@ def render(D: dict, prose: dict[str, str], draft: bool, P2: dict | None = None,
         panel("Fill prices", say("fills") + '<div class="sub">Notes</div>' + say("fills-note")),
         panel("Last trade against the closing mid", '<div id="plot-fill" style="height:380px"></div>'
               f'<div class="cap" style="padding:0 10px 8px">The {D["fills"]["in_band"]["n"]:,} contract-days in the band the '
-              'wheel sells, 2024 to October 2026. Points on the dotted line traded exactly at the mid.</div>',
+              'wheel sells, 2024 to October 2026. Points on the diagonal traded exactly at the mid.</div>',
               "LSEG TRDPRC_1 vs (BID + ASK) / 2", flush=True),
         "</div>",
         panel("Where trades printed, by sample", stats
@@ -846,7 +907,7 @@ def render(D: dict, prose: dict[str, str], draft: bool, P2: dict | None = None,
     ]
     second = None
     if P2:
-        second = "\n".join([page_top("Wheel Strategy · Five Stocks", "2"), *part2_html(P2, say, panel),
+        second = "\n".join([page_top("Wheel Strategy · Five Stocks", "2"), *part2_html(P2, say, panel, heading),
                             f'<a class="next" href="{names[0]}">← Back to Part I · The assignment, the wheel on Mastercard</a>',
                             "</div></body></html>"])
     if missing:
@@ -854,14 +915,16 @@ def render(D: dict, prose: dict[str, str], draft: bool, P2: dict | None = None,
     return "\n".join(parts), second
 
 
-def part2_html(P2: dict, say, panel) -> list[str]:
+def part2_html(P2: dict, say, panel, heading) -> list[str]:
     results, each_t, corr = part2_tables(P2)
     lo, hi = P2["windows"]["train"]["window"], P2["windows"]["test"]["window"]
     return [
-        '<div class="part" id="part2"><span class="no">Part II</span><h2>Further exploration: the same wheel on '
-        'five stocks</h2><span class="what">Not required by the assignment. The plain wheel of Part I, run on all five '
-        'stocks the screen picked at once.</span></div>',
-        '<div style="height:10px"></div>',
+        heading("part2", "Part II · Further exploration", "The same wheel on five stocks",
+                "Not required by the assignment. The plain wheel of Part I, run on all five stocks the screen "
+                "picked at once.",
+                [("Periods", f"{lo[0]} → {lo[1]}  ·  {hi[0]} → {hi[1]}"), ("Stocks", " · ".join(P2["stocks"])),
+                 ("Starting cash", "5 × $100,000"), ("Data", "Daily closes · LSEG")]),
+        '<div style="height:6px"></div>',
         panel("Motivation", say("part2-motivation") + '<div style="height:8px"></div>' + say("part2-setup")),
         '<div style="height:12px"></div>',
         panel("Results", results, "$500,000 to start in each period; each period starts from cash"),
