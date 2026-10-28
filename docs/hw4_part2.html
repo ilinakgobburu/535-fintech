@@ -19,6 +19,7 @@
     --accent:#3987e5; --accent-soft:rgba(57,135,229,.12);
     --wheel:#3987e5; --wheel-bid:#7FB0EE; --hold:#d95926; --cash:#7D8590; --aqua:#199e70;
     --up:#16C784; --down:#F0616D; --warn:#E8A93B;
+    --mk-put:#E8A93B; --mk-call:#d55181;   /* trade markers, checked against the blue wheel line */
     --font:'IBM Plex Sans',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;
     --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
     --radius:2px;
@@ -71,7 +72,9 @@
   .grid{display:grid;gap:12px;margin:12px 0}
   .g-2-1{grid-template-columns:minmax(0,2fr) minmax(0,1fr)}
   .g-1-1{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
-  @media (max-width:1000px){.g-2-1,.g-1-1{grid-template-columns:minmax(0,1fr)}}
+  @media (max-width:1300px){.g-2-1,.g-1-1{grid-template-columns:minmax(0,1fr)}}
+  .g-3{display:grid;gap:12px;grid-template-columns:repeat(3,minmax(0,1fr))}
+  @media (max-width:800px){.g-3{grid-template-columns:minmax(0,1fr)}}
   .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);min-width:0;
     display:flex;flex-direction:column;scroll-margin-top:66px}
   .panel > .ph{display:flex;align-items:center;gap:10px;min-height:36px;padding:0 14px;border-bottom:1px solid var(--line);
@@ -187,6 +190,7 @@
   a.next:hover{text-decoration:none;color:var(--text);border-color:var(--accent)}
 
   /* ---- hover notes -------------------------------------------------------- */
+  .fv{display:none} .fv.on{display:block}
   .tip{position:relative;display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;
     margin-left:6px;border:1px solid var(--axis);border-radius:50%;font:600 9.5px/1 var(--mono);color:var(--muted);
     cursor:help;text-transform:none;letter-spacing:0;flex:none}

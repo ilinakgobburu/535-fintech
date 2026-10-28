@@ -494,6 +494,8 @@ STYLE = """
   .g-2-1{grid-template-columns:minmax(0,2fr) minmax(0,1fr)}
   .g-1-1{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
   @media (max-width:1300px){.g-2-1,.g-1-1{grid-template-columns:minmax(0,1fr)}}
+  .g-3{display:grid;gap:12px;grid-template-columns:repeat(3,minmax(0,1fr))}
+  @media (max-width:800px){.g-3{grid-template-columns:minmax(0,1fr)}}
   .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);min-width:0;
     display:flex;flex-direction:column;scroll-margin-top:66px}
   .panel > .ph{display:flex;align-items:center;gap:10px;min-height:36px;padding:0 14px;border-bottom:1px solid var(--line);
@@ -1008,15 +1010,74 @@ function volCharts() {
        marker: {size: 9, color: css('--text-2')}, hovertemplate: 'realised %{y:.1f}%<extra></extra>'}],
       layout({hovermode: 'closest', yaxis: {ticksuffix: '%', rangemode: 'tozero'}}), cfg);
   }
-  if ($('plot-gdelta').offsetParent) {
-    const G = V.greeks;
-    const one = (id, y, fmt, label) => Plotly.react(id, [{x: G.date, y, mode: 'lines', line: {color: css('--wheel'), width: 1.6},
-      hovertemplate: fmt + '<extra>' + label + '</extra>'}],
-      layout({showlegend: false, hovermode: 'x unified', margin: {l: 64, r: 16, t: 8, b: 30}}), cfg);
-    one('plot-gdelta', G.delta, '%{y:,.0f} shares', 'delta');
-    one('plot-gvega', G.vega, '%{y:$,.0f} per vol point', 'vega');
-    one('plot-gtheta', G.theta, '%{y:$,.2f} per day', 'theta');
-  }
+  if ($('plot-gsurf').offsetParent) greekCharts(V.greeks, cfg);
+}
+
+// the lecture's surfaces: one greek over strike/spot and days to expiry, held long, per share
+const GK = {
+  put_delta:  {title: 'PUT   Δ = N(d₁) − 1', z: 'Δ per share', cp: 'P', key: 'delta', fmt: '%{z:.3f}'},
+  call_delta: {title: 'CALL   Δ = N(d₁)', z: 'Δ per share', cp: 'C', key: 'delta', fmt: '%{z:.3f}'},
+  put_theta:  {title: 'PUT   Θ   ($ / day)', z: 'Θ  $ / day', cp: 'P', key: 'theta', fmt: '%{z:$.3f} per day'},
+  call_theta: {title: 'CALL   Θ   ($ / day)', z: 'Θ  $ / day', cp: 'C', key: 'theta', fmt: '%{z:$.3f} per day'},
+  gamma:      {title: 'Γ   call = put', z: 'Γ  per $1', cp: null, key: 'gamma', fmt: '%{z:.4f} per $1'},
+  vega:       {title: 'ν   call = put   ($ / vol point)', z: 'ν  $ / vol point', cp: null, key: 'vega', fmt: '%{z:$.3f} per vol point'},
+};
+let gkView = 'put_delta';
+
+function greekCharts(G, cfg) {
+  const k = GK[gkView], Z = G.surfaces[gkView], flat = Z.flat();
+  const lo = Math.min(...flat), hi = Math.max(...flat), lift = 0.015 * (hi - lo);   // keeps a path drawn above the surface it sits on
+  const x0 = G.m[0], x1 = G.m[G.m.length - 1], y0 = G.dte[0], y1 = G.dte[G.dte.length - 1];
+  const far = $('plot-gsurf').clientWidth < 700 ? 1.75 : 1;            // a phone sees the whole surface
+  $('gk-info').innerHTML = `Held fixed, as in the lecture: Mastercard at <b>${money(G.spot, 2)}</b> (median close), implied vol `
+    + `<b>${pct(100 * G.sigma)}</b> (median of the options sold), rate <b>${pct(100 * G.rate)}</b>, no dividend yield.`;
+  // each option sold, traced from its sale (dot) to the session before expiry
+  const traced = (cp, name, color) => {
+    const o = G.sold.filter(s => s.cp === cp), X = [], Y = [], H = [], T = [];
+    o.forEach(s => { s.m.forEach((m, i) => { X.push(m); Y.push(s.dte[i]); H.push(s[k.key][i] + lift);
+                       T.push(`${s.occ}<br>${s.date[i]} · close ${money(s.close[i], 2)}<br>${s.dte[i]} days left · K/S ${num(m, 3)}`
+                              + `<br>${s.status}`); });
+                     X.push(null); Y.push(null); H.push(null); T.push(null); });
+    return [{type: 'scatter3d', mode: 'lines', name, legendgroup: cp, x: X, y: Y, z: H, text: T,
+             line: {color: css(color), width: 5}, hovertemplate: '%{text}<br>' + k.fmt + '<extra></extra>'},
+            {type: 'scatter3d', mode: 'markers', name, legendgroup: cp, showlegend: false,
+             x: o.map(s => s.m[0]), y: o.map(s => s.dte[0]), z: o.map(s => s[k.key][0] + lift), text: o.map(s => s.occ + ' sold ' + s.date[0]),
+             marker: {size: 5, color: css(color), line: {color: css('--base'), width: 1}}, hovertemplate: '%{text}<br>' + k.fmt + '<extra></extra>'}];
+  };
+  const ax = (title, extra = {}) => ({title: {text: title, font: {color: css('--muted'), size: 11}}, color: css('--muted'),
+    gridcolor: css('--line'), zerolinecolor: css('--axis'), backgroundcolor: css('--panel'), showbackground: true,
+    tickfont: {family: css('--mono'), size: 10, color: css('--muted')}, ...extra});
+  Plotly.react('plot-gsurf', [
+    {type: 'surface', x: G.m, y: G.dte, z: Z, showscale: false,
+     colorscale: [[0, '#0d366b'], [0.35, '#256abf'], [0.7, '#6da7ec'], [1, '#cde2fb']],
+     contours: {z: {show: false}}, lighting: {ambient: 0.85, diffuse: 0.4, specular: 0.05},
+     hovertemplate: 'K/S %{x:.2f}<br>%{y} days to expiry<br>' + k.fmt + '<extra></extra>'},
+    {type: 'scatter3d', mode: 'lines', x: [x0, x1, x1, x0, x0], y: [y0, y0, y1, y1, y0], z: [0, 0, 0, 0, 0],
+     line: {color: css('--text'), width: 4}, hoverinfo: 'skip', showlegend: false},
+    ...(k.cp !== 'C' ? traced('P', 'Puts sold', '--mk-put') : []), ...(k.cp !== 'P' ? traced('C', 'Calls sold', '--mk-call') : [])],
+    {paper_bgcolor: css('--panel'), font: {family: css('--font'), color: css('--muted'), size: 11},
+     title: {text: k.title, x: 0.5, y: 0.97, font: {family: css('--font'), color: css('--text'), size: 14}},
+     margin: {l: 0, r: 0, t: 34, b: 0}, legend: {orientation: 'h', x: 0, y: 1.0, font: {color: css('--text-2')}},
+     hoverlabel: {bgcolor: css('--panel-hover'), bordercolor: css('--axis'), font: {family: css('--mono'), color: css('--text'), size: 11.5}},
+     scene: {xaxis: ax('moneyness  K / S', {range: [x0, x1]}), yaxis: ax('expiry (DTE)', {range: [0, y1]}),
+             zaxis: ax(k.z, {range: [Math.min(lo, 0) - 4 * lift, Math.max(hi, 0) + 4 * lift]}),
+             aspectmode: 'manual', aspectratio: {x: 1.35, y: 1.35, z: 0.8},
+             camera: {eye: {x: 1.2 * far, y: -1.5 * far, z: 0.85 * far}, center: {x: 0, y: 0, z: -0.22}}, bgcolor: css('--panel')}},
+    cfg);
+  // three clocks, one at-the-money option: gamma and the vol piece of theta blow up into expiry, vega dies
+  const C = G.clocks, band = G.sold_days[1];
+  const clock = (id, y, title, fmt) => Plotly.react(id, [{x: C.dte, y, mode: 'lines', line: {color: css('--wheel'), width: 2},
+      hovertemplate: '%{x} days<br>' + fmt + '<extra></extra>'}],
+    layout({showlegend: false, hovermode: 'closest', margin: {l: 58, r: 12, t: 30, b: 38},
+      title: {text: title, x: 0.03, y: 0.96, font: {family: css('--font'), color: css('--text'), size: 12.5}},
+      xaxis: {title: {text: 'days to expiry'}, range: [0, 360]}, yaxis: {rangemode: 'tozero'},
+      shapes: [{type: 'rect', x0: 0, x1: band, xref: 'x', y0: 0, y1: 1, yref: 'paper', layer: 'below',
+                fillcolor: css('--accent-soft'), line: {width: 0}}],
+      annotations: [{x: band, xref: 'x', y: 1, yref: 'paper', xanchor: 'left', yanchor: 'top', showarrow: false,
+                     text: ' the wheel', font: {family: css('--mono'), size: 10, color: css('--text-2')}}]}), cfg);
+  clock('plot-gclk-gamma', C.gamma, 'Γ   ATM', '%{y:.4f} per $1');
+  clock('plot-gclk-theta', C.theta_vol.map(v => -v), '|Θ_vol|   ATM   ($ / day)', '%{y:$.3f} per day');
+  clock('plot-gclk-vega', C.vega, 'ν   ATM   ($ / vol point)', '%{y:$.3f} per vol point');
 }
 
 function fillHist() {
@@ -1109,6 +1170,11 @@ document.querySelectorAll('.surfview button').forEach(btn => btn.addEventListene
   $('surf-hint').style.display = surfView === '3d' ? '' : 'none';
   if (typeof Plotly !== 'undefined') { Plotly.purge('plot-surface'); volCharts(); }
 }));
+document.querySelectorAll('.gkview button').forEach(btn => btn.addEventListener('click', () => {
+  gkView = btn.dataset.gk;
+  document.querySelectorAll('.gkview button').forEach(b => b.classList.toggle('on', b === btn));
+  if (typeof Plotly !== 'undefined') volCharts();
+}));
 $('sm-date').addEventListener('change', e => {
   const ds = D.periods[period].vol.smile.date; let j = ds.findIndex(d => d >= e.target.value);
   if (j < 0) j = ds.length - 1; if (ds[j] > e.target.value && j > 0) j -= 1; smileAt(j);
@@ -1151,13 +1217,25 @@ def vol_tabs(D: dict) -> str:
                   'options actually sold; the thesis table uses a fixed yardstick instead, the 0.25-delta put of every '
                   'cycle, so its count can differ.</div>'
                   '<div id="vrp-info" class="pf-eq" style="margin-top:0"></div><div id="plot-vrp" style="height:320px"></div>'),
-        ("Greeks", '<div class="cap" style="margin:0 0 10px">The account\'s exposures at every close: delta in shares of '
-                  'Mastercard (the shares plus the short option), vega in dollars per vol point and theta in dollars per '
-                  'day, from each day\'s mark. A short put is long a little delta, short vega and collects theta; '
-                  'assignment turns the delta into the full position.</div>'
-                  '<div class="sub" style="margin-top:0">Delta, share equivalents</div><div id="plot-gdelta" style="height:190px"></div>'
-                  '<div class="sub">Vega, dollars per vol point</div><div id="plot-gvega" style="height:190px"></div>'
-                  '<div class="sub">Theta, dollars per day</div><div id="plot-gtheta" style="height:190px"></div>'),
+        ("Greeks", '<div class="cap" style="margin:0 0 10px">The four greeks the course uses, drawn as the lecture '
+                  'draws them: each over strike as a share of the close (K/S) and days to expiry, for one option held '
+                  'long, per share, with the white frame at zero. Θ is in dollars per day and ν in dollars per vol point. '
+                  'Each option the wheel sold is traced across its surface from the day it was sold (dot) to the session '
+                  'before its expiry.</div>'
+                  '<div class="switch gkview" style="margin:0 0 8px">'
+                  + "".join(f'<button data-gk="{k}" class="{"on" if i == 0 else ""}">{n}</button>' for i, (k, n) in enumerate(
+                      [("put_delta", "Put Δ"), ("call_delta", "Call Δ"), ("put_theta", "Put Θ"), ("call_theta", "Call Θ"),
+                       ("gamma", "Γ"), ("vega", "ν")]))
+                  + '</div><div id="gk-info" class="pf-eq" style="margin-top:0"></div>'
+                  '<div id="plot-gsurf" style="height:560px"></div>'
+                  '<div class="cap">Drag to rotate, scroll to zoom, double-click to reset.</div>'
+                  '<div class="sub">Three clocks, one at-the-money option</div>'
+                  '<div class="g-3"><div id="plot-gclk-gamma" style="height:220px"></div>'
+                  '<div id="plot-gclk-theta" style="height:220px"></div><div id="plot-gclk-vega" style="height:220px"></div></div>'
+                  '<div class="cap">Γ and the vol piece of Θ blow up into expiry (1/√T); ν dies (√T). The shaded band is '
+                  'where the wheel\'s monthly options live. These are long-option surfaces, as in the lecture; the wheel '
+                  'sold them, so its book carries the opposite signs: Θ &gt; 0, Γ &lt; 0, ν &lt; 0. Buying theta is '
+                  'selling gamma and vega.</div>'),
     ]
     return ('<div class="tabs">' + "".join(f'<button data-tab="{i}" class="{"on" if i == 0 else ""}">{escape(n)}</button>'
                                          for i, (n, _) in enumerate(panes)) + "</div>"

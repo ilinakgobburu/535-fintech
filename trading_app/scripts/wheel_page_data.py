@@ -188,7 +188,7 @@ SURFACE_GRID = np.round(np.arange(0.80, 1.2001, 0.025), 3)
 
 
 def vol_views(market: dict, result: dict, by_day: dict) -> dict:
-    """The smile on every session, the surface (strike/spot against date) and the account's greeks."""
+    """The smile on every session, the surface (strike/spot against date) and the greek surfaces."""
     days, smiles, surface = [], [], []
     for day in result["ledger"]["date"]:
         sm = W.smile(market, day, by_day)
@@ -202,10 +202,49 @@ def vol_views(market: dict, result: dict, by_day: dict) -> dict:
         row = np.interp(SURFACE_GRID, m, iv)
         row[(SURFACE_GRID < m.min()) | (SURFACE_GRID > m.max())] = np.nan
         surface.append([None if not np.isfinite(v) else round(float(v), 4) for v in row])
-    G = W.position_greeks(result, market)
     return {"smile": {"date": days, "s": smiles},
             "surface": {"date": days, "grid": SURFACE_GRID.tolist(), "iv": surface},
-            "greeks": {k: G[k].round(4).tolist() if k != "date" else list(G["date"]) for k in ("date", "delta", "gamma", "vega", "theta")}}
+            "greeks": greek_views(market, result)}
+
+
+GREEK_MONEYNESS = np.round(np.arange(0.70, 1.3001, 0.01), 2)          # strike / spot, as the lecture's surfaces
+GREEK_DAYS = np.r_[1:11, 12:41:2, 45:121:5]                            # finer where the wheel's options live
+CLOCK_DAYS = np.arange(1, 361)
+
+
+def greek_views(market: dict, result: dict) -> dict:
+    """
+    The lecture's greek surfaces over strike/spot and days to expiry, held at this window's typical
+    Mastercard (median close, median implied vol of the options sold, average bill rate, no yield),
+    with every option sold traced across them from its sale to the session before its expiry; and
+    the three clocks of one at-the-money option.
+    """
+    led = result["ledger"]
+    spot = float(led["stock_close"].median())
+    sold = [c for c in result["cycles"] if c.get("cp")]
+    sigma = float(np.median([c["iv"] for c in sold]))
+    rate = float(market["tbill"].reindex(led["date"]).mean())
+    g = W.spot_greeks(spot, GREEK_MONEYNESS[None, :] * spot, GREEK_DAYS[:, None] / W.DAYS_PER_YEAR, sigma, rate)
+    keys = ("call_delta", "put_delta", "call_theta", "put_theta", "gamma", "vega")
+    paths = []
+    for c in sold:
+        held = led[(led["short"] == c["cp"]) & (led["short_expiry"] == c["expiry"])
+                   & (led["date"] >= c["entry"]) & (led["date"] < c["expiry"])]
+        m = c["strike"] / held["stock_close"].to_numpy(dtype=float)
+        dte = (pd.Timestamp(c["expiry"]) - held["date"]).dt.days.to_numpy()
+        p = W.spot_greeks(spot, m * spot, dte / W.DAYS_PER_YEAR, sigma, rate)
+        side = "call" if c["cp"] == W.CALL else "put"
+        paths.append({"occ": occ(c["cp"], c["strike"], c["expiry"]), "cp": c["cp"], "status": c.get("status"),
+                      "date": list(held["date"]), "close": held["stock_close"].round(2).tolist(),
+                      "m": np.round(m, 4).tolist(), "dte": dte.tolist(),
+                      **{k: np.round(p[f"{side}_{k}" if k in ("delta", "theta") else k], 6).tolist()
+                         for k in ("delta", "theta", "gamma", "vega")}})
+    atm = W.spot_greeks(spot, spot, CLOCK_DAYS / W.DAYS_PER_YEAR, sigma, rate)
+    return {"spot": spot, "sigma": sigma, "rate": rate, "m": GREEK_MONEYNESS.tolist(), "dte": GREEK_DAYS.tolist(),
+            "surfaces": {k: np.round(g[k], 6).tolist() for k in keys}, "sold": paths,
+            "sold_days": [int(min(c["dte"] for c in sold)), int(max(c["dte"] for c in sold))],
+            "clocks": {"dte": CLOCK_DAYS.tolist(), "gamma": np.round(atm["gamma"], 6).tolist(),
+                       "theta_vol": np.round(atm["theta_vol"], 6).tolist(), "vega": np.round(atm["vega"], 6).tolist()}}
 
 
 def run_period(market: dict, window: tuple[str, str], pick: dict, base: dict, bench: pd.Series | None = None,

@@ -56,6 +56,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from scipy.special import ndtr
 
 from .pmcc_daily import carry, monthly_expiries, performance
 from .ric import parse_option_ric
@@ -748,6 +749,35 @@ def position_greeks(result: dict, market: dict) -> pd.DataFrame:
                     theta -= n * g["theta"] / DAYS_PER_YEAR      # bs theta is the holder's decay; a short collects it
         rows.append({"date": day, "delta": delta, "gamma": gamma, "vega": vega, "theta": theta, "iv": iv})
     return pd.DataFrame(rows)
+
+
+def spot_greeks(S, K, T, sigma: float, r: float) -> dict:
+    """
+    The greeks of a European call and put per share, held long, as the course's greeks deck
+    writes them: Black-Scholes on the spot, no dividend yield.
+
+        call_delta  N(d1)                      put_delta  N(d1) - 1
+        gamma       n(d1) / (S sigma sqrt T), the same for both
+        vega        S n(d1) sqrt T, per vol point (the formula's per-1.00 figure over 100)
+        call_theta  -S n(d1) sigma / (2 sqrt T) - r K e^(-rT) N(d2), per calendar day
+        put_theta   -S n(d1) sigma / (2 sqrt T) + r K e^(-rT) N(-d2), per calendar day
+        theta_vol   the first term alone, which the identities tie to the other two:
+                    theta_vol = -1/2 sigma^2 S^2 gamma = -(sigma / 2T) vega
+
+    S, K and T broadcast against each other, so one call draws a whole surface.
+    """
+    S, K, T = (np.asarray(x, dtype=float) for x in (S, K, T))
+    root_t = np.sqrt(T)
+    d1 = (np.log(S / K) + (r + 0.5 * sigma * sigma) * T) / (sigma * root_t)
+    d2 = d1 - sigma * root_t
+    pdf = np.exp(-0.5 * d1 * d1) / np.sqrt(2.0 * np.pi)
+    bond = r * K * np.exp(-r * T)
+    theta_vol = -S * pdf * sigma / (2.0 * root_t)
+    return {"call_delta": ndtr(d1), "put_delta": ndtr(d1) - 1.0,
+            "gamma": pdf / (S * sigma * root_t), "vega": S * pdf * root_t / 100.0,
+            "call_theta": (theta_vol - bond * ndtr(d2)) / DAYS_PER_YEAR,
+            "put_theta": (theta_vol + bond * ndtr(-d2)) / DAYS_PER_YEAR,
+            "theta_vol": theta_vol / DAYS_PER_YEAR}
 
 
 def monthly_nav(ledger: pd.DataFrame, capital: float, tbill: pd.Series) -> list[dict]:
