@@ -23,7 +23,7 @@ Mastercard was chosen by a rule rather than by hand. The S&P 500 as it stood on 
 
 ## setting
 // How the put delta, call delta and floor were chosen.
-The put delta, call delta and cost-basis floor were chosen on 2024-2025 by training Sharpe ratio, out of 18 settings, and committed ({{pick_commit}}) before 2026 was run; 2026 was then run once. The pick ranked **{{rank}} of 18** in 2026, and its Sharpe ratio ({{test_wheel_sharpe}}) was close to that of the default setting fixed before any data was seen ({{test_baseline_sharpe}}). Hence, the choice of setting added little, and the result depends far more on the stock and the period.
+The put delta, call delta and cost-basis floor were chosen on 2024-2025 by training Sharpe ratio, out of 18 settings, and committed ({{pick_commit}}) before 2026 was run; 2026 was then run once. The pick ranked **{{rank}} of 18** in 2026, and its Sharpe ratio ({{test_wheel_sharpe}}) was close to that of the default setting fixed before any data was seen ({{test_baseline_sharpe}}). The choice was then walked forward: made again on 2024 alone and judged on 2025, so that each year is traded with a setting picked only from the years before it. That pick ranked {{wf1_rank}} of 18 in 2025 (Sharpe ratio {{wf1_sharpe}}, against {{wf1_baseline_sharpe}} for the default), and across 2025-2026 the walk-forward picks earned a Sharpe ratio of **{{wf_sharpe}}**, against {{wf_baseline_sharpe}} for the default setting and {{wf_hold_sharpe}} for holding Mastercard. Hence, choosing the setting from past Sharpe ratios did not beat the default, and the result depends far more on the stock and the period than on the setting.
 
 ## fills
 // The assignment: "Any fill-price assumptions must be stated and justified with data."

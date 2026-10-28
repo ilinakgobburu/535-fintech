@@ -114,3 +114,43 @@ def test_trade_locations_fall_into_spread_bins_with_the_quote_edges_inside():
     assert b["counts"][6] == 2                                     # 0.5 and 0.55: the bin starting at the mid
     assert b["counts"][10] == 2                                    # 0.95 and 1.0: the last tenth, the ask included
     assert sum(b["pct"]) == pytest.approx(100.0)
+
+
+def account(days, values):
+    return pd.DataFrame({"date": pd.bdate_range(days, periods=len(values)), "nav": values})
+
+
+def test_one_fold_joined_is_that_fold():
+    from trading_app.lib.pmcc_daily import performance
+    bill = pd.Series(0.04, index=pd.bdate_range("2025-01-01", "2026-12-31"))
+    f = account("2025-01-02", np.linspace(100_000, 108_000, 250))
+    a, b = P.join_folds([f], 100_000, bill), performance(f, 100_000, bill)
+    for k in ("return_pct", "sharpe", "max_drawdown_pct", "months"):
+        assert a[k] == pytest.approx(b[k])
+
+
+def test_two_folds_compound_their_returns_and_put_their_months_end_to_end():
+    from trading_app.lib.pmcc_daily import performance
+    bill = pd.Series(0.04, index=pd.bdate_range("2025-01-01", "2026-12-31"))
+    rng = np.random.default_rng(0)
+    f1 = account("2025-01-02", 100_000 * np.cumprod(1 + rng.normal(0.0004, 0.004, 255)))
+    f2 = account("2026-01-02", 100_000 * np.cumprod(1 + rng.normal(0.0004, 0.004, 200)))
+    j = P.join_folds([f1, f2], 100_000, bill)
+    p1, p2 = performance(f1, 100_000, bill), performance(f2, 100_000, bill)
+    assert j["months"] == p1["months"] + p2["months"]
+    assert j["return_pct"] == pytest.approx(100 * ((1 + p1["return_pct"] / 100) * (1 + p2["return_pct"] / 100) - 1))
+    # each month's return is the fold's own: the second fold's first month is measured from where the first ended
+    assert list(j["monthly_returns"].values()) == pytest.approx(
+        list(p1["monthly_returns"].values()) + list(p2["monthly_returns"].values()))
+    assert j["max_drawdown_pct"] <= min(p1["max_drawdown_pct"], p2["max_drawdown_pct"]) + 1e-12
+
+
+def test_folds_that_overlap_are_refused():
+    bill = pd.Series(0.04, index=pd.bdate_range("2025-01-01", "2026-12-31"))
+    with pytest.raises(ValueError):
+        P.join_folds([account("2025-01-02", [100_000.0] * 30), account("2025-01-20", [100_000.0] * 30)], 100_000, bill)
+
+
+def test_the_tie_count_reads_four_decimals():
+    grid = [{"sharpe": 2.68804}, {"sharpe": 2.68801}, {"sharpe": 2.6879}, {"sharpe": 1.5}]
+    assert len(P.tied_at_top(grid)) == 2

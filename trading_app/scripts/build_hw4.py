@@ -107,6 +107,18 @@ def part2_facts(P2: dict) -> dict[str, str]:
     return f
 
 
+def wf_facts(D: dict) -> dict[str, str]:
+    WF = D.get("walk_forward")
+    if not WF:
+        return {}
+    j, one = WF["joined"], WF["folds"][0]["books"]
+    return {"wf_sharpe": num(j["wheel"]["sharpe"]), "wf_baseline_sharpe": num(j["baseline"]["sharpe"]),
+            "wf_hold_sharpe": num(j["hold"]["sharpe"]), "wf_return": pct(j["wheel"]["return_pct"], sign=True),
+            "wf_months": str(j["wheel"]["months"]), "wf1_sharpe": num(one["wheel"]["sharpe"]),
+            "wf1_baseline_sharpe": num(one["baseline"]["sharpe"]), "wf1_rank": str(WF["folds"][0]["rank"]),
+            "wf_commit": short_commit(D["commits"]["wf_config"])}
+
+
 def facts(D: dict) -> dict[str, str]:
     t = D["periods"]["test"]["books"]
     w, h, c, b, wb = t["wheel"], t["hold"], t["cash"], t["baseline"], t["wheel_bid"]
@@ -128,6 +140,7 @@ def facts(D: dict) -> dict[str, str]:
         "rw_vr": f'{num(rv["random_walk_vr_mean"])} ± {num(rv["random_walk_vr_sd"])}',
         "universe": str(rv["universe"]), "rank": str(D["selection"]["rank"]),
         "pick_commit": short_commit(D["commits"]["pick"]), "screen_commit": short_commit(D["commits"]["screen_picks"]),
+        **wf_facts(D),
         "band_n": f'{f["n"]:,}', "band_location": num(f["median_location"]), "band_slope": num(f["slope"], 3),
         "band_r2": num(f["r2"], 3), "band_within": pct(f["within_quarter_pct"], 0),
         "band_at_bid": pct(f["at_or_below_bid_pct"], 0), "band_outside": pct(f["outside_pct"], 0),
@@ -278,6 +291,43 @@ def grid_table(D: dict) -> str:
         rows.append(row)
     return table(["Put Δ", "Call Δ", "Floor", "Train Sharpe", "Train return", "Test Sharpe", "Test return"],
                  rows, left=3, cls="small")
+
+
+def walk_forward_table(D: dict) -> str:
+    """The setting chosen again each year with only the years before it: each fold, then the folds joined."""
+    WF = D.get("walk_forward")
+    if not WF:
+        return ""
+    yr = lambda w: w[0][:4] if w[0][:4] == w[1][:4] else f"{w[0][:4]}–{w[1][2:4]}"
+    rows, notes = [], []
+    for f in WF["folds"]:
+        p, b = f["pick"], f["books"]
+        tie = f["tied_calls"] > 1
+        rows.append([f"Fold {f['fold']}", f"{yr(f['train'])} → {yr(f['test'])}",
+                     f"{num(p['put_delta'])} / {num(p['call_delta'])}{'*' if tie else ''} / {'on' if p['floor'] else 'off'}",
+                     pct(b["wheel"]["return_pct"], sign=True), num(b["wheel"]["sharpe"]), num(b["baseline"]["sharpe"]),
+                     num(b["hold"]["sharpe"]), f"{f['rank']} of 18"])
+        if tie:
+            notes.append(f'* In fold {f["fold"]} the pick\'s put was assigned {f["train_assigned"]} times in '
+                         f'{f["train_puts"]} during training, so {"no call was" if not f["train_calls"] else "few calls were"} '
+                         f'sold: the {f["tied"]} settings with that put tied at a training Sharpe of {num(f["train_sharpe"])}, '
+                         f'and the registered tie rule (the earlier setting in the grid) set the call delta.')
+    j, first, last = WF["joined"], WF["folds"][0]["test"], WF["folds"][-1]["test"]
+    rows.append(["Joined", f"→ {first[0][:4]}–{last[1][2:4]}", "", pct(j["wheel"]["return_pct"], sign=True),
+                 num(j["wheel"]["sharpe"]), num(j["baseline"]["sharpe"]), num(j["hold"]["sharpe"]), "", "__hi__"])
+    c = D["commits"]
+    notes.append(f'Each fold starts from $100,000; the last row puts the {j["wheel"]["months"]} month-end returns end to end '
+                 f'and compounds the returns. Fold 2 is the registered test above. The walk-forward was registered '
+                 f'({escape(short_commit(c["wf_config"]))}) before fold 1 was trained, and fold 1\'s pick committed '
+                 f'({escape(short_commit(c["wf_pick"]))}) before 2025 was run. 2025 lay inside fold 2\'s training window, '
+                 f'so it is out of sample for fold 1\'s pick, not unseen data.')
+    b = D["baseline"]
+    return ('<div class="cap" style="margin-top:0">Sharpe ratios of the pick, the default setting '
+            f'({num(b["put_delta"])} / {num(b["call_delta"])} / {"on" if b["floor"] else "off"}) and buy and hold; '
+            'rank is the pick\'s among the 18 settings on the year it was tested.</div>'
+            + table(["", "Trained → tested", "Put / call / floor", "Return", "Pick", "Default", "Hold", "Rank"],
+                    rows, left=3, cls="small")
+            + "".join(f'<div class="cap">{n}</div>' for n in notes))
 
 
 def fill_tables(D: dict) -> tuple[str, str]:
@@ -1391,7 +1441,9 @@ def render(D: dict, prose: dict[str, str], draft: bool, P2: dict | None = None,
         '<div class="grid g-1-1">',
         panel("Stock choice", say("stock") + '<div class="sub">The screen, top ten</div>' + screen_table(D),
               f'{D["reversal"]["ranked"]} of {D["reversal"]["eligible"]} eligible stocks ranked'),
-        panel("Setting choice", say("setting") + setting_verdict(D) + '<div class="sub">All 18 settings, at mid fills</div>' + grid_table(D),
+        panel("Setting choice", say("setting") + setting_verdict(D) + '<div class="sub">All 18 settings, at mid fills</div>' + grid_table(D)
+              + '<div class="sub">Walk-forward: the choice made again each year, from the years before it</div>'
+              + walk_forward_table(D),
               "highlighted: the pick"),
         "</div>",
         (f'<a class="next" href="{names[1]}">Next: Part II · Further exploration, the same wheel on five stocks →</a>'

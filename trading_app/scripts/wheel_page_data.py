@@ -49,6 +49,9 @@ COVERAGE = REPO / "cache" / f"wheel_mr_coverage_{TICKER}.json"
 SCREEN = REPO / "cache" / "mr_screen.json"
 CBOE_PUT = REPO / "cache" / "cboe" / "PUT_History.csv"     # config/wheel_mr.yaml added_2026_10_28_benchmark
 OUT = REPO / "cache" / f"wheel_page_{TICKER}.json"
+WF_CONFIG = REPO / "config" / "wheel_wf.yaml"                          # the walk-forward of the setting
+WF_PICK = REPO / "config" / "wheel_wf_picks" / f"{TICKER}.json"
+WF_RESULTS = REPO / "cache" / f"wheel_wf_results_{TICKER}.json"
 BAND = {"delta": (0.10, 0.40), "dte": (20, 36)}     # the contracts the wheel sells: monthly, out of the money
 TOL = 1e-6
 
@@ -318,6 +321,69 @@ def reproduce(periods: dict, stored: dict, picked: dict) -> list[str]:
     return checks
 
 
+def join_folds(navs: list[pd.DataFrame], capital: float, tbill: pd.Series) -> dict:
+    """
+    Out-of-sample folds, each run from `capital`, as one record: each fold's account values are
+    scaled by where the folds before it ended, so performance() puts their month-end returns end to
+    end for the Sharpe ratio, compounds their returns and measures the drawdown along the whole path.
+    """
+    parts, scale, last = [], 1.0, None
+    for f in navs:
+        d = pd.to_datetime(f["date"])
+        if last is not None and d.iloc[0] <= last:
+            raise ValueError("folds must follow one another without overlapping")
+        parts.append(pd.DataFrame({"date": d, "nav": scale * f["nav"].to_numpy(dtype=float)}))
+        scale *= float(f["nav"].iloc[-1]) / capital
+        last = d.iloc[-1]
+    return performance(pd.concat(parts, ignore_index=True), capital, tbill)
+
+
+def tied_at_top(grid: list[dict]) -> list[dict]:
+    """The settings that share the best training Sharpe, to the 4 decimals the tie rule uses."""
+    best = max(round(r["sharpe"], 4) for r in grid)
+    return [r for r in grid if round(r["sharpe"], 4) == best]
+
+
+WF_BOOKS = ("wheel", "wheel_bid", "baseline", "hold", "cash", "putw")
+
+
+def walk_forward(market: dict, periods: dict, picked: dict, stored: dict, base: dict,
+                 bench: pd.Series | None) -> dict | None:
+    """
+    config/wheel_wf.yaml: the setting chosen again each year with only the years before it. Fold 1
+    (picked on 2024, run on 2025) is run here and checked against its recorded result; fold 2 is
+    the class run's 2026 test. Each fold's books, and the two joined end to end.
+    """
+    if not (WF_PICK.exists() and WF_RESULTS.exists()):
+        return None
+    w = yaml.safe_load(WF_CONFIG.read_text())["windows"]["test"]
+    wf_pick, wf_stored = json.loads(WF_PICK.read_text()), json.loads(WF_RESULTS.read_text())
+    one = run_period(market, (str(w["start"]), str(w["end"])), wf_pick["pick"], base, bench)
+    names = {"pick_mid": "wheel", "pick_cross": "wheel_bid", "baseline_mid": "baseline",
+             "buy_and_hold": "hold", "cash": "cash"}
+    for key, book in names.items():
+        for f in ("sharpe", "return_pct", "max_drawdown_pct"):
+            a, b = one["books"][book][f], wf_stored["results"][key][f]
+            if not (abs(a - b) < TOL or (np.isnan(a) and np.isnan(b))):
+                raise SystemExit(f"walk-forward fold 1 {key} {f}: {a} now, {b} recorded: the run does not reproduce")
+    capital = float(one["runs"]["wheel"]["start_cash"])
+    two = periods["test"]
+    folds = [(one, wf_pick, wf_stored), (two, picked, stored)]
+    out = [{"fold": i + 1, "train": P["train"], "test": per["window"], "pick": P["pick"],
+            "train_sharpe": P["train_sharpe_mid"], "tied": len(tied_at_top(P["train_grid_mid"])),
+            "tied_calls": len({r["call_delta"] for r in tied_at_top(P["train_grid_mid"])}),
+            **{f"train_{k}": tied_at_top(P["train_grid_mid"])[0][k] for k in ("puts", "assigned", "calls")},
+            "rank": S["pick_rank_of_18"], "books": {k: per["books"][k] for k in WF_BOOKS if k in per["books"]}}
+           for i, (per, P, S) in enumerate(folds)]
+    joined = {}
+    for k in WF_BOOKS:
+        if all(k in per["nav"] for per, _, _ in folds):
+            perf = join_folds([pd.DataFrame({"date": per["nav"]["date"], "nav": per["nav"][k]}) for per, _, _ in folds],
+                              capital, market["tbill"])
+            joined[k] = {f: perf[f] for f in ("return_pct", "sharpe", "max_drawdown_pct", "months")}
+    return {"folds": out, "joined": joined, "same_pick": wf_pick["pick"] == picked["pick"]}
+
+
 # --------------------------------------------------------------------------
 # fill evidence
 # --------------------------------------------------------------------------
@@ -461,6 +527,13 @@ def commit(path: Path, added: bool = True) -> str:
     return subprocess.run(args, cwd=REPO, capture_output=True, text=True).stdout.strip()
 
 
+def commit_adding(path: Path, text: str) -> str:
+    """The commit that first put `text` into `path`: for a dated key added to a config later."""
+    args = ["git", "log", "--format=%h %s", "--reverse", "-S", text, "--", str(path)]
+    out = subprocess.run(args, cwd=REPO, capture_output=True, text=True).stdout.strip().splitlines()
+    return out[0] if out else ""
+
+
 def data_counts(cache: Path, market: dict) -> dict:
     last = {}
     for line in (cache / "requests.jsonl").read_text().splitlines():
@@ -495,6 +568,11 @@ def main() -> int:
                                 pick, base, bench, by_day) for name in ("train", "test")}
     checks = reproduce(periods, stored, picked)
     print(f"reproduced {len(checks)} recorded figures")
+    wf = walk_forward(market, periods, picked, stored, base, bench)
+    if wf:
+        j = wf["joined"]
+        print(f"walk-forward 2025-2026: wheel {j['wheel']['return_pct']:+.1f}% Sharpe {j['wheel']['sharpe']:.2f}; "
+              f"hold {j['hold']['return_pct']:+.1f}% Sharpe {j['hold']['sharpe']:.2f}")
 
     q = trade_frame(cache, market)
     fills = fill_evidence(q, market, periods)
@@ -510,10 +588,11 @@ def main() -> int:
                       "test_grid_mid": stored["test_grid_mid"], "rank": stored["pick_rank_of_18"],
                       "spearman": stored["spearman_train_test"], "helped": stored["selection_helped"]},
         "coverage": json.loads(COVERAGE.read_text()) if COVERAGE.exists() else None,
+        "walk_forward": wf,
         "data": data_counts(cache, market), "tests": count_tests(), "reproduced": checks,
         "commits": {"rules": commit(REPO / "config" / "wheel.yaml"),
-                    "class_run": commit(CONFIG), "screen_picks": commit(CONFIG, added=False),
-                    "pick": commit(PICK)},
+                    "class_run": commit(CONFIG), "screen_picks": commit_adding(CONFIG, "added_2026_10_26:"),
+                    "pick": commit(PICK), "wf_config": commit(WF_CONFIG), "wf_pick": commit(WF_PICK)},
     }
     OUT.write_text(json.dumps(jsonable(out), separators=(",", ":")))
     print(f"wrote {OUT} ({OUT.stat().st_size / 1e3:.0f} kB)")
