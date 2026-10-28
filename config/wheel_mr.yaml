@@ -51,3 +51,17 @@ added_2026_10_26:   # config/mr_screen.yaml's output (cache/mr_screen.json), rec
     the median variance ratio was 0.84, so reversal was common across the market in that decade, not
     only in these five. The five scored 0.572-0.587 against 0.600 for the tenth, a spread well inside
     the measure's noise of about 0.14
+
+added_2026_10_28_benchmark:   # chosen by the user after the test was run; it is reported, and nothing is chosen from it
+  index: Cboe S&P 500 PutWrite Index (PUT)
+  what_it_is: >
+    sells a one-month at-the-money S&P 500 put each month, fully secured by cash held in T-bills: the
+    industry's standard for systematic cash-secured put selling, with no stock picking and no covered calls.
+    Like the wheel here, its collateral earns T-bill interest
+  source: >
+    Cboe's published daily history (cdn.cboe.com/api/global/us_indices/daily_prices/PUT_History.csv),
+    saved to cache/cboe/PUT_History.csv on 2026-10-28; LSEG does not license Cboe index data to this
+    account (TS.Interday.UserNotPermission for .PUT). Its returns over both windows were looked at to check
+    the data before this entry was written
+  book: $100,000 at each window's first session, scaled by the index's closing level, on the wheel's sessions
+  reported: return, Sharpe ratio (as config/wheel.yaml defines it), maximum drawdown and volatility, beside the wheel, buy and hold and T-bills
