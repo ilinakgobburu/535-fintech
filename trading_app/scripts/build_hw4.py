@@ -347,8 +347,7 @@ def page_data(D: dict) -> dict:
             # the window ends before its month does (2026 stops on 16 October)
             "partial_last_month": bool((pd.Timestamp(P["window"][1]) + pd.offsets.BDay(1)).month
                                        == pd.Timestamp(P["window"][1]).month)}
-    F = D["fills"]["scatter"]
-    out["scatter"] = F
+    out["locations"] = D["fills"]["locations"]
     return rounded(out)
 
 
@@ -864,18 +863,23 @@ function drawTabCharts() {
   }
 }
 
-function scatter() {
-  const S = D.scatter, put = S.cp.map(c => c === 'P');
-  const pick = (arr, want) => arr.filter((_, i) => put[i] === want);
-  const hi = Math.max(...S.mid, ...S.trade);
+function fillHist() {
+  const H = D.locations, n = H.labels.length, inside = H.labels.map((_, i) => i > 0 && i < n - 1);
+  const bar = (keep, name, color) => ({type: 'bar', name, x: H.labels.map((l, i) => keep[i] ? l : null).filter(v => v !== null),
+    y: H.pct.filter((_, i) => keep[i]), marker: {color, line: {color: css('--panel'), width: 1}},
+    hovertemplate: '%{y:.1f}% of trades<extra>%{x}</extra>'});
+  const at = (pos, text) => ({x: pos, xref: 'x', y: 1.02, yref: 'paper', text, showarrow: false, yanchor: 'bottom',
+    font: {family: css('--mono'), size: 11, color: css('--text-2')}});
+  const rule = pos => ({type: 'line', x0: pos, x1: pos, xref: 'x', y0: 0, y1: 1, yref: 'paper', layer: 'above',
+    line: {color: css('--muted'), width: 1}});
   Plotly.newPlot('plot-fill', [
-    {x: pick(S.mid, true), y: pick(S.trade, true), name: 'Puts', mode: 'markers', marker: {size: 5, color: css('--wheel'), opacity: .55},
-     text: pick(S.date, true), hovertemplate: 'mid %{x:$.2f} → trade %{y:$.2f}<br>%{text}<extra>put</extra>'},
-    {x: pick(S.mid, false), y: pick(S.trade, false), name: 'Calls', mode: 'markers', marker: {size: 5, color: css('--aqua'), opacity: .55},
-     text: pick(S.date, false), hovertemplate: 'mid %{x:$.2f} → trade %{y:$.2f}<br>%{text}<extra>call</extra>'},
-    {x: [0, hi], y: [0, hi], name: 'Trade = mid', mode: 'lines', line: {color: css('--muted'), width: 1}, hoverinfo: 'skip'}],
-    layout({hovermode: 'closest', margin: {l: 62, r: 18, t: 34, b: 48},
-            xaxis: {title: {text: 'closing mid'}, tickformat: '$,.0f'}, yaxis: {title: {text: 'last trade of the day'}, tickformat: '$,.0f'}}),
+    bar(inside, 'Inside the quote', css('--wheel')),
+    bar(inside.map(v => !v), 'Outside the quote', 'rgba(125,133,144,0.55)')],
+    layout({bargap: 0.18, hovermode: 'closest', margin: {l: 52, r: 16, t: 54, b: 70},
+            legend: {orientation: 'h', x: 0, xanchor: 'left', y: 1.14, yanchor: 'bottom'},
+            xaxis: {type: 'category', categoryorder: 'array', categoryarray: H.labels, tickangle: -35},
+            yaxis: {ticksuffix: '%', rangemode: 'tozero'},
+            shapes: [0.5, 5.5, 10.5].map(rule), annotations: [at(0.5, 'bid'), at(5.5, 'mid'), at(10.5, 'ask')]}),
     {displayModeBar: false, responsive: true});
 }
 
@@ -907,7 +911,7 @@ document.querySelectorAll('.tabs button').forEach(btn => btn.addEventListener('c
   drawTabCharts();                    // a chart drawn in a hidden tab has no width, so tabs draw when shown
 }));
 show('test');
-if (typeof Plotly !== 'undefined') scatter();
+if (typeof Plotly !== 'undefined') fillHist();
 """
 
 
@@ -1036,10 +1040,12 @@ def render(D: dict, prose: dict[str, str], draft: bool, P2: dict | None = None,
         panel("Fill prices", say("fills") + '<div class="sub">Notes</div>' + say("fills-note")
               + '<div class="sub">The stress test: the same wheel selling every option at the bid</div>'
               + fill_stress_table(D)),
-        panel("Last trade against the closing mid", '<div id="plot-fill" style="height:380px"></div>'
-              f'<div class="cap" style="padding:0 10px 8px">The {D["fills"]["in_band"]["n"]:,} contract-days in the band the '
-              'wheel sells, 2024 to October 2026. Points on the diagonal traded exactly at the mid.</div>',
-              "LSEG TRDPRC_1 vs (BID + ASK) / 2", flush=True),
+        panel("Where the day's last trade printed in the quote", '<div id="plot-fill" style="height:340px"></div>'
+              f'<div class="cap" style="padding:0 10px 8px">Each bar is the share of the {D["fills"]["in_band"]["n"]:,} '
+              'contract-days in the band the wheel sells, 2024 to October 2026, whose last trade printed in that part of '
+              'the closing quote: 0 is the bid, 0.5 the mid, 1 the ask. Inside the quote the prints centre on the mid. '
+              'Prints outside it mostly reflect the last trade coming hours before the closing quote.</div>',
+              "LSEG TRDPRC_1 against the closing BID and ASK", flush=True),
         "</div>",
         panel("Where trades printed, by sample", stats
               + "<details><summary>Each option the wheel sold, on the day it sold it</summary>" + own + "</details>",

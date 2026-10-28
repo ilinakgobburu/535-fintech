@@ -101,3 +101,16 @@ def test_the_cboe_file_is_read_as_dated_closing_levels(tmp_path):
     f.write_text("DATE,PUT\n01/02/2026,3341.32\n01/05/2026,3350.00\n")
     s = P.read_cboe(f)
     assert list(s.index) == list(pd.to_datetime(["2026-01-02", "2026-01-05"])) and s.iloc[-1] == 3350.0
+
+
+def test_trade_locations_fall_into_spread_bins_with_the_quote_edges_inside():
+    # 0 is the bid, 1 the ask; a print at the bid or the ask is inside the quote
+    loc = np.array([-0.3, 0.0, 0.05, 0.5, 0.55, 0.95, 1.0, 1.4])
+    b = P.location_bins(loc)
+    assert b["labels"][0] == "below the bid" and b["labels"][-1] == "above the ask"
+    assert len(b["counts"]) == 12 and sum(b["counts"]) == len(loc)
+    assert b["counts"][0] == 1 and b["counts"][-1] == 1            # one each side of the quote
+    assert b["counts"][1] == 2                                     # 0.0 and 0.05: from the bid to a tenth of the way
+    assert b["counts"][6] == 2                                     # 0.5 and 0.55: the bin starting at the mid
+    assert b["counts"][10] == 2                                    # 0.95 and 1.0: the last tenth, the ask included
+    assert sum(b["pct"]) == pytest.approx(100.0)

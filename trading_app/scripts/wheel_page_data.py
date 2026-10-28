@@ -82,6 +82,19 @@ def print_stats(df: pd.DataFrame) -> dict:
     }
 
 
+def location_bins(loc) -> dict:
+    """
+    Where trades printed in the quote, 0 the bid and 1 the ask, in tenths, with a bin either side for
+    prints outside it. A print at the bid or the ask is inside the quote.
+    """
+    loc = np.asarray(loc, float)
+    inside = loc[(loc >= 0) & (loc <= 1)]
+    tenths = np.minimum((inside * 10).astype(int), 9)          # the ask itself goes in the last tenth
+    counts = [int((loc < 0).sum())] + [int((tenths == i).sum()) for i in range(10)] + [int((loc > 1).sum())]
+    labels = ["below the bid"] + [f"{i / 10:.1f}–{(i + 1) / 10:.1f}" for i in range(10)] + ["above the ask"]
+    return {"labels": labels, "counts": counts, "pct": [100.0 * c / max(len(loc), 1) for c in counts]}
+
+
 def realised_vol(close: pd.Series, start, end) -> float:
     """Annualised standard deviation of daily log returns from `start`'s close to `end`'s."""
     c = close[(close.index >= pd.Timestamp(start)) & (close.index <= pd.Timestamp(end))]
@@ -291,9 +304,9 @@ def fill_evidence(q: pd.DataFrame, market: dict, periods: dict) -> dict:
            "in_band_test": print_stats(band[band["date"] >= test_lo]),
            "in_band_volume_median": float(band["volume"].median()),
            "in_band_oi_median": float(band["oi"].median())}
-    # a sample of the band for the scatter: every point, the band is small enough
-    out["scatter"] = {"mid": band["mid"].round(3).tolist(), "trade": band["trade"].round(3).tolist(),
-                      "cp": band["cp"].tolist(), "date": [str(d.date()) for d in band["date"]]}
+    # where in the quote each trade of the band printed: 0 the bid, 0.5 the mid, 1 the ask
+    two = band[band["ask"] > band["bid"]]
+    out["locations"] = location_bins((two["trade"] - two["bid"]) / (two["ask"] - two["bid"]))
     # the book's own fills: each contract it sold, on the day it sold it
     idx = q.set_index(["date", "ric"])
     own = []
