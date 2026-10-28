@@ -868,7 +868,7 @@ function drawTabCharts() {
 }
 
 // ---- volatility ------------------------------------------------------------
-let smIndex = 0;
+let smIndex = 0, surfView = 'heat';
 function smileInterp(sm, m) {
   const xs = sm.m, ys = sm.iv;
   if (m < xs[0] || m > xs[xs.length - 1]) return null;
@@ -920,7 +920,48 @@ function volCharts() {
   const P = D.periods[period], V = P.vol, cfg = {displayModeBar: false, responsive: true};
   if (!V || typeof Plotly === 'undefined') return;
   if ($('plot-smile').offsetParent) smileAt(smIndex);
-  if ($('plot-surface').offsetParent) {
+  if ($('plot-surface').offsetParent && surfView === '3d') {
+    const S = V.surface, z = S.grid.map((_, j) => S.iv.map(row => row[j] == null ? null : 100 * row[j]));
+    const all = z.flat().filter(v => v != null).sort((a, b) => a - b);
+    const q = f => all[Math.floor(f * (all.length - 1))];
+    const idx = new Map(S.date.map((d, i) => [d, i]));
+    const close = new Map(P.ledger.map(r => [r[0], r[1]]));
+    const onSurface = e => {                                  // the sold strike, lifted onto that day's surface
+      const i = idx.get(e.date); if (i == null) return null;
+      const m = e.strike / close.get(e.date), g = S.grid, row = S.iv[i];
+      const j = g.findIndex((v, k) => k > 0 && g[k - 1] <= m && m <= v);     // the grid cell the strike falls in
+      if (j < 1 || row[j] == null || row[j - 1] == null) return null;
+      return 100 * (row[j - 1] + (row[j] - row[j - 1]) * (m - g[j - 1]) / (g[j] - g[j - 1]));
+    };
+    const sold = P.blotter.filter(e => e.cp && e.side === 'SELL').map(e => ({e, z: onSurface(e)})).filter(o => o.z != null);
+    const pts = (cp, name, color) => {
+      const o = sold.filter(x => x.e.cp === cp);
+      return {type: 'scatter3d', mode: 'markers', name, y: o.map(x => x.e.date), x: o.map(x => 100 * x.e.strike / close.get(x.e.date)),
+        z: o.map(x => x.z + 1.5), marker: {size: 6, color: css(color), line: {color: css('--base'), width: 1}},
+        text: o.map(x => x.e.occ), hovertemplate: '%{text}<br>strike %{x:.1f}% of close<br>implied vol %{z:.1f}%<extra></extra>'};
+    };
+    const ax = (title, extra = {}) => ({title: {text: title, font: {color: css('--muted'), size: 11}}, color: css('--muted'),
+      gridcolor: css('--line'), zerolinecolor: css('--axis'), backgroundcolor: css('--panel'), showbackground: true,
+      tickfont: {family: css('--mono'), size: 10, color: css('--muted')}, ...extra});
+    Plotly.react('plot-surface', [
+      {type: 'surface', x: S.grid.map(g => 100 * g), y: S.date, z: S.iv.map(row => row.map(v => v == null ? null : 100 * v)),
+       cmin: q(0.03), cmax: q(0.97), connectgaps: false,
+       colorscale: [[0, '#0d366b'], [0.35, '#256abf'], [0.7, '#6da7ec'], [1, '#cde2fb']], showscale: true,
+       colorbar: {title: {text: 'implied vol', side: 'right'}, ticksuffix: '%', thickness: 10, outlinewidth: 0, len: 0.7,
+                  tickfont: {family: css('--mono'), color: css('--muted'), size: 10}},
+       contours: {z: {show: false}}, lighting: {ambient: 0.85, diffuse: 0.4, specular: 0.05},
+       hovertemplate: '%{y}<br>strike %{x:.1f}% of close<br>implied vol %{z:.1f}%<extra></extra>'},
+      pts('P', 'Puts sold', '--mk-put'), pts('C', 'Calls sold', '--mk-call')],
+      {paper_bgcolor: css('--panel'), font: {family: css('--font'), color: css('--muted'), size: 11},
+       margin: {l: 0, r: 0, t: 10, b: 0}, legend: {orientation: 'h', x: 0, y: 1.02, font: {color: css('--text-2')}},
+       hoverlabel: {bgcolor: css('--panel-hover'), bordercolor: css('--axis'), font: {family: css('--mono'), color: css('--text'), size: 11.5}},
+       scene: {xaxis: ax('strike, % of close', {ticksuffix: '%', autorange: 'reversed'}), yaxis: ax('date'),
+               zaxis: ax('implied vol', {ticksuffix: '%', range: [q(0.01), q(0.995) + 2]}),
+               aspectmode: 'manual', aspectratio: {x: 1.25, y: 1.9, z: 0.75},
+               camera: {eye: {x: 1.75, y: -1.25, z: 0.85}, center: {x: 0, y: 0, z: -0.15}},
+               domain: {x: [0, 1], y: [0, 1]}, bgcolor: css('--panel')}},
+      cfg);
+  } else if ($('plot-surface').offsetParent) {
     const S = V.surface, z = S.grid.map((_, j) => S.iv.map(row => row[j] == null ? null : 100 * row[j]));
     const all = z.flat().filter(v => v != null).sort((a, b) => a - b);
     const q = f => all[Math.floor(f * (all.length - 1))];
@@ -1054,6 +1095,12 @@ document.querySelectorAll('.tabs button').forEach(btn => btn.addEventListener('c
   drawTabCharts(); volCharts();       // a chart drawn in a hidden tab has no width, so tabs draw when shown
 }));
 $('sm-range').addEventListener('input', e => smileAt(+e.target.value));
+document.querySelectorAll('.surfview button').forEach(btn => btn.addEventListener('click', () => {
+  surfView = btn.dataset.sv;
+  document.querySelectorAll('.surfview button').forEach(b => b.classList.toggle('on', b === btn));
+  $('surf-hint').style.display = surfView === '3d' ? '' : 'none';
+  if (typeof Plotly !== 'undefined') { Plotly.purge('plot-surface'); volCharts(); }
+}));
 $('sm-date').addEventListener('change', e => {
   const ds = D.periods[period].vol.smile.date; let j = ds.findIndex(d => d >= e.target.value);
   if (j < 0) j = ds.length - 1; if (ds[j] > e.target.value && j > 0) j -= 1; smileAt(j);
@@ -1084,7 +1131,12 @@ def vol_tabs(D: dict) -> str:
                   'across, strike as a share of the close down, colour the implied vol of the monthly closest to 30 days '
                   'out. The markers are the options the wheel sold, at their strike against the close on the day of sale. '
                   'Only one or two monthlies are quoted on any day, so this is the surface at a fixed maturity over time '
-                  'rather than across maturities.</div><div id="plot-surface" style="height:380px"></div>'),
+                  'rather than across maturities.</div>'
+                  '<div class="switch surfview" style="margin:0 0 8px"><button data-sv="heat" class="on">Heatmap</button>'
+                  '<button data-sv="3d">3D surface</button></div>'
+                  '<div id="plot-surface" style="height:470px"></div>'
+                  '<div class="cap" id="surf-hint" style="display:none">Drag to rotate, scroll to zoom, double-click to reset. '
+                  'Gaps are strikes with no quote that day.</div>'),
         ("Implied vs realised", '<div class="cap" style="margin:0 0 10px">For each option the wheel sold: the implied '
                   'vol it was sold at, and the volatility Mastercard then realised to its expiry (daily closes, '
                   'annualised). Selling above what follows is the volatility risk premium the strategy is paid for. These are the '
