@@ -307,6 +307,11 @@ def fill_evidence(q: pd.DataFrame, market: dict, periods: dict) -> dict:
     # where in the quote each trade of the band printed: 0 the bid, 0.5 the mid, 1 the ask
     two = band[band["ask"] > band["bid"]]
     out["locations"] = location_bins((two["trade"] - two["bid"]) / (two["ask"] - two["bid"]))
+    # the same trades as points, with the typical half-spread for the scatter's guide lines
+    out["scatter"] = {"mid": band["mid"].round(3).tolist(), "trade": band["trade"].round(3).tolist(),
+                      "cp": band["cp"].tolist(), "date": [str(d.date()) for d in band["date"]],
+                      "half_spread": float(((two["ask"] - two["bid"]) / 2 / two["mid"]).median()),
+                      "zoom": float(np.percentile(np.maximum(band["mid"], band["trade"]), 98))}
     # the book's own fills: each contract it sold, on the day it sold it
     idx = q.set_index(["date", "ric"])
     own = []
