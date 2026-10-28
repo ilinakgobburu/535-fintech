@@ -1,0 +1,70 @@
+# Walk-forward of the stock choice for the wheel. The class run chose its stock once
+# (config/mr_screen.yaml: the S&P 500 of 2023-12-29, ranked on 2014-2023). Here that screen is re-run
+# at the end of each year on the ten years before it, and its top feasible stock is traded the next
+# year, with a setting picked from that stock's earlier years as config/wheel_wf.yaml picks it.
+#
+#   fold 1: universe of 2024-12-31, screened on 2015-2024, setting trained on 2024,      traded 2025
+#   fold 2: universe of 2025-12-31, screened on 2016-2025, setting trained on 2024-2025, traded 2026
+#
+# Chosen by the user on 2026-10-28 ("full walk forward", a secondary idea beside the page's
+# Mastercard), after Mastercard's 2025 and 2026 results had been seen. Every rule is
+# config/mr_screen.yaml's or config/wheel.yaml's, unchanged; only the dates move. Registered before
+# any constituent list or price after 2023 is pulled.
+registered: 2026-10-28
+
+folds:
+  - fold: 1
+    universe_as_of: 2024-12-31
+    screen_window: [2015-01-01, 2024-12-31]
+    train: {start: 2024-01-02, end: 2024-12-31}
+    test: {start: 2025-01-02, end: 2025-12-31}
+    run_config: config/wheel_wfs_2025.yaml
+  - fold: 2
+    universe_as_of: 2025-12-31
+    screen_window: [2016-01-01, 2025-12-31]
+    train: {start: 2024-01-02, end: 2025-12-31}
+    test: {start: 2026-01-02, end: 2026-10-16}
+    run_config: config/wheel_wfs_2026.yaml
+
+universe: >
+  the S&P 500 as it stood on each fold's date, from LSEG (.SPX, TR.IndexConstituentRIC with that
+  SDate), including members since removed, as config/mr_screen.yaml
+prices: >
+  as config/mr_screen.yaml: LSEG default daily closes (TRDPRC_1), the month-end close the last close
+  of each month. A series already pulled for config/mr_screen.yaml (to 2023-12-29, on 2026-10-26) is
+  extended by a pull from 2023-10-01; if the overlap differs by more than 0.5% on any day (an
+  adjustment since), that series is pulled again in full. Any other is pulled from 2014-11-20
+measures: as config/mr_screen.yaml (3-month variance ratio and lag-1 autocorrelation of monthly log returns)
+eligible: at least 114 of the window's 120 monthly returns
+rank: variance ratio, lowest first, among eligible stocks whose autocorrelation is also below 0
+
+pick:
+  count: one per fold, the highest-ranked feasible stock; the next two feasible ones are named as follow-ups
+  feasibility: >
+    config/mr_screen.yaml's (a) to (c), each over the fold's own span (its training start to its
+    test end) instead of 2024-01-02 to 2026-10-16: (a) stopped trading before the span ends, (b) a
+    contract adjustment other than a split, (c) a close above $950. (d), the option data check, after
+    the option pull, over the same span. As in the original these use listing, corporate actions,
+    price level and data coverage, not returns: they decide whether the backtest can be run at all
+  data: >
+    a pick with no option cache for its span is pulled by scripts/fetch_wheel_raw.py on the class
+    run's bands and strike grid, over its fold's span only. A pick that fails (d) gives way to the
+    next follow-up
+
+setting: >
+  per fold, config/wheel.yaml's 18 settings on the fold's stock, picked by training Sharpe ratio at
+  mid fills with ties to the earlier setting, trained from 2024-01-02 to the end of the year before
+  the test (anchored, as config/wheel_wf.yaml), and committed before that fold's test is run
+books: >
+  each fold's test from $100,000 in cash, the folds joined as config/wheel_wf.yaml joins them, beside
+  buy and hold of each fold's stock, T-bills, the Cboe PutWrite index and config/wheel_wf.yaml's
+  Mastercard record
+
+what_was_seen: >
+  Mastercard's 2025 and 2026 results, and the five class-run stocks' 2024-2025 training grids and
+  2026 tests. No S&P 500 price after 2023 has been pulled or screened. If a fold picks one of the
+  five class-run stocks, its option data is already cached and its 2024-2025 results have been seen.
+
+reported: >
+  each fold's top ten, its pick and why any higher-ranked stock was skipped; each fold's setting,
+  test result and rank of 18; the joined record. Kept off Part I, whose stock stays Mastercard

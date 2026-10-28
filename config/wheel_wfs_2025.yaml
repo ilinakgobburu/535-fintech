@@ -1,0 +1,26 @@
+# Fold 1 of the stock walk-forward (config/wf_screen.yaml): the wheel on the stock that fold's screen
+# picks, its setting trained from 2024-01-02 to 2024-12-31 and judged on 2025-01-02 to 2025-12-31. Registered
+# with config/wf_screen.yaml, before the screen runs; the stock is added below, under a dated key, once
+# the screen has picked it and before any option pull or training run for it.
+registered: 2026-10-28
+
+rules: config/wheel.yaml's rules, fills, grid, baseline, selection, benchmarks, reported and
+  decision, unchanged, as in config/wheel_mr.yaml
+
+windows:
+  train: {start: 2024-01-02, end: 2024-12-31}
+  test: {start: 2025-01-02, end: 2025-12-31}
+  each_window: starts from $100,000 in cash
+
+grid:   # as config/wheel.yaml
+  put_delta: [0.15, 0.25, 0.35]
+  call_delta: [0.15, 0.25, 0.35]
+  floor: [true, false]
+baseline:
+  setting: {put_delta: 0.25, call_delta: 0.25, floor: true}
+selection:
+  score: Sharpe ratio on the training window at mid fills
+  ties: to 4 decimals, the earlier setting in the grid's order
+  record: config/wheel_wfs_2025_picks/{TICKER}.json, committed before this fold's test stage is run
+
+underlyings: {}   # filled under a dated key once config/wf_screen.yaml has picked this fold's stock
