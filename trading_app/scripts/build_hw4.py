@@ -192,43 +192,54 @@ def load_prose(f: dict[str, str]) -> dict[str, str]:
 # static blocks
 # --------------------------------------------------------------------------
 
+HELD, MISSED = '<span class="st st-good">✓ Held</span>', '<span class="st st-bad">✕ Did not hold</span>'
+
+
 def verdict_table(D: dict) -> str:
+    """The thesis's two reasons and its claim, each against the 2026 test."""
     t = D["periods"]["test"]["books"]
-    w, h, c, b = t["wheel"], t["hold"], t["cash"], t["baseline"]
+    w, h = t["wheel"], t["hold"]
     over, n, iv, rv = premium_split(D, "test")
     run = D["reversal"]["run"]
-    held, missed = '<span class="st st-good">✓ Held</span>', '<span class="st st-bad">✕ Did not hold</span>'
-    gap = w["return_pct"] - h["return_pct"]
     rows = [
-        ["Options are priced above the moves that follow",
+        ["Reason 1: options are priced above the moves that follow",
          "0.25-delta put's implied vol on entry against the vol realised to expiry",
          f"{over} of {n} cycles; {pct(100 * iv)} against {pct(100 * rv)} on average",
-         held if over > n / 2 else missed],
-        ["A higher Sharpe ratio than buying the stock", "Sharpe ratio, monthly, T-bill as risk-free",
-         f"{num(w['sharpe'])} against {num(h['sharpe'])}", held if w["sharpe"] > h["sharpe"] else missed],
-        ["Less risk than buying the stock", "Maximum drawdown; annualised volatility of monthly returns",
-         f"{pct(w['max_drawdown_pct'])} against {pct(h['max_drawdown_pct'])}; "
-         f"{pct(w['vol_pct'])} against {pct(h['vol_pct'])}",
-         held if w["max_drawdown_pct"] > h["max_drawdown_pct"] else missed],
-        ["A return close to the stock's", "Return over the test",
-         f"{pct(w['return_pct'], sign=True)} against {pct(h['return_pct'], sign=True)}",
-         f'<span class="st st-neutral">≈ {"ahead" if gap >= 0 else "behind"} by {abs(gap):.1f} pts</span>'],
-        ["Beats T-bills", "Return over the test", f"{pct(w['return_pct'], sign=True)} against {pct(c['return_pct'], sign=True)}",
-         held if w["return_pct"] > c["return_pct"] else missed],
-        *([["A higher Sharpe ratio than standard put selling",
-            "Sharpe ratio against the Cboe S&P 500 PutWrite index (a benchmark added after the test)",
-            f"{num(w['sharpe'])} against {num(t['putw']['sharpe'])}; drawdown {pct(w['max_drawdown_pct'])} against "
-            f"{pct(t['putw']['max_drawdown_pct'])}",
-            held if w["sharpe"] > t["putw"]["sharpe"] else missed]] if "putw" in t else []),
-        ["Mastercard's monthly moves keep reversing",
+         HELD if over > n / 2 else MISSED],
+        ["Reason 2: Mastercard's monthly moves reverse",
          "The screen's own rule: variance ratio below 1 and autocorrelation below 0, over 2024-01 to 2026-09",
          f"variance ratio {num(run['vr'])}, autocorrelation {num(run['rho'], 2)}",
-         held if run["vr"] < 1 and run["rho"] < 0 else missed],
-        ["Choosing the setting on 2024–25 helps", "Registered rule: the pick beats the default setting's Sharpe at mid and at bid",
-         f"{num(w['sharpe'])} against {num(b['sharpe'])} at mid; ranked {D['selection']['rank']} of 18",
-         held if D["selection"]["helped"] else missed],
+         HELD if run["vr"] < 1 and run["rho"] < 0 else MISSED],
+        ["The claim: a higher Sharpe ratio than holding Mastercard", "Sharpe ratio, monthly, T-bill as risk-free",
+         f"{num(w['sharpe'])} against {num(h['sharpe'])}", HELD if w["sharpe"] > h["sharpe"] else MISSED],
     ]
-    return table(["Claim", "Measured by", "2026 test", ""], rows, left=3, cls="verdict")
+    return table(["", "Measured by", "2026 test", ""], rows, left=3, cls="verdict")
+
+
+def setting_verdict(D: dict) -> str:
+    """The registered test of the setting choice, beside the 18-setting table it belongs to."""
+    t, S = D["periods"]["test"]["books"], D["selection"]
+    return (f'<div class="cap">Registered test of the choice: the pick beats the default setting\'s Sharpe ratio in 2026, '
+            f'at mid and at the bid. {num(t["wheel"]["sharpe"])} against {num(t["baseline"]["sharpe"])} at mid, '
+            f'{num(t["wheel_bid"]["sharpe"])} against {num(t["baseline_bid"]["sharpe"])} at the bid; ranked '
+            f'{S["rank"]} of 18. {HELD if S["helped"] else MISSED}</div>')
+
+
+def fill_stress_table(D: dict) -> str:
+    """The wheel at mid fills against the same wheel selling every option at the bid, both periods."""
+    rows = []
+    for label, key in (("Mid fills (as reported)", "wheel"), ("Every option sold at the bid", "wheel_bid")):
+        row = [escape(label)]
+        for n in ("test", "train"):
+            b = D["periods"][n]["books"][key]
+            row += [pct(b["return_pct"], sign=True), num(b["sharpe"])]
+        rows.append(row)
+    gap = ["Cost of selling at the bid"]
+    for n in ("test", "train"):
+        m, b = D["periods"][n]["books"]["wheel"], D["periods"][n]["books"]["wheel_bid"]
+        gap += [f'{b["return_pct"] - m["return_pct"]:+.1f} pts'.replace("-", "−"), num(b["sharpe"] - m["sharpe"])]
+    rows.append(gap)
+    return table(["", "2026 return", "Sharpe", "2024–25 return", "Sharpe"], rows, cls="small")
 
 
 def screen_table(D: dict) -> str:
@@ -619,7 +630,7 @@ const num = (x, dp = 2) => x == null ? '–' : x.toFixed(dp).replace('-', '−')
 const cls = x => x == null ? '' : (x < 0 ? 'neg' : 'pos');
 let period = 'test';
 
-const LABELS = {wheel: 'Wheel (mid fills)', wheel_bid: 'Wheel (fills at the bid)', hold: 'Buy and hold MA', cash: 'T-bills',
+const LABELS = {wheel: 'Wheel', wheel_bid: 'Wheel (fills at the bid)', hold: 'Buy and hold MA', cash: 'T-bills',
                 putw: 'Cboe PutWrite index'};
 const COLORS = {wheel: '--wheel', wheel_bid: '--wheel-bid', hold: '--hold', cash: '--cash', putw: '--aqua'};
 
@@ -635,7 +646,7 @@ function eventName(e) {
 
 function bench() {
   const B = D.periods[period].books;
-  const rows = [['wheel', 'Wheel'], ['wheel_bid', 'Wheel, at the bid'], ['putw', 'Cboe PutWrite'],
+  const rows = [['wheel', 'Wheel'], ['putw', 'Cboe PutWrite'],
                 ['hold', 'Buy and hold MA'], ['cash', 'T-bills']].filter(([k]) => B[k]);
   $('bench').innerHTML = '<div class="tbl-wrap"><table class="tbl small"><thead><tr>' +
     ['', 'Return', 'Sharpe', 'Max DD', 'Vol'].map((h, i) => `<th class="${i ? '' : 'l'}">${h}</th>`).join('') +
@@ -689,7 +700,7 @@ function tradeMarkers(blotter, dates, values) {
 
 function navChart() {
   const P = D.periods[period], N = P.nav;
-  const traces = ['cash', 'hold', 'putw', 'wheel_bid', 'wheel'].filter(k => N[k]).map(k => ({
+  const traces = ['cash', 'hold', 'putw', 'wheel'].filter(k => N[k]).map(k => ({
     x: N.date, y: N[k], name: LABELS[k], mode: 'lines',
     line: {color: css(COLORS[k]), width: k === 'wheel' ? 2 : 1.5, dash: k === 'wheel_bid' ? 'dot' : 'solid'},
     hovertemplate: '%{y:$,.0f}<extra>' + LABELS[k] + '</extra>'}));
@@ -999,9 +1010,8 @@ def render(D: dict, prose: dict[str, str], draft: bool, P2: dict | None = None,
                  ("Setting chosen on", f'{R["window"][0]} → {R["window"][1]}'),
                  ("Starting cash", "$100,000"), ("Data", "Daily closes · LSEG")]),
         '<div style="height:12px"></div>',
-        panel("Thesis", say("thesis", "lead")),
-        '<div style="height:12px"></div>',
-        panel("Did it work?", verdict_table(D) + '<div style="height:10px"></div>' + say("verdict"), "2026 test"),
+        panel("Thesis and whether it held", say("thesis", "lead") + '<div style="height:12px"></div>'
+              + verdict_table(D) + '<div style="height:10px"></div>' + say("verdict"), "2026 test"),
         '<div class="switch"><button data-period="test" class="on">' + escape(PERIOD_LABEL["test"]) + '</button>'
         '<button data-period="train">' + escape(PERIOD_LABEL["train"]) + '</button></div>',
         '<div id="kpis" class="kpis"></div>',
@@ -1023,7 +1033,9 @@ def render(D: dict, prose: dict[str, str], draft: bool, P2: dict | None = None,
         '<div style="height:12px"></div>',
         f'<section class="panel">{tab_html}</section>',
         '<div class="grid g-1-1">',
-        panel("Fill prices", say("fills") + '<div class="sub">Notes</div>' + say("fills-note")),
+        panel("Fill prices", say("fills") + '<div class="sub">Notes</div>' + say("fills-note")
+              + '<div class="sub">The stress test: the same wheel selling every option at the bid</div>'
+              + fill_stress_table(D)),
         panel("Last trade against the closing mid", '<div id="plot-fill" style="height:380px"></div>'
               f'<div class="cap" style="padding:0 10px 8px">The {D["fills"]["in_band"]["n"]:,} contract-days in the band the '
               'wheel sells, 2024 to October 2026. Points on the diagonal traded exactly at the mid.</div>',
@@ -1035,7 +1047,7 @@ def render(D: dict, prose: dict[str, str], draft: bool, P2: dict | None = None,
         '<div class="grid g-1-1">',
         panel("Stock choice", say("stock") + '<div class="sub">The screen, top ten</div>' + screen_table(D),
               f'{D["reversal"]["ranked"]} of {D["reversal"]["eligible"]} eligible stocks ranked'),
-        panel("Setting choice", say("setting") + '<div class="sub">All 18 settings, at mid fills</div>' + grid_table(D),
+        panel("Setting choice", say("setting") + setting_verdict(D) + '<div class="sub">All 18 settings, at mid fills</div>' + grid_table(D),
               "highlighted: the pick"),
         "</div>",
         '<div class="grid g-1-1">',

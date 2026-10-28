@@ -9,13 +9,13 @@
 ## thesis
 // The assignment: "State your thesis for why this should make money/beat a
 // benchmark/improve sharpe, then show whether it actually did."
-The wheel sells a cash-secured put each month and, once assigned, a covered call against the shares. It was expected to **improve the Sharpe ratio** relative to holding Mastercard, for two reasons. First, the strategy is short options, and options are typically priced above the moves that follow, so the premium collected should exceed what the options cost on average. Second, the wheel buys after a fall (assignment) and sells after a rise (called away); hence, it is a long-only mean-reversion position and should do best on a stock whose monthly moves tend to reverse. Though the short call caps the upside, the return was expected to be close to the stock's with considerably less risk.
+The wheel was expected to **improve the Sharpe ratio** relative to holding Mastercard, for two reasons. First, the strategy is short options, and options are typically priced above the moves that follow, so the premium collected should exceed what the options cost on average. Second, the wheel buys after a fall (assignment) and sells after a rise (called away); hence, it is a long-only mean-reversion position and should do best on a stock whose monthly moves tend to reverse. Though the short call caps the upside, the return was expected to be close to the stock's with considerably less risk.
 
 ## verdict
 // Under the table of claims. The facts: {{test_iv_over_rv}} of {{test_premium_cycles}} test cycles
 // had implied above realised; variance ratio {{vr_run}} in 2024-2026 against {{vr_screen}} in
 // 2014-2023, and {{rw_vr}} for a random walk.
-The improvement in Sharpe ratio held, though not for the reason Mastercard was chosen. Specifically, implied volatility was above the volatility that followed in **{{test_iv_over_rv}} of {{test_premium_cycles}}** test cycles, but Mastercard's monthly moves no longer reversed in 2024-2026: its variance ratio rose from **{{vr_screen}}** to **{{vr_run}}**, close to the **{{rw_vr}}** of a random walk over the same number of months. Hence, the lower risk came from the structure of the wheel, cash earning T-bill interest while each put is open plus the premium collected, rather than from mean reversion.
+**The claim held, though only one of its reasons did.** The options were priced above the moves that followed, but Mastercard's monthly moves stopped reversing (variance ratio **{{vr_screen}}** in 2014-2023, **{{vr_run}}** in 2024-2026, against **{{rw_vr}}** for a random walk). Hence, the higher Sharpe ratio came from the premium and the cash earning T-bills rather than from mean reversion. The return and risk against each benchmark are in the Benchmarks table.
 
 ## stock
 // Why Mastercard. The Stock choice block.
