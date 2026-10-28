@@ -54,8 +54,26 @@ The code behind this page is checked by **{{tests}} tests**. The engine's tests 
 Each decision uses **only that day's closing quotes**: the strike is chosen from contracts quoted that day, and expiry settles on that day's close. The stock ({{screen_commit}}), the setting ({{pick_commit}}) and the test window were each committed before the 2026 test was run.
 
 ## limitations
-Some limits to these findings include: one stock over a short test of {{test_cycles}} monthly cycles with a single assignment; daily closing quotes rather than executable prices; no commissions; early assignment not modelled; and a final month (1-16 October 2026) that is partial but is charged a full month of T-bill yield in the Sharpe ratio, which lowers every book's Sharpe slightly.
+Some limits to these findings include: one stock over a short test of {{test_cycles}} monthly cycles with a single assignment; daily closing quotes rather than executable prices; no commissions; early assignment is not modelled in the main run, though a re-run that models it (a put with no time value left, or a call before an ex-dividend date) gave exactly the same trades; and a final month (1-16 October 2026) that is partial but is charged a full month of T-bill yield in the Sharpe ratio, which lowers every book's Sharpe slightly.
 
+
+// ---------------------------------------------------------------------------
+// PART II: the same wheel on the five stocks the screen picked. Kept apart from
+// Part I, which is what the assignment asks for.
+// ---------------------------------------------------------------------------
+
+## part2-motivation
+The largest losses in this project came from a single stock falling while the wheel held it: Fiserv's wheel lost **{{p2_fisv_train}}** in 2024-2025. Hence, the same wheel was run on all five stocks the mean-reversion screen picked, side by side, to see whether spreading it across names reduces that risk. The setup was committed ({{p2_commit}}) before it was run, and nothing in Part I was chosen from its result.
+
+## part2-setup
+Five plain wheels, each with $100,000 at its stock's committed setting and run exactly as in Part I, with their daily account values added into one $500,000 portfolio. The benchmarks are the same five stocks bought and held, $100,000 each, and T-bills.
+
+## part2-findings
+- **Less risk for the same return:** The portfolio's return is the average of the five by construction ({{p2_train_return}} in 2024-2025), but its volatility was **{{p2_train_vol}}** against {{p2_train_avg_vol}} for a single wheel on average, and its maximum drawdown **{{p2_train_dd}}** against {{p2_train_avg_dd}}.
+- **Why:** The five wheels' monthly results barely moved together, with a median correlation of {{p2_corr_train}} in 2024-2025 and {{p2_corr_test}} in 2026. Specifically, a wheel loses when its own stock falls through the strike, and that happened at different times for different stocks.
+- **One collapse, absorbed:** Fiserv's wheel lost {{p2_fisv_train}} in 2024-2025, which cost the portfolio about a fifth as much.
+- **Sharpe ratio:** {{p2_train_sharpe}} in 2024-2025, against {{p2_train_together}} had the five moved in lockstep ({{p2_test_sharpe}} against {{p2_test_together}} in 2026). Though the average of the five single-stock Sharpe ratios ({{p2_train_avg_sharpe}}) is higher, averaging Sharpe ratios gives a calm book such as Mastercard's the same weight as a volatile one, so it is not the right comparison.
+- **Against holding the stocks:** In 2024-2025 the portfolio returned {{p2_train_return}} against {{p2_train_hold_return}} for holding the five (Sharpe {{p2_train_sharpe}} against {{p2_train_hold_sharpe}}). In 2026 it returned {{p2_test_return}} against {{p2_test_hold_return}} (Sharpe {{p2_test_sharpe}} against {{p2_test_hold_sharpe}}), because the covered calls capped a strong rally.
 
 // ---------------------------------------------------------------------------
 // HOVER NOTES. Text under "## tip: <label>" appears on the small (i) beside

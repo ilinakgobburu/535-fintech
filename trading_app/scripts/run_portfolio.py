@@ -42,6 +42,17 @@ def monthly_returns(ledger: pd.DataFrame, capital: float) -> pd.Series:
     return r
 
 
+def sharpe_if_together(ledgers: list[pd.DataFrame], capital: float, rf: pd.Series) -> float:
+    """
+    The portfolio's Sharpe ratio had the books moved in lockstep: its own mean excess return
+    over the average of the books' monthly volatilities, annualised.
+    """
+    port = monthly_returns(combine(ledgers), capital * len(ledgers))
+    excess = port - rf.reindex(port.index)
+    avg_sd = float(np.mean([monthly_returns(l, capital).std(ddof=1) for l in ledgers]))
+    return float(excess.mean() / avg_sd * np.sqrt(12))
+
+
 def figures(p: dict) -> dict:
     return {k: p[k] for k in ("return_pct", "sharpe", "max_drawdown_pct", "worst_month", "worst_month_pct",
                               "monthly_sd_pct")} | {"vol_pct": p["monthly_sd_pct"] * np.sqrt(12)}
@@ -76,12 +87,16 @@ def main() -> int:
             each = w[book]["each"].values()
             w[book]["average_of_five"] = {k: float(np.mean([e[k] for e in each]))
                                           for k in ("return_pct", "sharpe", "max_drawdown_pct", "vol_pct")}
+            rf = (tbill.groupby(tbill.index.to_period("M")).mean() / 12.0)
+            w[book]["sharpe_if_together"] = sharpe_if_together(ledgers, 100_000.0, rf)
             if book == "wheel_mid":
                 rets = pd.DataFrame({s: monthly_returns(r["ledger"], 100_000.0) for s, r in runs.items()})
                 corr = rets.corr()
                 w["correlations"] = corr.round(3).to_dict()
                 w["median_correlation"] = float(np.median(corr.to_numpy()[np.triu_indices(len(corr), 1)]))
         w["cash"] = figures(performance(cash["ledger"], 100_000.0, tbill))
+        w["cash"]["nav"] = {"date": [str(d.date()) for d in cash["ledger"]["date"]],
+                            "value": (cash["ledger"]["nav"] * len(sws)).round(2).tolist()}
         out["windows"][name] = w
         p, a, h = w["wheel_mid"]["portfolio"], w["wheel_mid"]["average_of_five"], w["hold"]["portfolio"]
         print(f"\n{name} {lo} to {hi}")

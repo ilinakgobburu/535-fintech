@@ -28,6 +28,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 REPO = ROOT.parent
 DATA = REPO / "cache" / "wheel_page_MA.json"
+PORTFOLIO = REPO / "cache" / "wheel_portfolio_results.json"      # Part II, scripts/run_portfolio.py
 PROSE = ROOT / "scripts" / "hw4_prose.md"
 RULES = REPO / "config" / "wheel.yaml"
 OUT = REPO / "docs" / "hw4.html"
@@ -80,6 +81,29 @@ def premium_split(D: dict, period: str) -> tuple[int, int, float, float]:
             and ((p["entry"] >= test_lo) == (period == "test"))]
     over = sum(p["iv"] > p["realised"] for p in rows)
     return over, len(rows), sum(p["iv"] for p in rows) / len(rows), sum(p["realised"] for p in rows) / len(rows)
+
+
+def portfolio_commit() -> str:
+    import subprocess
+    out = subprocess.run(["git", "log", "--format=%h", "--diff-filter=A", "-1", "--", "config/wheel_portfolio.yaml"],
+                         cwd=REPO, capture_output=True, text=True).stdout.strip()
+    return out or "–"
+
+
+def part2_facts(P2: dict) -> dict[str, str]:
+    f = {"p2_commit": portfolio_commit()}
+    for n, tag in (("train", "train"), ("test", "test")):
+        w = P2["windows"][n]
+        port, avg, hold = w["wheel_mid"]["portfolio"], w["wheel_mid"]["average_of_five"], w["hold"]["portfolio"]
+        f.update({f"p2_{tag}_return": pct(port["return_pct"], sign=True), f"p2_{tag}_sharpe": num(port["sharpe"]),
+                  f"p2_{tag}_vol": pct(port["vol_pct"]), f"p2_{tag}_avg_vol": pct(avg["vol_pct"]),
+                  f"p2_{tag}_dd": pct(port["max_drawdown_pct"]), f"p2_{tag}_avg_dd": pct(avg["max_drawdown_pct"]),
+                  f"p2_{tag}_together": num(w["wheel_mid"]["sharpe_if_together"]),
+                  f"p2_{tag}_avg_sharpe": num(avg["sharpe"]),
+                  f"p2_{tag}_hold_return": pct(hold["return_pct"], sign=True), f"p2_{tag}_hold_sharpe": num(hold["sharpe"]),
+                  f"p2_corr_{tag}": num(w["median_correlation"])})
+    f["p2_fisv_train"] = pct(P2["windows"]["train"]["wheel_mid"]["each"]["FISV"]["return_pct"], sign=True)
+    return f
 
 
 def facts(D: dict) -> dict[str, str]:
@@ -304,6 +328,69 @@ def page_data(D: dict) -> dict:
 # the page
 # --------------------------------------------------------------------------
 
+def part2_tables(P2: dict) -> tuple[str, str, str]:
+    W = P2["windows"]
+    books = [("Five wheels together", lambda w: w["wheel_mid"]["portfolio"]),
+             ("Five wheels, fills at the bid", lambda w: w["wheel_cross"]["portfolio"]),
+             ("One wheel, average of the five", lambda w: w["wheel_mid"]["average_of_five"]),
+             ("Five stocks bought and held", lambda w: w["hold"]["portfolio"]),
+             ("T-bills", lambda w: w["cash"])]
+    rows = []
+    for label, get in books:
+        row = [escape(label)]
+        for n in ("train", "test"):
+            x = get(W[n])
+            row += [pct(x["return_pct"], sign=True), "–" if label == "T-bills" else num(x["sharpe"]),
+                    pct(x["max_drawdown_pct"]), pct(x["vol_pct"])]
+        rows.append(row + (["__hi__"] if label == "Five wheels together" else []))
+    hdr = ["", "2024–25 return", "Sharpe", "Max drawdown", "Volatility", "2026 return", "Sharpe", "Max drawdown", "Volatility"]
+    results = table(hdr, rows, cls="small")
+    each = []
+    for s_ in P2["stocks"]:
+        row = [escape(s_)]
+        for n in ("train", "test"):
+            e = W[n]["wheel_mid"]["each"][s_]
+            row += [pct(e["return_pct"], sign=True), num(e["sharpe"]), pct(e["max_drawdown_pct"])]
+        each.append(row)
+    each_t = table(["Stock", "2024–25 return", "Sharpe", "Max drawdown", "2026 return", "Sharpe", "Max drawdown"],
+                   each, cls="small")
+    corr = ""
+    for n, label in (("train", "2024–25"), ("test", "2026")):
+        c = W[n]["correlations"]
+        names = list(c)
+        corr += f'<div class="sub">{label}</div>' + table(
+            [""] + names, [[escape(a)] + [num(c[a][b]) for b in names] for a in names], cls="small")
+    return results, each_t, corr
+
+
+def part2_data(P2: dict) -> dict:
+    out = {}
+    for n in ("train", "test"):
+        w = P2["windows"][n]
+        out[n] = {"date": w["wheel_mid"]["nav"]["date"], "wheel": w["wheel_mid"]["nav"]["value"],
+                  "hold": w["hold"]["nav"]["value"], "cash": w["cash"]["nav"]["value"]}
+    return out
+
+
+PART2_SCRIPT = r"""
+const P2 = /*__P2__*/null;
+if (typeof Plotly !== 'undefined') {
+  const css2 = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  [['train', 'p2-train'], ['test', 'p2-test']].forEach(([k, id]) => {
+    const d = P2[k];
+    Plotly.newPlot(id, [
+      {x: d.date, y: d.cash, name: 'T-bills', mode: 'lines', line: {color: css2('--cash'), width: 1.4}},
+      {x: d.date, y: d.hold, name: 'Five stocks held', mode: 'lines', line: {color: css2('--hold'), width: 1.4}},
+      {x: d.date, y: d.wheel, name: 'Five wheels together', mode: 'lines', line: {color: css2('--wheel'), width: 2.2}}],
+      {paper_bgcolor: css2('--panel'), plot_bgcolor: css2('--panel'), font: {family: css2('--font'), color: css2('--muted'), size: 12},
+       margin: {l: 70, r: 12, t: 10, b: 36}, hovermode: 'x unified', legend: {orientation: 'h', y: -0.16},
+       xaxis: {gridcolor: css2('--line-soft')}, yaxis: {tickformat: '$,.0f', gridcolor: css2('--line-soft')}},
+      {displayModeBar: false, responsive: true});
+  });
+}
+"""
+
+
 STYLE = """
   /* ---- colours and type: restyle the page here ----------------------- */
   :root{
@@ -422,6 +509,19 @@ STYLE = """
   .pf-events{margin-top:10px;font-size:var(--fs-sm);color:var(--muted)}
   .pf-events div{padding:3px 0;border-top:1px solid var(--line-soft)}
 
+  /* Part I and Part II */
+  .toc{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 0;font-size:var(--fs-sm)}
+  .toc a{color:var(--text);text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:4px 12px;
+    background:var(--panel)}
+  .toc a:hover{border-color:var(--wheel)}
+  .toc .faint{align-self:center}
+  .part{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin:30px 0 4px;padding-top:18px;
+    border-top:2px solid var(--line);scroll-margin-top:70px}
+  .part:first-of-type{border-top:none;padding-top:0;margin-top:18px}
+  .part .no{font-family:var(--mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#0B1020;
+    background:var(--accent);border-radius:6px;padding:3px 9px;font-weight:700}
+  .part h2{margin:0;font-size:22px;font-weight:600;letter-spacing:-.01em}
+  .part .what{color:var(--muted);font-size:var(--fs-sm);flex-basis:100%}
   .tip{position:relative;display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;
     margin-left:7px;border:1px solid var(--line);border-radius:50%;font:600 10px/1 var(--mono);color:var(--muted);
     cursor:help;text-transform:none;letter-spacing:0;flex:none}
@@ -627,7 +727,7 @@ def tip(prose: dict[str, str], label: str) -> str:
     return f'<span class="tip" tabindex="0" aria-label="About {escape(label)}">i<span class="bubble">{body}</span></span>'
 
 
-def render(D: dict, prose: dict[str, str], draft: bool) -> str:
+def render(D: dict, prose: dict[str, str], draft: bool, P2: dict | None = None) -> str:
     missing = []
 
     def say(key: str, cls: str = "") -> str:
@@ -674,6 +774,12 @@ def render(D: dict, prose: dict[str, str], draft: bool) -> str:
 <span class="chip">daily closes · LSEG</span>
 <span class="chip hot"><a href="{REPO_URL}">Code (to GitHub Repo) ↗</a></span>
 <span class="chip"><a href="hw3.html">← PMCC page</a></span></div></div>""",
+        '<nav class="toc"><span class="faint">On this page:</span><a href="#part1">Part I · The assignment: '
+        'the wheel on Mastercard</a>' + ('<a href="#part2">Part II · Further exploration: five stocks</a>' if P2 else "")
+        + '</nav>',
+        '<div class="part" id="part1"><span class="no">Part I</span><h2>The assignment: the wheel on Mastercard</h2>'
+        '<span class="what">Everything the assignment asks for: the thesis and whether it held, the blotter, '
+        'the ledger, the portfolio on any date, and the evidence for the fill prices.</span></div>',
         '<div style="height:12px"></div>',
         panel("Thesis", say("thesis", "lead")),
         '<div style="height:12px"></div>',
@@ -719,12 +825,36 @@ def render(D: dict, prose: dict[str, str], draft: bool) -> str:
         panel("Reporting", say("honest")),
         "</div>",
         panel("Limitations", say("limitations")),
+        *(part2_html(P2, say, panel) if P2 else []),
         f"<script>{script}</script>",
         "</div></body></html>",
     ]
     if missing:
         print(f"  prose sections still empty: {', '.join(missing)}", file=sys.stderr)
     return "\n".join(parts)
+
+
+def part2_html(P2: dict, say, panel) -> list[str]:
+    results, each_t, corr = part2_tables(P2)
+    lo, hi = P2["windows"]["train"]["window"], P2["windows"]["test"]["window"]
+    return [
+        '<div class="part" id="part2"><span class="no">Part II</span><h2>Further exploration: the same wheel on '
+        'five stocks</h2><span class="what">Not required by the assignment. The plain wheel of Part I, run on all five '
+        'stocks the screen picked at once.</span></div>',
+        '<div style="height:10px"></div>',
+        panel("Motivation", say("part2-motivation") + '<div style="height:8px"></div>' + say("part2-setup")),
+        '<div style="height:12px"></div>',
+        panel("Results", results, "$500,000 to start in each period; each period starts from cash"),
+        '<div class="grid g-1-1">',
+        panel("Account value, 2024–25", '<div id="p2-train" style="height:320px"></div>', f"{lo[0]} to {lo[1]}", flush=True),
+        panel("Account value, 2026", '<div id="p2-test" style="height:320px"></div>', f"{hi[0]} to {hi[1]}", flush=True),
+        "</div>",
+        panel("What it shows", say("part2-findings")),
+        '<div style="height:12px"></div>',
+        panel("Each stock's wheel", each_t + "<details><summary>Correlations of the five wheels' monthly returns"
+              "</summary>" + corr + "</details>", "$100,000 each"),
+        f"<script>{PART2_SCRIPT.replace('/*__P2__*/null', json.dumps(part2_data(P2), separators=(',', ':')))}</script>",
+    ]
 
 
 def main() -> int:
@@ -734,12 +864,13 @@ def main() -> int:
     ap.add_argument("--out", type=Path, default=OUT)
     args = ap.parse_args()
     D = json.loads(DATA.read_text())
-    f = facts(D)
+    P2 = json.loads(PORTFOLIO.read_text()) if PORTFOLIO.exists() else None
+    f = {**facts(D), **(part2_facts(P2) if P2 else {})}
     if args.facts:
         for k, v in f.items():
             print(f"{{{{{k}}}}}  =  {v}")
         return 0
-    html = render(D, load_prose(f), args.draft)
+    html = render(D, load_prose(f), args.draft, P2)
     args.out.write_text(html, encoding="utf-8")
     print(f"wrote {args.out} ({args.out.stat().st_size / 1e3:.0f} kB)")
     return 0

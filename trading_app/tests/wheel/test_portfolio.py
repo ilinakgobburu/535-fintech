@@ -33,3 +33,14 @@ def test_a_session_one_book_lacks_carries_its_last_value():
 def test_monthly_returns_start_from_the_capital():
     r = P.monthly_returns(ledger(["2026-01-30", "2026-02-27"], [110.0, 121.0]), 100.0)
     assert list(r.round(10)) == pytest.approx([0.10, 0.10])
+
+
+def test_five_identical_books_gain_nothing_from_diversification():
+    days = pd.to_datetime(["2026-01-30", "2026-02-27", "2026-03-31", "2026-04-30"])
+    one = ledger(days, [101.0, 99.0, 104.0, 103.0])
+    books = [one] * 5
+    rf = pd.Series(0.001, index=pd.PeriodIndex(days, freq="M"))
+    port = P.combine(books)
+    together = P.sharpe_if_together(books, 100.0, rf)
+    r = P.monthly_returns(port, 500.0) - rf
+    assert together == pytest.approx(r.mean() / r.std(ddof=1) * 12 ** 0.5)
