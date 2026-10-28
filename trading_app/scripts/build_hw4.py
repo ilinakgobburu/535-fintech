@@ -409,10 +409,17 @@ STYLE = """
   @media (max-width:640px){.wrap{padding:0 16px 60px}}
   a{color:var(--wheel)}
 
+  .bar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+    padding:12px 0;background:var(--base);border-bottom:1px solid var(--line)}
+  .bar .sym{font-family:var(--mono);font-weight:700;font-size:18px}
+  .bar .co{font-weight:600}
+  .bar .name{color:var(--muted);font-size:var(--fs-sm)}
+  .bar .right{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
   .chip{font-family:var(--mono);font-size:var(--fs-xs);color:var(--muted);border:1px solid var(--line);
     border-radius:999px;padding:4px 10px;background:var(--panel);white-space:nowrap}
   .chip b{color:var(--text);font-weight:600} .chip a{color:inherit;text-decoration:none}
   .chip.hot{background:var(--hold);border-color:var(--hold);color:#0B1020;font-weight:700}
+  @media (max-width:640px){.bar{position:static} .bar .right{margin-left:0}}
 
   .grid{display:grid;gap:12px;margin:12px 0}
   .g-2-1{grid-template-columns:minmax(0,2fr) minmax(0,1fr)}
@@ -503,35 +510,11 @@ STYLE = """
   .pf-events div{padding:3px 0;border-top:1px solid var(--line-soft)}
 
   /* Part I and Part II */
-  html{scroll-behavior:smooth}
-  .site{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:16px;flex-wrap:wrap;
-    padding:10px 0;background:var(--base);border-bottom:1px solid var(--line)}
-  .site .brand{display:flex;align-items:baseline;gap:10px;color:var(--text);text-decoration:none}
-  .site .brand .sym{font-family:var(--mono);font-weight:700;font-size:18px}
-  .site .brand .co{font-weight:600}
-  .site .brand .name{color:var(--muted);font-size:var(--fs-sm)}
-  .site .right{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
-  .site a.chip{text-decoration:none}
-  .menus{display:flex;gap:4px;flex-wrap:wrap}
-  .menu{position:relative}
-  .menu > button{font:inherit;font-size:var(--fs-sm);font-weight:600;color:var(--text);background:none;
-    border:1px solid transparent;border-radius:8px;padding:6px 12px;cursor:pointer}
-  .menu > button:hover,.menu.open > button,.menu > button:focus-visible{background:var(--panel-hi);border-color:var(--line);outline:none}
-  .menu .caret{color:var(--muted);margin-left:6px;font-size:11px}
-  .dropdown{display:none;position:absolute;top:calc(100% + 6px);left:0;min-width:250px;padding:6px;z-index:40;
-    background:var(--panel-hi);border:1px solid var(--line);border-radius:10px;box-shadow:0 14px 34px rgba(0,0,0,.5)}
-  .dropdown::before{content:"";position:absolute;left:0;right:0;top:-8px;height:8px}
-  .menu.open .dropdown{display:block}
-  @media (hover:hover) and (min-width:641px){.menu:hover:not(.shut) .dropdown{display:block}}
-  .dropdown a{display:block;padding:7px 10px;border-radius:6px;color:var(--text);text-decoration:none;font-size:var(--fs-sm)}
-  .dropdown a:hover,.dropdown a:focus{background:var(--panel);outline:none}
-  .dropdown a.top{color:var(--accent);font-weight:600}
-  .dropdown .grp{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);padding:9px 10px 3px}
-  .meta{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 0}
-  section.panel,.switch,.grid{scroll-margin-top:76px}
-  @media (max-width:640px){.site{position:static}.menus{width:100%}.menu{flex:1 1 auto}
-    .menu > button{width:100%;text-align:left;border-color:var(--line)}
-    .dropdown{position:static;margin-top:6px;min-width:0;box-shadow:none}.site .right{margin-left:0}}
+  .toc{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 0;font-size:var(--fs-sm)}
+  .toc a{color:var(--text);text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:4px 12px;
+    background:var(--panel)}
+  .toc a:hover{border-color:var(--wheel)}
+  .toc .faint{align-self:center}
   .part{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin:30px 0 4px;padding-top:18px;
     border-top:2px solid var(--line);scroll-margin-top:70px}
   .part:first-of-type{border-top:none;padding-top:0;margin-top:18px}
@@ -734,59 +717,7 @@ document.querySelectorAll('.tabs button').forEach(btn => btn.addEventListener('c
 }));
 show('test');
 if (typeof Plotly !== 'undefined') scatter();
-
-// ---- the header's dropdowns: hover on a laptop, tap anywhere; Escape or a click elsewhere closes
-const menus = [...document.querySelectorAll('.menu')];
-const shutAll = () => menus.forEach(m => { m.classList.remove('open'); m.querySelector('button').setAttribute('aria-expanded', 'false'); });
-menus.forEach(m => {
-  const b = m.querySelector('button');
-  b.addEventListener('click', e => {
-    e.stopPropagation();
-    const opening = !m.classList.contains('open');
-    shutAll();
-    if (opening) { m.classList.add('open'); b.setAttribute('aria-expanded', 'true'); }
-  });
-  m.querySelectorAll('.dropdown a').forEach(a => a.addEventListener('click', () => {
-    if (a.dataset.tab != null) {
-      const t = document.querySelector(`#records .tabs button[data-tab="${a.dataset.tab}"]`);
-      if (t) t.click();
-    }
-    shutAll();
-    m.classList.add('shut');                       // stays closed under the pointer until it leaves
-    m.addEventListener('mouseleave', () => m.classList.remove('shut'), {once: true});
-  }));
-});
-document.addEventListener('click', shutAll);
-document.addEventListener('keydown', e => { if (e.key === 'Escape') shutAll(); });
 """
-
-
-MENU_PART1 = [
-    ("Results", [("Thesis", "#s-thesis"), ("Did it work?", "#s-did-it-work"), ("Returns and account value", "#results"),
-                 ("Portfolio on any date", "#portfolio")]),
-    ("Trades", [("Blotter", "#records", 0), ("Ledger", "#records", 1), ("Cycles", "#records", 2), ("Rules", "#records", 3)]),
-    ("Method", [("Fill prices", "#s-fill-prices"), ("Stock choice", "#s-stock-choice"), ("Setting choice", "#s-setting-choice"),
-                ("Accuracy", "#s-accuracy"), ("Reporting", "#s-reporting"), ("Limitations", "#s-limitations")]),
-]
-MENU_PART2 = [
-    ("", [("Motivation", "#s-motivation"), ("Results", "#s-results"), ("Account value", "#p2-charts"),
-          ("What it shows", "#s-what-it-shows"), ("Each stock's wheel", "#s-each-stock-s-wheel")]),
-]
-
-
-def menus(part2: bool) -> str:
-    """The header's dropdowns: one per part, each listing its sections (a Trades item also opens its tab)."""
-    def one(label, top, groups):
-        items = "".join(
-            (f'<div class="grp">{escape(g)}</div>' if g else "")
-            + "".join(f'<a href="{it[1]}"' + (f' data-tab="{it[2]}"' if len(it) > 2 else "") + f'>{escape(it[0])}</a>'
-                      for it in links)
-            for g, links in groups)
-        return (f'<div class="menu"><button type="button" aria-haspopup="true" aria-expanded="false">{escape(label)}'
-                f'<span class="caret">▾</span></button><div class="dropdown"><a class="top" href="{top}">'
-                f'{escape(label)}: start</a>{items}</div></div>')
-    return (one("Part I · The assignment", "#part1", MENU_PART1)
-            + (one("Part II · Five stocks", "#part2", MENU_PART2) if part2 else ""))
 
 
 def tip(prose: dict[str, str], label: str) -> str:
@@ -807,8 +738,7 @@ def render(D: dict, prose: dict[str, str], draft: bool, P2: dict | None = None) 
         return f'<div class="todo">Not yet written: {escape(key)}</div>' if draft else ""
 
     def panel(title: str, body: str, tag: str = "", flush: bool = False, pid: str = "") -> str:
-        pid = pid or "s-" + re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")       # the header menus link here
-        return (f'<section class="panel" id="{pid}"><div class="ph">{escape(title)}{tip(prose, title)}'
+        return (f'<section class="panel"{f" id={chr(34)}{pid}{chr(34)}" if pid else ""}><div class="ph">{escape(title)}{tip(prose, title)}'
                 + (f'<span class="tag">{tag}</span>' if tag else "")
                 + f'</div><div class="pb{" flush" if flush else ""}">{body}</div></section>')
 
@@ -836,15 +766,17 @@ def render(D: dict, prose: dict[str, str], draft: bool, P2: dict | None = None) 
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
-<style>{STYLE}</style></head><body><div class="wrap" id="top">
-<header class="site"><a class="brand" href="#top"><span class="sym">MA</span><span class="co">{escape(D["company"])}</span>
-<span class="name">Wheel strategy · backtest</span></a>
-<nav class="menus" aria-label="Sections">{menus(bool(P2))}</nav>
-<div class="right"><a class="chip hot" href="{REPO_URL}">Code (to GitHub Repo) ↗</a>
-<a class="chip" href="hw3.html">← PMCC page</a></div></header>
-<div class="meta"><span class="chip">test <b>{T["window"][0]}</b> to <b>{T["window"][1]}</b></span>
+<style>{STYLE}</style></head><body><div class="wrap">
+<div class="bar"><span class="sym">MA</span><span class="co">{escape(D["company"])}</span>
+<span class="name">Wheel strategy · backtest</span>
+<div class="right"><span class="chip">test <b>{T["window"][0]}</b> to <b>{T["window"][1]}</b></span>
 <span class="chip">trained <b>{R["window"][0]}</b> to <b>{R["window"][1]}</b></span>
-<span class="chip">daily closes · LSEG</span></div>""",
+<span class="chip">daily closes · LSEG</span>
+<span class="chip hot"><a href="{REPO_URL}">Code (to GitHub Repo) ↗</a></span>
+<span class="chip"><a href="hw3.html">← PMCC page</a></span></div></div>""",
+        '<nav class="toc"><span class="faint">On this page:</span><a href="#part1">Part I · The assignment: '
+        'the wheel on Mastercard</a>' + ('<a href="#part2">Part II · Further exploration: five stocks</a>' if P2 else "")
+        + '</nav>',
         '<div class="part" id="part1"><span class="no">Part I</span><h2>The assignment: the wheel on Mastercard</h2>'
         '<span class="what">Everything the assignment asks for: the thesis and whether it held, the blotter, '
         'the ledger, the portfolio on any date, and the evidence for the fill prices.</span></div>',
@@ -852,7 +784,7 @@ def render(D: dict, prose: dict[str, str], draft: bool, P2: dict | None = None) 
         panel("Thesis", say("thesis", "lead")),
         '<div style="height:12px"></div>',
         panel("Did it work?", verdict_table(D) + '<div style="height:10px"></div>' + say("verdict"), "2026 test"),
-        '<div class="switch" id="results"><button data-period="test" class="on">' + escape(PERIOD_LABEL["test"]) + '</button>'
+        '<div class="switch"><button data-period="test" class="on">' + escape(PERIOD_LABEL["test"]) + '</button>'
         '<button data-period="train">' + escape(PERIOD_LABEL["train"]) + '</button></div>',
         '<div id="kpis" class="kpis"></div>',
         '<div class="grid g-2-1" style="margin-top:0">',
@@ -868,7 +800,7 @@ def render(D: dict, prose: dict[str, str], draft: bool, P2: dict | None = None) 
               + '<div class="cap">' + re.sub(r"</?p>", "", prose.get("portfolio", "")) + "</div>",
               '<span data-window></span>', pid="portfolio"),
         '<div style="height:12px"></div>',
-        f'<section class="panel" id="records">{tab_html}</section>',
+        f'<section class="panel">{tab_html}</section>',
         '<div class="grid g-1-1">',
         panel("Fill prices", say("fills") + '<div class="sub">Notes</div>' + say("fills-note")),
         panel("Last trade against the closing mid", '<div id="plot-fill" style="height:380px"></div>'
@@ -913,7 +845,7 @@ def part2_html(P2: dict, say, panel) -> list[str]:
         panel("Motivation", say("part2-motivation") + '<div style="height:8px"></div>' + say("part2-setup")),
         '<div style="height:12px"></div>',
         panel("Results", results, "$500,000 to start in each period; each period starts from cash"),
-        '<div class="grid g-1-1" id="p2-charts">',
+        '<div class="grid g-1-1">',
         panel("Account value, 2024–25", '<div id="p2-train" style="height:320px"></div>', f"{lo[0]} to {lo[1]}", flush=True),
         panel("Account value, 2026", '<div id="p2-test" style="height:320px"></div>', f"{hi[0]} to {hi[1]}", flush=True),
         "</div>",
