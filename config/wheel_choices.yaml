@@ -66,7 +66,9 @@ adjustments_round_1:   # 2026-10-27, after stage 1 (none of the three rules pass
     falls before the next session's close and on or before the open put's expiry, the put is bought back
     at that close (the mid, the ask in the stress test). At the close of the first session after the
     earnings date, a new put is sold into the same expiry at the target delta if at least 7 calendar days
-    remain; otherwise the cash waits for the next entry session. Calls are unchanged
+    remain; otherwise the cash waits for the next entry session. Calls are unchanged. A put with no bid
+    (nearly worthless) is bought back at its ask, since there is no mid (added before any run, when a test
+    found the gap)
   close_before_earnings_reason: >
     skipping the whole cycle gave up about a third of the year's premium (62 of 172 puts) for the sake of
     one day; this sidesteps only the announcement and keeps most of the month's premium

@@ -274,6 +274,8 @@ def run(market: dict, *, start, end, mode: str = "wheel", put_delta: float = 0.2
     and config/wheel_choices.yaml's, each of which only stops a put being sold or frees a call:
 
         skip_earnings     no new put when an earnings date falls before its expiry
+        close_before_earnings  buy the put back at the close before an earnings date and sell a
+                          new one into the same expiry after it, if a week or more remains
         iv_over_rv        no new put unless its implied vol is above the realised vol of this many sessions
         unstick_after     drop the cost-basis floor once shares have been held through this many call cycles
     """
@@ -320,6 +322,8 @@ def run(market: dict, *, start, end, mode: str = "wheel", put_delta: float = 0.2
     cash, shares, basis = float(start_cash), 0, np.nan
     option = None            # the open short: ric, cp, strike, expiry, units, fill, credit, rolls, cycle
     pending = None           # after a take-profit close with `redeploy`: the expiry to re-sell into
+    after_earnings = None    # after closing a put before earnings: (earnings date, expiry to re-sell into)
+    earnings = pd.DatetimeIndex(market["earnings"]).sort_values()
     blotter, cycles, rows = [], [], []
     totals = {"premium": 0.0, "interest": 0.0, "dividends": 0.0}
     prev_day = None
@@ -505,6 +509,23 @@ def run(market: dict, *, start, end, mode: str = "wheel", put_delta: float = 0.2
                         pending = next_expiry[option["expiry"]]
                     option = None
 
+        # ---- step aside for earnings: buy the put back the close before --
+        if option is not None and option["cp"] == PUT and manage.get("close_before_earnings"):
+            nxt = next_session.get(day, day)
+            due = earnings[(earnings > day) & (earnings <= nxt)]
+            if len(due) and due[0] <= option["expiry"]:
+                row = quote(day, option["ric"])
+                # the mid, or the ask when nobody bids: a near-worthless put is still bought back
+                p = np.nan if row is None else buy_price(row)
+                if row is not None and not np.isfinite(p):
+                    p = _num(row["ask"])
+                if np.isfinite(p):
+                    buy_back(day, row, p, f"close before the {due[0].date()} earnings: bought back at {p:.2f}",
+                             "earnings")
+                    option["cycle"]["status"] = "closed before earnings"
+                    after_earnings = (due[0], option["expiry"])
+                    option = None
+
         # ---- roll a challenged put down and out for a credit ------------
         if (option is not None and option["cp"] == PUT and roll_on.get(option["expiry"]) == day
                 and close < option["strike"] and option["rolls"] < int(manage.get("max_rolls", 0))
@@ -554,10 +575,24 @@ def run(market: dict, *, start, end, mode: str = "wheel", put_delta: float = 0.2
                                    reason="redeploy")
                     pending = None
 
+        # ---- after earnings: sell a new put into the same expiry ---------
+        if (mode == "wheel" and option is None and after_earnings is not None and day > after_earnings[0]
+                and day not in entries):
+            expiry = after_earnings[1]
+            after_earnings = None
+            if (expiry - day).days >= 7 and shares == 0:
+                cp, target, lo, pick, contracts, per, skip, info = choose(day, expiry, close)
+                if not skip and pick is not None and contracts > 0:
+                    rec = new_record(day, expiry, close)
+                    rec.update(info, after_earnings=True)
+                    option = write(day, pick, cp, contracts, contracts * per, close, rec,
+                                   note_for(cp, contracts, target, pick, close, ", re-sold after earnings"),
+                                   reason="after_earnings")
+
         # ---- entry: open the cycle --------------------------------------
         if mode == "wheel" and day in entries and option is None:
             expiry = entries[day]
-            pending = None
+            pending = after_earnings = None
             cp, target, lo, pick, contracts, per, skip, info = choose(day, expiry, close)
             rec = new_record(day, expiry, close)
             rec.update(info)

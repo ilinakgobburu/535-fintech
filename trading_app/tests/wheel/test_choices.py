@@ -75,3 +75,28 @@ def test_after_three_call_cycles_the_floor_is_dropped():
     basis = res["ledger"].set_index("date").at[pd.Timestamp("2019-05-17"), "basis"]
     assert fourth["cp"] == "C" and fourth["unstuck"] and fourth["strike"] < basis
 
+
+
+# --------------------------------------------------------------------------
+# choice 10b: close before earnings, re-sell after
+# --------------------------------------------------------------------------
+
+def test_a_put_is_bought_back_before_earnings_and_a_new_one_sold_after():
+    m = make_market()
+    m["earnings"] = pd.DatetimeIndex(["2019-02-05"])
+    res = W.run(m, start=START, end=END, manage={"close_before_earnings": True})
+    back = [e for e in res["blotter"] if e["side"] == "BUY" and e.get("reason") == "earnings"]
+    again = [e for e in res["blotter"] if e["side"] == "SELL" and e.get("reason") == "after_earnings"]
+    assert [e["date"] for e in back] == [pd.Timestamp("2019-02-04")]
+    assert [e["date"] for e in again] == [pd.Timestamp("2019-02-06")]
+    assert pd.Timestamp(again[0]["expiry"]) == pd.Timestamp("2019-02-15")
+    assert cycle(res, "2019-01-22")["status"] == "closed before earnings"
+
+
+def test_with_less_than_a_week_left_after_earnings_the_cash_waits_for_the_next_entry():
+    m = make_market()
+    m["earnings"] = pd.DatetimeIndex(["2019-02-12"])            # Feb 13 leaves 2 days to Feb 15
+    res = W.run(m, start=START, end=END, manage={"close_before_earnings": True})
+    assert [e["date"] for e in res["blotter"] if e.get("reason") == "earnings"] == [pd.Timestamp("2019-02-11")]
+    assert not [e for e in res["blotter"] if e.get("reason") == "after_earnings"]
+    assert cycle(res, "2019-02-19")["cp"] == "P"

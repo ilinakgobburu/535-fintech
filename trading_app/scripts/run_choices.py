@@ -30,6 +30,9 @@ CONFIG = REPO / "config" / "wheel_choices.yaml"
 # config/wheel_choices.yaml's rules as run() reads them
 RULES = {"skip_earnings": {"skip_earnings": True}, "iv_over_rv": {"iv_over_rv": 21},
          "unstick": {"unstick_after": 3}}
+# adjustments_round_1, after stage 1
+ADJUSTED = {"close_before_earnings": {"close_before_earnings": True}, "iv_over_rv_63": {"iv_over_rv": 63},
+            "unstick_2": {"unstick_after": 2}}
 FILLS = ("mid", "cross")
 NEED = 5          # of 9, at mid and at the stress fills
 COUNTS = ("puts_written", "assigned", "calls_written", "called_away", "filtered", "share_days_pct")
@@ -72,13 +75,15 @@ def tally(rows: list[dict], versions) -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--stage", required=True, choices=("train", "test"))
+    ap.add_argument("--adjusted", action="store_true", help="the training stage with adjustments_round_1's rules")
     args = ap.parse_args()
     warnings.filterwarnings("ignore")
     cfg = yaml.safe_load(CONFIG.read_text())
     windows = [sw for sw in stocks() if sw["window_name"] == args.stage]
 
     if args.stage == "train":
-        versions = {"v1": {}, **RULES, "all_three": {k: v for r in RULES.values() for k, v in r.items()}}
+        rules = ADJUSTED if args.adjusted else RULES
+        versions = {"v1": {}, **rules, "all_three": {k: v for r in rules.values() for k, v in r.items()}}
     else:
         decided = cfg.get("decisions") or {}
         if not decided.get("version"):
@@ -97,7 +102,7 @@ def main() -> int:
         out["ma_assigned"] = ma["decided_mid"]["assigned"]
         print(f"  MA 2026: assigned {ma['decided_mid']['assigned']} times "
               f"({'can' if ma['decided_mid']['assigned'] else 'cannot'} go on the page)")
-    path = REPO / "cache" / f"wheel_choices_{args.stage}.json"
+    path = REPO / "cache" / f"wheel_choices_{args.stage}{'_adjusted' if args.adjusted else ''}.json"
     path.write_text(json.dumps(out, indent=1, default=float))
     print(f"wrote {path}")
     return 0
