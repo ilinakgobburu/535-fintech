@@ -243,6 +243,11 @@ def coverage(market: dict, start, end, lo: float = 0.15, hi: float = 0.35) -> di
 # the loop
 # --------------------------------------------------------------------------
 
+def _num(x) -> float:
+    """A quote as a float, NaN when LSEG left it empty (a missing bid comes back as <NA>)."""
+    return float("nan") if x is None or x is pd.NA or pd.isna(x) else float(x)
+
+
 def run(market: dict, *, start, end, mode: str = "wheel", put_delta: float = 0.25,
         call_delta: float = 0.25, floor: bool = True, fill: str = "mid",
         start_cash: float = START_CASH, ticker: str = "", manage: dict | None = None) -> dict:
@@ -272,8 +277,8 @@ def run(market: dict, *, start, end, mode: str = "wheel", put_delta: float = 0.2
     by_day = {d: g for d, g in quotes[quotes["date"].isin(sessions)].groupby("date")}
     empty = quotes.iloc[:0]
     marks = {}
-    price = (lambda row: float(row["bid"])) if fill == "cross" else (lambda row: float(row["mid"]))
-    buy_price = (lambda row: float(row["ask"])) if fill == "cross" else (lambda row: float(row["mid"]))
+    price = (lambda row: _num(row["bid"])) if fill == "cross" else (lambda row: _num(row["mid"]))
+    buy_price = (lambda row: _num(row["ask"])) if fill == "cross" else (lambda row: _num(row["mid"]))
 
     # what the managed rules need to know in advance: roll dates, the next monthly,
     # the session before each ex-dividend date, and the trend average
@@ -307,7 +312,7 @@ def run(market: dict, *, start, end, mode: str = "wheel", put_delta: float = 0.2
               "cash_delta": cash_delta, "note": note, "instrument": ticker}
         if row is not None:
             ev.update(instrument=row["ric"], cp=row["cp"], strike=float(row["strike"]),
-                      expiry=row["expiry"], bid=float(row["bid"]), ask=float(row["ask"]))
+                      expiry=row["expiry"], bid=_num(row["bid"]), ask=_num(row["ask"]))
         if reason is not None:
             ev["reason"] = reason
         blotter.append(ev)
@@ -411,7 +416,7 @@ def run(market: dict, *, start, end, mode: str = "wheel", put_delta: float = 0.2
         if option is not None and manage.get("early_assignment"):
             row = quote(day, option["ric"])
             k = option["strike"]
-            if row is not None and np.isfinite(row["mid"]):
+            if row is not None and np.isfinite(_num(row["mid"])):
                 if option["cp"] == PUT and close < k:
                     tv = float(row["mid"]) - (k - close)
                     if tv <= EARLY_PUT_TIME_VALUE + 1e-12:

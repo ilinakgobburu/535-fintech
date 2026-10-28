@@ -173,3 +173,14 @@ def test_with_buy_backs_and_rolls_the_pnl_parts_still_sum_to_the_pnl():
     L = res["ledger"]
     rebuilt = L["cash"] + L["shares"] * L["stock_close"] - L["short_units"].fillna(0) * L["short_mark"].fillna(0)
     assert np.allclose(rebuilt, L["nav"])
+
+
+def test_an_option_nobody_bids_for_can_still_be_bought_back_at_its_ask():
+    # LSEG returns an empty bid as <NA>; the stress test buys at the ask regardless
+    m = make_market()
+    q = m["quotes"].copy()
+    q["bid"] = q["bid"].astype(object).where(q["bid"].notna(), pd.NA)
+    m["quotes"] = q
+    res = W.run(m, start=START, end=END, fill="cross", manage={"take_profit": 0.5})
+    back = events(res, side="BUY", reason="take_profit")
+    assert back and all(np.isfinite(e["price"]) for e in back)
