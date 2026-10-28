@@ -66,3 +66,17 @@ def test_the_page_data_is_plain_json():
                         "gone": np.nan, "none": None, "nat": pd.NaT, "na": pd.NA}])
     assert json.loads(json.dumps(rows)) == [{"date": "2026-01-02", "x": 1.5, "n": 2, "gone": None, "none": None,
                                              "nat": None, "na": None}]
+
+
+def test_an_expiry_and_an_assignment_carry_the_contract_they_close():
+    res = {"blotter": [
+        {"date": pd.Timestamp("2026-01-20"), "kind": "put", "side": "SELL", "qty": 200, "price": 4.05,
+         "cash_delta": 810.0, "note": "", "instrument": "MAN202649000.U^N26", "cp": "P", "strike": 490.0,
+         "expiry": pd.Timestamp("2026-02-20"), "bid": 3.75, "ask": 4.35},
+        {"date": pd.Timestamp("2026-02-20"), "kind": "put", "side": "ASSIGN", "qty": 200, "price": 490.0,
+         "cash_delta": 0.0, "note": "", "instrument": "MA"},
+        {"date": pd.Timestamp("2026-02-20"), "kind": "stock", "side": "BUY", "qty": 200, "price": 490.0,
+         "cash_delta": -98000.0, "note": "", "instrument": "MA"}]}
+    rows = P.blotter_rows(res)
+    assert rows[1]["occ"] == rows[0]["occ"] == "MA    260220P00490000" and rows[1]["contracts"] == 2
+    assert rows[2]["occ"] is None and rows[2]["contracts"] is None

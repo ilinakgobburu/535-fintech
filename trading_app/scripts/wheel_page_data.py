@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import pickle
+import re
 import subprocess
 import sys
 import warnings
@@ -130,12 +131,17 @@ def ledger_rows(res: dict) -> list[dict]:
 
 
 def blotter_rows(res: dict) -> list[dict]:
-    out = []
+    """The engine's blotter, with the contract named on its expiry or assignment as well as its sale."""
+    out, open_ = [], None
     for e in res["blotter"]:
         row = {k: e.get(k) for k in ("date", "kind", "side", "qty", "price", "cash_delta", "note",
                                      "instrument", "cp", "strike", "expiry", "bid", "ask")}
-        row["occ"] = occ(e["cp"], e["strike"], e["expiry"]) if e.get("cp") else None
-        row["contracts"] = e["qty"] // W.CONTRACT if e.get("cp") else None
+        if e.get("cp") and e["side"] == W.SELL:
+            open_ = e
+        elif e["kind"] in ("put", "call") and open_ is not None:
+            row.update({k: open_[k] for k in ("instrument", "cp", "strike", "expiry")})
+        row["occ"] = occ(row["cp"], row["strike"], row["expiry"]) if row.get("cp") else None
+        row["contracts"] = e["qty"] // W.CONTRACT if row.get("cp") else None
         out.append(row)
     return out
 
@@ -332,11 +338,10 @@ def data_counts(cache: Path, market: dict) -> dict:
 
 
 def count_tests() -> int:
-    import ast
-    n = 0
-    for f in (ROOT / "tests" / "wheel").glob("test_*.py"):
-        n += sum(isinstance(x, ast.FunctionDef) and x.name.startswith("test_") for x in ast.walk(ast.parse(f.read_text())))
-    return n
+    """The tests pytest collects in tests/wheel, the number a reader running it would see."""
+    got = subprocess.run([sys.executable, "-m", "pytest", "tests/wheel", "--collect-only", "-q"],
+                         cwd=ROOT, capture_output=True, text=True).stdout
+    return int(re.search(r"(\d+) tests? collected", got).group(1))
 
 
 def main() -> int:
