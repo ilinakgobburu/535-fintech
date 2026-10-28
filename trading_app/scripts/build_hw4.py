@@ -438,7 +438,7 @@ STYLE = """
     --accent:#3987e5; --accent-soft:rgba(57,135,229,.12);
     --wheel:#3987e5; --wheel-bid:#7FB0EE; --hold:#d95926; --cash:#7D8590; --aqua:#199e70;
     --up:#16C784; --down:#F0616D; --warn:#E8A93B;
-    --mk-put:#E8A93B; --mk-call:#d55181; --mk-assign:#ECEEF1;   /* trade markers, checked against the blue wheel line */
+    --mk-put:#E8A93B; --mk-call:#d55181;   /* trade markers, checked against the blue wheel line */
     --font:'IBM Plex Sans',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;
     --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
     --radius:2px;
@@ -689,10 +689,10 @@ function tradeMarkers(blotter, dates, values) {
   const idx = new Map(dates.map((d, i) => [d, i]));
   return [['Put sold', e => e.cp === 'P' && e.side === 'SELL', 'triangle-down', '--mk-put', 12],
           ['Call sold', e => e.cp === 'C' && e.side === 'SELL', 'triangle-up', '--mk-call', 12],
-          ['Assigned or called away', e => e.side === 'ASSIGN', 'x', '--mk-assign', 15]].map(([name, f, sym, color, size]) => {
+          ['Assigned or called away', e => e.side === 'ASSIGN', 'x', '--text', 9]].map(([name, f, sym, color, size]) => {
     const ev = blotter.filter(f);
     return {x: ev.map(e => e.date), y: ev.map(e => values[idx.get(e.date)]), name, mode: 'markers',
-      marker: {symbol: sym, size, color: css(color), line: {color: css('--base'), width: 1.5}},
+      marker: {symbol: sym, size, color: css(color), line: {color: css(sym === 'x' ? '--panel' : '--base'), width: sym === 'x' ? 2 : 1.5}},
       text: ev.map(e => esc((e.kind === 'put' ? 'put ' : 'call ') + (e.occ || '') + ' at ' + num(e.price))),
       hovertemplate: '%{text}<extra>' + name + '</extra>'};
   });
