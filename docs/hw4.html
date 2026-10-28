@@ -542,11 +542,19 @@ function volCharts() {
       return 100 * (row[j - 1] + (row[j] - row[j - 1]) * (m - g[j - 1]) / (g[j] - g[j - 1]));
     };
     const sold = P.blotter.filter(e => e.cp && e.side === 'SELL').map(e => ({e, z: onSurface(e)})).filter(o => o.z != null);
-    const pts = (cp, name, color) => {
-      const o = sold.filter(x => x.e.cp === cp);
-      return {type: 'scatter3d', mode: 'markers', name, y: o.map(x => x.e.date), x: o.map(x => 100 * x.e.strike / close.get(x.e.date)),
-        z: o.map(x => x.z + 1.5), marker: {size: 6, color: css(color), line: {color: css('--base'), width: 1}},
-        text: o.map(x => x.e.occ), hovertemplate: '%{text}<br>strike %{x:.1f}% of close<br>implied vol %{z:.1f}%<extra></extra>'};
+    const zLo = q(0.01), zHi = q(0.995) + 2;
+    // each option sold as a pin from the floor up through the surface, with a dot where it crosses it
+    const pins = (cp, name, color) => {
+      const o = sold.filter(x => x.e.cp === cp), X = [], Y = [], Z = [];
+      o.forEach(x => { const m = 100 * x.e.strike / close.get(x.e.date);
+                       X.push(m, m, null); Y.push(x.e.date, x.e.date, null); Z.push(zLo, zHi, null); });
+      return [
+        {type: 'scatter3d', mode: 'lines', name, legendgroup: cp, x: X, y: Y, z: Z, hoverinfo: 'skip',
+         line: {color: css(color), width: 6}},
+        {type: 'scatter3d', mode: 'markers', name, legendgroup: cp, showlegend: false,
+         x: o.map(x => 100 * x.e.strike / close.get(x.e.date)), y: o.map(x => x.e.date), z: o.map(x => x.z),
+         marker: {size: 6, color: css(color), line: {color: css('--base'), width: 1}}, text: o.map(x => x.e.occ),
+         hovertemplate: '%{text}<br>strike %{x:.1f}% of close<br>implied vol %{z:.1f}%<extra></extra>'}];
     };
     const ax = (title, extra = {}) => ({title: {text: title, font: {color: css('--muted'), size: 11}}, color: css('--muted'),
       gridcolor: css('--line'), zerolinecolor: css('--axis'), backgroundcolor: css('--panel'), showbackground: true,
@@ -559,12 +567,12 @@ function volCharts() {
                   tickfont: {family: css('--mono'), color: css('--muted'), size: 10}},
        contours: {z: {show: false}}, lighting: {ambient: 0.85, diffuse: 0.4, specular: 0.05},
        hovertemplate: '%{y}<br>strike %{x:.1f}% of close<br>implied vol %{z:.1f}%<extra></extra>'},
-      pts('P', 'Puts sold', '--mk-put'), pts('C', 'Calls sold', '--mk-call')],
+      ...pins('P', 'Puts sold', '--mk-put'), ...pins('C', 'Calls sold', '--mk-call')],
       {paper_bgcolor: css('--panel'), font: {family: css('--font'), color: css('--muted'), size: 11},
        margin: {l: 0, r: 0, t: 10, b: 0}, legend: {orientation: 'h', x: 0, y: 1.02, font: {color: css('--text-2')}},
        hoverlabel: {bgcolor: css('--panel-hover'), bordercolor: css('--axis'), font: {family: css('--mono'), color: css('--text'), size: 11.5}},
        scene: {xaxis: ax('strike, % of close', {ticksuffix: '%', autorange: 'reversed'}), yaxis: ax('date'),
-               zaxis: ax('implied vol', {ticksuffix: '%', range: [q(0.01), q(0.995) + 2]}),
+               zaxis: ax('implied vol', {ticksuffix: '%', range: [zLo, zHi]}),
                aspectmode: 'manual', aspectratio: {x: 1.25, y: 1.9, z: 0.75},
                camera: {eye: {x: 1.75, y: -1.25, z: 0.85}, center: {x: 0, y: 0, z: -0.15}},
                domain: {x: [0, 1], y: [0, 1]}, bgcolor: css('--panel')}},
