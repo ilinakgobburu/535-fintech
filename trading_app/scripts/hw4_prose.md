@@ -17,13 +17,6 @@ The wheel sells a cash-secured put each month and, once assigned, a covered call
 // 2014-2023, and {{rw_vr}} for a random walk.
 The improvement in Sharpe ratio held, though not for the reason Mastercard was chosen. Specifically, implied volatility was above the volatility that followed in **{{test_iv_over_rv}} of {{test_premium_cycles}}** test cycles, but Mastercard's monthly moves no longer reversed in 2024-2026: its variance ratio rose from **{{vr_screen}}** to **{{vr_run}}**, close to the **{{rw_vr}}** of a random walk over the same number of months. Hence, the lower risk came from the structure of the wheel, cash earning T-bill interest while each put is open plus the premium collected, rather than from mean reversion.
 
-## summary
-// The Summary box beside the main chart. Put the label in **bold**.
-- **Strategy:** Each month a put at about **0.15 delta** is sold, secured by cash. Once assigned, a call at about **0.35 delta** is sold, never below the cost basis of the shares.
-- **Result:** The wheel returned **{{test_wheel_return}}** against **{{test_hold_return}}** for buy-and-hold, with a maximum drawdown of **{{test_wheel_dd}}** against **{{test_hold_dd}}**.
-- **Sharpe:** **{{test_wheel_sharpe}}** against **{{test_hold_sharpe}}** for buy-and-hold. T-bills alone returned **{{test_cash_return}}**.
-- **Trades:** {{test_puts}} puts sold, {{test_assigned}} assigned; {{test_calls}} covered call sold, {{test_called_away}} called away.
-
 ## stock
 // Why Mastercard. The Stock choice block.
 Mastercard was chosen by a rule rather than by hand. The S&P 500 as it stood on 29 December 2023 ({{universe}} members, including those since removed, so the list is not today's survivors) was ranked by how strongly each stock's monthly moves reversed over 2014-2023, using the variance ratio over three months and the monthly autocorrelation, and a stock was ranked only if both indicated reversal. Mastercard ranked **first**, with a variance ratio of **{{vr_screen}}** against a median of {{vr_median}}. The backtest uses only the years after that window, because testing a stock on the years that selected it would grade it on its own selection.

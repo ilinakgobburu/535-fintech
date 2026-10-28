@@ -80,3 +80,24 @@ def test_an_expiry_and_an_assignment_carry_the_contract_they_close():
     rows = P.blotter_rows(res)
     assert rows[1]["occ"] == rows[0]["occ"] == "MA    260220P00490000" and rows[1]["contracts"] == 2
     assert rows[2]["occ"] is None and rows[2]["contracts"] is None
+
+
+def test_an_index_benchmark_starts_at_the_capital_and_moves_with_the_index():
+    levels = pd.Series([200.0, 210.0, 189.0, 220.5], index=pd.to_datetime(["2026-01-02", "2026-01-05",
+                                                                           "2026-01-06", "2026-01-07"]))
+    sessions = pd.to_datetime(["2026-01-02", "2026-01-05", "2026-01-06", "2026-01-07"])
+    book = P.index_book(levels, sessions, 100_000.0)
+    assert list(book["nav"]) == pytest.approx([100_000.0, 105_000.0, 94_500.0, 110_250.0])
+
+
+def test_an_index_benchmark_carries_its_last_level_over_a_missing_session():
+    levels = pd.Series([200.0, 220.0], index=pd.to_datetime(["2026-01-02", "2026-01-06"]))
+    sessions = pd.to_datetime(["2026-01-02", "2026-01-05", "2026-01-06"])
+    assert list(P.index_book(levels, sessions, 100_000.0)["nav"]) == pytest.approx([100_000.0, 100_000.0, 110_000.0])
+
+
+def test_the_cboe_file_is_read_as_dated_closing_levels(tmp_path):
+    f = tmp_path / "PUT_History.csv"
+    f.write_text("DATE,PUT\n01/02/2026,3341.32\n01/05/2026,3350.00\n")
+    s = P.read_cboe(f)
+    assert list(s.index) == list(pd.to_datetime(["2026-01-02", "2026-01-05"])) and s.iloc[-1] == 3350.0

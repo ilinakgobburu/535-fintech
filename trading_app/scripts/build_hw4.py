@@ -215,6 +215,11 @@ def verdict_table(D: dict) -> str:
          f'<span class="st st-neutral">≈ {"ahead" if gap >= 0 else "behind"} by {abs(gap):.1f} pts</span>'],
         ["Beats T-bills", "Return over the test", f"{pct(w['return_pct'], sign=True)} against {pct(c['return_pct'], sign=True)}",
          held if w["return_pct"] > c["return_pct"] else missed],
+        *([["A higher Sharpe ratio than standard put selling",
+            "Sharpe ratio against the Cboe S&P 500 PutWrite index (a benchmark added after the test)",
+            f"{num(w['sharpe'])} against {num(t['putw']['sharpe'])}; drawdown {pct(w['max_drawdown_pct'])} against "
+            f"{pct(t['putw']['max_drawdown_pct'])}",
+            held if w["sharpe"] > t["putw"]["sharpe"] else missed]] if "putw" in t else []),
         ["Mastercard's monthly moves keep reversing",
          "The screen's own rule: variance ratio below 1 and autocorrelation below 0, over 2024-01 to 2026-09",
          f"variance ratio {num(run['vr'])}, autocorrelation {num(run['rho'], 2)}",
@@ -319,7 +324,7 @@ def page_data(D: dict) -> dict:
     keep = ("return_pct", "pnl", "sharpe", "max_drawdown_pct", "vol_pct", "worst_month", "worst_month_pct",
             "puts_written", "assigned", "calls_written", "called_away", "held_no_call", "share_days_pct", "cycles")
     for name, P in D["periods"].items():
-        books = {k: {**{f: v.get(f) for f in keep}, "attribution": v["attribution"]} for k, v in P["books"].items()}
+        books = {k: {**{f: v.get(f) for f in keep}, "attribution": v.get("attribution")} for k, v in P["books"].items()}
         L = P["ledger"]
         out["periods"][name] = {
             "window": P["window"], "books": books,
@@ -475,7 +480,7 @@ STYLE = """
   .grid{display:grid;gap:12px;margin:12px 0}
   .g-2-1{grid-template-columns:minmax(0,2fr) minmax(0,1fr)}
   .g-1-1{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
-  @media (max-width:1000px){.g-2-1,.g-1-1{grid-template-columns:minmax(0,1fr)}}
+  @media (max-width:1300px){.g-2-1,.g-1-1{grid-template-columns:minmax(0,1fr)}}
   .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);min-width:0;
     display:flex;flex-direction:column;scroll-margin-top:66px}
   .panel > .ph{display:flex;align-items:center;gap:10px;min-height:36px;padding:0 14px;border-bottom:1px solid var(--line);
@@ -614,8 +619,9 @@ const num = (x, dp = 2) => x == null ? '–' : x.toFixed(dp).replace('-', '−')
 const cls = x => x == null ? '' : (x < 0 ? 'neg' : 'pos');
 let period = 'test';
 
-const LABELS = {wheel: 'Wheel (mid fills)', wheel_bid: 'Wheel (fills at the bid)', hold: 'Buy and hold', cash: 'T-bills'};
-const COLORS = {wheel: '--wheel', wheel_bid: '--wheel-bid', hold: '--hold', cash: '--cash'};
+const LABELS = {wheel: 'Wheel (mid fills)', wheel_bid: 'Wheel (fills at the bid)', hold: 'Buy and hold MA', cash: 'T-bills',
+                putw: 'Cboe PutWrite index'};
+const COLORS = {wheel: '--wheel', wheel_bid: '--wheel-bid', hold: '--hold', cash: '--cash', putw: '--aqua'};
 
 function eventName(e) {
   if (e.cp && e.side === 'SELL') return ['Sell to open: ' + (e.cp === 'P' ? 'cash-secured put' : 'covered call'), 'ev-open'];
@@ -627,12 +633,24 @@ function eventName(e) {
   return [e.side, ''];
 }
 
+function bench() {
+  const B = D.periods[period].books;
+  const rows = [['wheel', 'Wheel'], ['wheel_bid', 'Wheel, at the bid'], ['putw', 'Cboe PutWrite'],
+                ['hold', 'Buy and hold MA'], ['cash', 'T-bills']].filter(([k]) => B[k]);
+  $('bench').innerHTML = '<div class="tbl-wrap"><table class="tbl small"><thead><tr>' +
+    ['', 'Return', 'Sharpe', 'Max DD', 'Vol'].map((h, i) => `<th class="${i ? '' : 'l'}">${h}</th>`).join('') +
+    '</tr></thead><tbody>' + rows.map(([k, label]) => `<tr${k === 'wheel' ? ' class="hi"' : ''}><td class="l">${label}</td>
+      <td class="${cls(B[k].return_pct)}">${pct(B[k].return_pct, 1, true)}</td><td>${k === 'cash' ? '–' : num(B[k].sharpe)}</td>
+      <td>${pct(B[k].max_drawdown_pct)}</td><td>${pct(B[k].vol_pct)}</td></tr>`).join('') + '</tbody></table></div>';
+}
+
 function kpis() {
-  const B = D.periods[period].books, w = B.wheel, h = B.hold, c = B.cash, b = B.wheel_bid;
+  const B = D.periods[period].books, w = B.wheel, h = B.hold, c = B.cash, b = B.wheel_bid, u = B.putw;
+  const vs = (f, g) => 'buy and hold ' + f(h) + (u ? ' · PutWrite ' + f(u) : '');
   const tiles = [
-    ['Wheel return', pct(w.return_pct, 1, true), 'buy and hold ' + pct(h.return_pct, 1, true), w.return_pct],
-    ['Sharpe ratio', num(w.sharpe), 'buy and hold ' + num(h.sharpe), w.sharpe],
-    ['Max drawdown', pct(w.max_drawdown_pct), 'buy and hold ' + pct(h.max_drawdown_pct), w.max_drawdown_pct],
+    ['Wheel return', pct(w.return_pct, 1, true), vs(x => pct(x.return_pct, 1, true)), w.return_pct],
+    ['Sharpe ratio', num(w.sharpe), vs(x => num(x.sharpe)), w.sharpe],
+    ['Max drawdown', pct(w.max_drawdown_pct), vs(x => pct(x.max_drawdown_pct)), w.max_drawdown_pct],
     ['Return at the bid', pct(b.return_pct, 1, true), 'stress test on fills', b.return_pct],
     ['Premium collected', money(w.attribution.premium), (w.puts_written + w.calls_written) + ' options sold', null],
     ['T-bill interest', money(w.attribution.interest), 'T-bills alone ' + pct(c.return_pct, 1, true), null],
@@ -671,7 +689,7 @@ function tradeMarkers(blotter, dates, values) {
 
 function navChart() {
   const P = D.periods[period], N = P.nav;
-  const traces = ['cash', 'hold', 'wheel_bid', 'wheel'].map(k => ({
+  const traces = ['cash', 'hold', 'putw', 'wheel_bid', 'wheel'].filter(k => N[k]).map(k => ({
     x: N.date, y: N[k], name: LABELS[k], mode: 'lines',
     line: {color: css(COLORS[k]), width: k === 'wheel' ? 2 : 1.5, dash: k === 'wheel_bid' ? 'dot' : 'solid'},
     hovertemplate: '%{y:$,.0f}<extra>' + LABELS[k] + '</extra>'}));
@@ -856,7 +874,7 @@ function show(p) {
   document.querySelectorAll('[data-window]').forEach(el => el.textContent = D.periods[p].window.join(' to '));
   const L = D.periods[p].ledger;
   $('pf-range').max = L.length - 1; $('pf-date').min = L[0][0]; $('pf-date').max = L[L.length - 1][0];
-  kpis(); tables(); navTab(); regtTab();
+  kpis(); bench(); tables(); navTab(); regtTab();
   if (typeof Plotly !== 'undefined') { navChart(); drawTabCharts(); }
   setDay(L.length - 1);
 }
@@ -990,7 +1008,10 @@ def render(D: dict, prose: dict[str, str], draft: bool, P2: dict | None = None,
         '<div class="grid g-2-1" style="margin-top:0">',
         panel("Account value", '<div id="plot-nav" style="height:400px"></div>',
               'from $100,000 · <span data-window></span>', flush=True),
-        panel("Summary", say("summary"), "2026 test"),
+        panel("Benchmarks", '<div id="bench"></div><div class="cap">The Cboe S&amp;P 500 PutWrite index sells a '
+              'one-month at-the-money S&amp;P 500 put each month, secured by cash in T-bills: the industry standard for '
+              'systematic put selling. Added as a benchmark after the test; nothing was chosen from it.</div>',
+              '<span data-window></span>'),
         "</div>",
         panel("Portfolio on any date",
               '<div class="pf-controls"><button id="pf-prev">◀ previous trade</button>'

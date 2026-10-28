@@ -38,7 +38,7 @@ REPO = ROOT.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from trading_app.lib import wheel as W  # noqa: E402
-from trading_app.lib.pmcc_daily import carry, monthly_expiries  # noqa: E402
+from trading_app.lib.pmcc_daily import carry, monthly_expiries, performance  # noqa: E402
 from trading_app.lib.ric import occ_symbol  # noqa: E402
 
 TICKER, RIC, COMPANY = "MA", "MA.N", "Mastercard"
@@ -47,6 +47,7 @@ PICK = REPO / "config" / "wheel_mr_picks" / f"{TICKER}.json"
 RESULTS = REPO / "cache" / f"wheel_mr_results_{TICKER}.json"
 COVERAGE = REPO / "cache" / f"wheel_mr_coverage_{TICKER}.json"
 SCREEN = REPO / "cache" / "mr_screen.json"
+CBOE_PUT = REPO / "cache" / "cboe" / "PUT_History.csv"     # config/wheel_mr.yaml added_2026_10_28_benchmark
 OUT = REPO / "cache" / f"wheel_page_{TICKER}.json"
 BAND = {"delta": (0.10, 0.40), "dte": (20, 36)}     # the contracts the wheel sells: monthly, out of the money
 TOL = 1e-6
@@ -108,6 +109,24 @@ def jsonable(x):
 
 
 # --------------------------------------------------------------------------
+# the industry benchmark
+# --------------------------------------------------------------------------
+
+def read_cboe(path: Path) -> pd.Series:
+    """Cboe's published daily history: a DATE column (month/day/year) and the index's closing level."""
+    d = pd.read_csv(path)
+    s = pd.Series(pd.to_numeric(d.iloc[:, 1], errors="coerce").to_numpy(),
+                  index=pd.to_datetime(d["DATE"], format="%m/%d/%Y")).dropna().sort_index()
+    return s
+
+
+def index_book(levels: pd.Series, sessions, capital: float) -> pd.DataFrame:
+    """`capital` invested in the index at the first session, valued at its closing level on each session."""
+    lv = levels.reindex(levels.index.union(pd.DatetimeIndex(sessions))).ffill().reindex(pd.DatetimeIndex(sessions))
+    return pd.DataFrame({"date": pd.DatetimeIndex(sessions), "nav": (capital * lv / lv.iloc[0]).to_numpy()})
+
+
+# --------------------------------------------------------------------------
 # the books
 # --------------------------------------------------------------------------
 
@@ -152,7 +171,7 @@ def book_summary(res: dict, tbill: pd.Series) -> dict:
     return s
 
 
-def run_period(market: dict, window: tuple[str, str], pick: dict, base: dict) -> dict:
+def run_period(market: dict, window: tuple[str, str], pick: dict, base: dict, bench: pd.Series | None = None) -> dict:
     start, end = window
     runs = {"wheel": W.run(market, start=start, end=end, ticker=TICKER, **pick),
             "wheel_bid": W.run(market, start=start, end=end, fill="cross", ticker=TICKER, **pick),
@@ -164,6 +183,12 @@ def run_period(market: dict, window: tuple[str, str], pick: dict, base: dict) ->
     books = {k: book_summary(v, tb) for k, v in runs.items()}
     nav = {"date": list(runs["wheel"]["ledger"]["date"]),
            **{k: list(v["ledger"]["nav"]) for k, v in runs.items()}}
+    if bench is not None:
+        book = index_book(bench, runs["wheel"]["ledger"]["date"], runs["wheel"]["start_cash"])
+        perf = performance(book, runs["wheel"]["start_cash"], tb)
+        books["putw"] = {**{k: v for k, v in perf.items() if k != "monthly_returns"},
+                         "vol_pct": perf["monthly_sd_pct"] * np.sqrt(12)}
+        nav["putw"] = list(book["nav"])
     close = market["stock"]["close"]
     cycles = []
     for c in runs["wheel"]["cycles"]:
@@ -371,8 +396,9 @@ def main() -> int:
     pick, base = picked["pick"], cfg["baseline"]["setting"]
     market = W.load_market(cache)
 
+    bench = read_cboe(CBOE_PUT) if CBOE_PUT.exists() else None
     periods = {name: run_period(market, (str(cfg["windows"][name]["start"]), str(cfg["windows"][name]["end"])),
-                                pick, base) for name in ("train", "test")}
+                                pick, base, bench) for name in ("train", "test")}
     checks = reproduce(periods, stored, picked)
     print(f"reproduced {len(checks)} recorded figures")
 
