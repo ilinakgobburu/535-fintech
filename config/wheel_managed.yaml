@@ -1,0 +1,83 @@
+# The managed wheel: the wheel of config/wheel.yaml, with each position managed between its sale and
+# its expiry. Registered 2026-10-27, before any managed backtest is run. The three upgrades, the
+# trend-filter variant, judging on many stocks with fixed rules, and leading the page with the
+# managed wheel were chosen by the user on 2026-10-27. Every number below is a practitioner
+# convention set by Claude, not tuned on any data.
+registered: 2026-10-27
+
+base: >
+  config/wheel.yaml's rules, fills and benchmarks, unchanged except where a rule below says otherwise.
+  Each stock runs at its own committed pick (config/wheel_picks, config/wheel_mr_picks)
+
+versions:
+  v1: the wheel as already run, every option held to expiry
+  A: v1 + take_profit + roll_puts + early_assignment
+  B: A + trend_filter
+
+rules:
+  take_profit: >
+    each session, after expiry and early assignment are settled, buy back the open short option when
+    its price (the mid at mid fills, the ask in the stress test) is at or below 50% of the price it was
+    sold at. The account then waits for the next cycle's entry session, the session after the next
+    monthly expiry, with the cash earning the T-bill or the shares held with no call
+  take_profit_reason: >
+    closing at 50% of the premium is the most common practitioner rule. Half the premium is already
+    earned, while most of the option's remaining risk (its gamma) is concentrated near expiry. Waiting
+    for the next entry keeps the monthly cadence that the option pull covers
+  roll_puts: >
+    on the last session at least 7 calendar days before a short put's expiry, if the close is below the
+    put's strike, buy the put back and sell the next monthly put, the same number of contracts, at the
+    highest strike at or below the current one whose price covers the buy-back (a net credit). If no
+    strike gives a credit, or the put has already been rolled twice in a row, hold it to expiry. A
+    rolled put follows every rule here, its 50% close measured against its own sale price
+  roll_reason: >
+    rolling down and out for a credit is the standard way to defend a short put: it keeps the account
+    in cash, collects more time value and may lower the strike. It does not remove the risk, since the
+    account stays long the stock below the strike; the credit-only rule and the cap of two keep it from
+    becoming an open-ended bet on a recovery. Calls are not rolled: with the cost-basis floor, being
+    called away never realises a loss on the shares, and it completes the wheel
+  roll_timing_reason: >
+    7 days rather than the 21 often quoted, because the pull covers each contract's last 50 days, so
+    the next monthly is reliably quoted only in the current one's last 10 days or so
+  cost_basis: on assignment, the strike less the net premium collected on that put and every put it was rolled from
+  early_assignment: >
+    US equity options are American. A short call in the money is assigned at the close of the session
+    before an ex-dividend date when its time value (mid less intrinsic value) is below the dividend;
+    ex-dates are announced in advance. A short put in the money is assigned at a close when its time
+    value is $0.05 or less. Either settles at the strike, as at expiry
+  trend_filter: >
+    version B only: no new put is sold on an entry session when that close is below the average of the
+    last 200 closes; the cash waits for the next entry session. Calls are not filtered
+  trend_reason: >
+    the 200-day average is the most common trend rule (Faber 2007 uses the 10-month average). It aims to
+    keep the wheel from buying into a sustained fall, at the cost of premium missed in recoveries
+
+fills:
+  primary: sell and buy back at the mid of the closing bid and ask
+  stress_test: sell at the bid, buy back at the ask
+
+comparison:
+  stock_windows: >
+    NVDA, AMD, DIS and COST on 2019-01-02 to 2021-12-31 and 2022-01-03 to 2023-12-29; MA, APA, V, FISV
+    and ADI on 2024-01-02 to 2025-12-31 and 2026-01-02 to 2026-10-16: the windows already registered
+    for each, 18 stock-windows, each from $100,000
+  setting: each stock's committed pick, the same for v1, A and B, so the management is the only difference
+  helped: a version helped on a stock-window if its Sharpe ratio at mid beats v1's; also reported at the stress fills
+  reported: >
+    per stock-window, return, Sharpe ratio and max drawdown at mid and at the stress fills for v1, A and B;
+    counts of early closes, rolls, early assignments and filtered entries; on how many of the 18
+    stock-windows each version helped
+  page_lead: >
+    docs/hw4.html (Mastercard) leads with the managed wheel. Which of A and B leads is decided on the
+    other 8 stocks, not on Mastercard: the one with the higher median Sharpe ratio at mid across their
+    16 stock-windows, a tie going to A. The other is shown beside it, and v1 as the comparison
+  caveat: >
+    every window here has already been seen under v1, Mastercard's 2026 included. The management rules
+    are conventions fixed here before any managed run, not tuned, so they cannot have been fitted to
+    those results; whether they help is judged across all 18 stock-windows, not on one
+
+data:
+  history: >
+    the 200-close average needs about 10 months of closes before each window, and the cached stock
+    series start about 7 months before. Unadjusted daily closes from a year before each window are
+    pulled into stock_history.pkl in each cache, one request per stock
