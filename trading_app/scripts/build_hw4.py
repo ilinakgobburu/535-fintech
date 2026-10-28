@@ -409,17 +409,28 @@ STYLE = """
   @media (max-width:640px){.wrap{padding:0 16px 60px}}
   a{color:var(--wheel)}
 
-  .bar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:14px;flex-wrap:wrap;
-    padding:12px 0;background:var(--base);border-bottom:1px solid var(--line)}
-  .bar .sym{font-family:var(--mono);font-weight:700;font-size:18px}
-  .bar .co{font-weight:600}
-  .bar .name{color:var(--muted);font-size:var(--fs-sm)}
-  .bar .right{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+  .site{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:18px;flex-wrap:wrap;
+    padding:10px 0;background:var(--base);border-bottom:1px solid var(--line)}
+  .site .brand{display:flex;align-items:baseline;gap:10px;color:var(--text);text-decoration:none}
+  .site .brand .sym{font-family:var(--mono);font-weight:700;font-size:18px}
+  .site .brand .co{font-weight:600}
+  .site .brand .name{color:var(--muted);font-size:var(--fs-sm)}
+  .site .right{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+  .site a.chip{text-decoration:none}
+  .pages{display:flex;gap:4px;flex-wrap:wrap}
+  .pages a{color:var(--muted);text-decoration:none;font-size:var(--fs-sm);font-weight:600;padding:7px 12px;
+    border-radius:8px;border:1px solid transparent}
+  .pages a:hover{color:var(--text);background:var(--panel-hi)}
+  .pages a.on{color:var(--text);background:var(--panel-hi);border-color:var(--line);box-shadow:inset 0 -2px 0 var(--wheel)}
+  .meta{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 0}
+  a.next{display:block;margin:18px 0 0;padding:14px 16px;border:1px solid var(--line);border-radius:8px;
+    background:var(--panel);color:var(--text);text-decoration:none;font-weight:600}
+  a.next:hover{border-color:var(--wheel)}
   .chip{font-family:var(--mono);font-size:var(--fs-xs);color:var(--muted);border:1px solid var(--line);
     border-radius:999px;padding:4px 10px;background:var(--panel);white-space:nowrap}
   .chip b{color:var(--text);font-weight:600} .chip a{color:inherit;text-decoration:none}
   .chip.hot{background:var(--hold);border-color:var(--hold);color:#0B1020;font-weight:700}
-  @media (max-width:640px){.bar{position:static} .bar .right{margin-left:0}}
+  @media (max-width:640px){.site{position:static} .site .right{margin-left:0}}
 
   .grid{display:grid;gap:12px;margin:12px 0}
   .g-2-1{grid-template-columns:minmax(0,2fr) minmax(0,1fr)}
@@ -510,14 +521,9 @@ STYLE = """
   .pf-events div{padding:3px 0;border-top:1px solid var(--line-soft)}
 
   /* Part I and Part II */
-  .toc{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 0;font-size:var(--fs-sm)}
-  .toc a{color:var(--text);text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:4px 12px;
-    background:var(--panel)}
-  .toc a:hover{border-color:var(--wheel)}
-  .toc .faint{align-self:center}
   .part{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin:30px 0 4px;padding-top:18px;
     border-top:2px solid var(--line);scroll-margin-top:70px}
-  .part:first-of-type{border-top:none;padding-top:0;margin-top:18px}
+  .meta + .part{border-top:none;padding-top:0;margin-top:18px}
   .part .no{font-family:var(--mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#0B1020;
     background:var(--accent);border-radius:6px;padding:3px 9px;font-weight:700}
   .part h2{margin:0;font-size:22px;font-weight:600;letter-spacing:-.01em}
@@ -727,7 +733,9 @@ def tip(prose: dict[str, str], label: str) -> str:
     return f'<span class="tip" tabindex="0" aria-label="About {escape(label)}">i<span class="bubble">{body}</span></span>'
 
 
-def render(D: dict, prose: dict[str, str], draft: bool, P2: dict | None = None) -> str:
+def render(D: dict, prose: dict[str, str], draft: bool, P2: dict | None = None,
+           names: tuple[str, str] = ("hw4.html", "hw4_part2.html")) -> tuple[str, str | None]:
+    """Part I's page and, with P2, Part II's: `names` are their file names, for the links between them."""
     missing = []
 
     def say(key: str, cls: str = "") -> str:
@@ -758,25 +766,31 @@ def render(D: dict, prose: dict[str, str], draft: bool, P2: dict | None = None) 
     script = (SCRIPT.replace("/*__DATA__*/null", json.dumps(page_data(D), separators=(",", ":")))
               .replace("const D =", "const TIPS = " + json.dumps(tips) + ";\nconst D ="))
 
-    parts = [f"""<!doctype html>
+    def page_top(title: str, active: str) -> str:
+        """The head and the site header both pages share: Part I and Part II as two pages of one site."""
+        links = [("1", "Part I · The assignment", names[0])] + ([("2", "Part II · Further exploration", names[1])] if P2 else [])
+        nav = "".join(f'<a href="{href}"' + (' class="on" aria-current="page"' if k == active else "") + f'>{escape(label)}</a>'
+                      for k, label, href in links)
+        return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Wheel Strategy · MA</title>
+<title>{escape(title)}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
 <style>{STYLE}</style></head><body><div class="wrap">
-<div class="bar"><span class="sym">MA</span><span class="co">{escape(D["company"])}</span>
-<span class="name">Wheel strategy · backtest</span>
-<div class="right"><span class="chip">test <b>{T["window"][0]}</b> to <b>{T["window"][1]}</b></span>
+<header class="site"><a class="brand" href="{names[0]}"><span class="sym">MA</span><span class="co">{escape(D["company"])}</span>
+<span class="name">Wheel strategy · backtest</span></a>
+<nav class="pages" aria-label="Pages">{nav}</nav>
+<div class="right"><a class="chip hot" href="{REPO_URL}">Code (to GitHub Repo) ↗</a>
+<a class="chip" href="hw3.html">← PMCC page</a></div></header>
+<div class="meta"><span class="chip">test <b>{T["window"][0]}</b> to <b>{T["window"][1]}</b></span>
 <span class="chip">trained <b>{R["window"][0]}</b> to <b>{R["window"][1]}</b></span>
-<span class="chip">daily closes · LSEG</span>
-<span class="chip hot"><a href="{REPO_URL}">Code (to GitHub Repo) ↗</a></span>
-<span class="chip"><a href="hw3.html">← PMCC page</a></span></div></div>""",
-        '<nav class="toc"><span class="faint">On this page:</span><a href="#part1">Part I · The assignment: '
-        'the wheel on Mastercard</a>' + ('<a href="#part2">Part II · Further exploration: five stocks</a>' if P2 else "")
-        + '</nav>',
+<span class="chip">daily closes · LSEG</span></div>"""
+
+    parts = [
+        page_top("Wheel Strategy · MA", "1"),
         '<div class="part" id="part1"><span class="no">Part I</span><h2>The assignment: the wheel on Mastercard</h2>'
         '<span class="what">Everything the assignment asks for: the thesis and whether it held, the blotter, '
         'the ledger, the portfolio on any date, and the evidence for the fill prices.</span></div>',
@@ -825,13 +839,19 @@ def render(D: dict, prose: dict[str, str], draft: bool, P2: dict | None = None) 
         panel("Reporting", say("honest")),
         "</div>",
         panel("Limitations", say("limitations")),
-        *(part2_html(P2, say, panel) if P2 else []),
+        (f'<a class="next" href="{names[1]}">Next: Part II · Further exploration, the same wheel on five stocks →</a>'
+         if P2 else ""),
         f"<script>{script}</script>",
         "</div></body></html>",
     ]
+    second = None
+    if P2:
+        second = "\n".join([page_top("Wheel Strategy · Five Stocks", "2"), *part2_html(P2, say, panel),
+                            f'<a class="next" href="{names[0]}">← Back to Part I · The assignment, the wheel on Mastercard</a>',
+                            "</div></body></html>"])
     if missing:
         print(f"  prose sections still empty: {', '.join(missing)}", file=sys.stderr)
-    return "\n".join(parts)
+    return "\n".join(parts), second
 
 
 def part2_html(P2: dict, say, panel) -> list[str]:
@@ -870,9 +890,12 @@ def main() -> int:
         for k, v in f.items():
             print(f"{{{{{k}}}}}  =  {v}")
         return 0
-    html = render(D, load_prose(f), args.draft, P2)
-    args.out.write_text(html, encoding="utf-8")
-    print(f"wrote {args.out} ({args.out.stat().st_size / 1e3:.0f} kB)")
+    second_path = args.out.with_name(args.out.stem + "_part2.html")
+    first, second = render(D, load_prose(f), args.draft, P2, (args.out.name, second_path.name))
+    for path, html in ((args.out, first), (second_path, second)):
+        if html is not None:
+            path.write_text(html, encoding="utf-8")
+            print(f"wrote {path} ({path.stat().st_size / 1e3:.0f} kB)")
     return 0
 
 
