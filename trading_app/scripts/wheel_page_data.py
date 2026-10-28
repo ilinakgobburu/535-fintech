@@ -184,7 +184,32 @@ def book_summary(res: dict, tbill: pd.Series) -> dict:
     return s
 
 
-def run_period(market: dict, window: tuple[str, str], pick: dict, base: dict, bench: pd.Series | None = None) -> dict:
+SURFACE_GRID = np.round(np.arange(0.80, 1.2001, 0.025), 3)
+
+
+def vol_views(market: dict, result: dict, by_day: dict) -> dict:
+    """The smile on every session, the surface (strike/spot against date) and the account's greeks."""
+    days, smiles, surface = [], [], []
+    for day in result["ledger"]["date"]:
+        sm = W.smile(market, day, by_day)
+        if sm is None or len(sm["points"]) < 3:
+            continue
+        pts = sm["points"]
+        days.append(day)
+        smiles.append({"expiry": sm["expiry"], "dte": sm["dte"], "spot": round(sm["spot"], 2),
+                       "m": pts["moneyness"].round(4).tolist(), "iv": pts["iv"].round(4).tolist()})
+        m, iv = pts["moneyness"].to_numpy(), pts["iv"].to_numpy()
+        row = np.interp(SURFACE_GRID, m, iv)
+        row[(SURFACE_GRID < m.min()) | (SURFACE_GRID > m.max())] = np.nan
+        surface.append([None if not np.isfinite(v) else round(float(v), 4) for v in row])
+    G = W.position_greeks(result, market)
+    return {"smile": {"date": days, "s": smiles},
+            "surface": {"date": days, "grid": SURFACE_GRID.tolist(), "iv": surface},
+            "greeks": {k: G[k].round(4).tolist() if k != "date" else list(G["date"]) for k in ("date", "delta", "gamma", "vega", "theta")}}
+
+
+def run_period(market: dict, window: tuple[str, str], pick: dict, base: dict, bench: pd.Series | None = None,
+               by_day: dict | None = None) -> dict:
     start, end = window
     runs = {"wheel": W.run(market, start=start, end=end, ticker=TICKER, **pick),
             "wheel_bid": W.run(market, start=start, end=end, fill="cross", ticker=TICKER, **pick),
@@ -229,7 +254,8 @@ def run_period(market: dict, window: tuple[str, str], pick: dict, base: dict, be
             "ledger": ledger_rows(runs["wheel"]), "blotter": blotter_rows(runs["wheel"]),
             "hold_blotter": blotter_rows(runs["hold"]), "cycles": cycles,
             "monthly": W.monthly_nav(led, runs["wheel"]["start_cash"], market["tbill"]),
-            "drawdown": drawdown, "regt": regt}
+            "drawdown": drawdown, "regt": regt,
+            "vol": vol_views(market, runs["wheel"], by_day) if by_day is not None else None}
 
 
 def reproduce(periods: dict, stored: dict, picked: dict) -> list[str]:
@@ -269,7 +295,13 @@ def trade_frame(cache: Path, market: dict) -> pd.DataFrame:
         e["ric"] = ric
         extra.append(e.rename_axis("date").reset_index())
     q = market["quotes"].merge(pd.concat(extra, ignore_index=True), on=["date", "ric"], how="left")
-    return q
+    imp = []
+    for ric, df in frames.items():
+        e = pd.DataFrame({"lseg_iv": pd.to_numeric(df["IMP_VOLT"], errors="coerce") / 100.0})
+        e.index = pd.DatetimeIndex(df.index).normalize()
+        e["ric"] = ric
+        imp.append(e.rename_axis("date").reset_index())
+    return q.merge(pd.concat(imp, ignore_index=True), on=["date", "ric"], how="left")
 
 
 def band_rows(q: pd.DataFrame, market: dict, start, end) -> pd.DataFrame:
@@ -281,12 +313,13 @@ def band_rows(q: pd.DataFrame, market: dict, start, end) -> pd.DataFrame:
     d["dte"] = (d["expiry"] - d["date"]).dt.days
     d = d[d["dte"].between(*BAND["dte"])
           & np.where(d["cp"] == W.PUT, d["strike"] < d["spot"], d["strike"] > d["spot"])]
-    deltas = []
+    deltas, ivs = [], []
     for r in d.itertuples():
         rate, q_ = carry(market, r.date)
         g = W.option_greeks(r.mid, r.spot, r.strike, r.dte / W.DAYS_PER_YEAR, rate, q_, r.cp)
         deltas.append(abs(g["delta"]))
-    d["abs_delta"] = deltas
+        ivs.append(g["iv"])
+    d["abs_delta"], d["iv"] = deltas, ivs
     return d[d["abs_delta"].between(*BAND["delta"])]
 
 
@@ -305,6 +338,9 @@ def fill_evidence(q: pd.DataFrame, market: dict, periods: dict) -> dict:
            "in_band_volume_median": float(band["volume"].median()),
            "in_band_oi_median": float(band["oi"].median())}
     # where in the quote each trade of the band printed: 0 the bid, 0.5 the mid, 1 the ask
+    both = band[band["iv"].notna() & band["lseg_iv"].notna() & (band["lseg_iv"] > 0)]
+    out["iv_check"] = {"n": int(len(both)), "corr": float(np.corrcoef(both["iv"], both["lseg_iv"])[0, 1]),
+                       "median_abs_diff_pts": float(100 * (both["iv"] - both["lseg_iv"]).abs().median())}
     two = band[band["ask"] > band["bid"]]
     out["locations"] = location_bins((two["trade"] - two["bid"]) / (two["ask"] - two["bid"]))
     # the same trades as points, with the typical half-spread for the scatter's guide lines
@@ -415,8 +451,9 @@ def main() -> int:
     market = W.load_market(cache)
 
     bench = read_cboe(CBOE_PUT) if CBOE_PUT.exists() else None
+    by_day = {d: g for d, g in market["quotes"].groupby("date")}
     periods = {name: run_period(market, (str(cfg["windows"][name]["start"]), str(cfg["windows"][name]["end"])),
-                                pick, base, bench) for name in ("train", "test")}
+                                pick, base, bench, by_day) for name in ("train", "test")}
     checks = reproduce(periods, stored, picked)
     print(f"reproduced {len(checks)} recorded figures")
 

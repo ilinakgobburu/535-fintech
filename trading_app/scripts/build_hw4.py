@@ -343,11 +343,12 @@ def page_data(D: dict) -> dict:
             "ledger": [[r["date"], r["close"], r["cash"], r["shares"], r["basis"], r["short"], r["occ"], r["strike"],
                         r["expiry"], r["contracts"], r["mark"], r["option_mv"], r["nav"]] for r in L],
             "blotter": P["blotter"], "cycles": P["cycles"],
-            "monthly": P["monthly"], "drawdown": P["drawdown"], "regt": P["regt"],
+            "monthly": P["monthly"], "drawdown": P["drawdown"], "regt": P["regt"], "vol": P.get("vol"),
             # the window ends before its month does (2026 stops on 16 October)
             "partial_last_month": bool((pd.Timestamp(P["window"][1]) + pd.offsets.BDay(1)).month
                                        == pd.Timestamp(P["window"][1]).month)}
     out["locations"] = D["fills"]["locations"]
+    out["iv_check"] = D["fills"].get("iv_check")
     out["scatter"] = D["fills"]["scatter"]
     return rounded(out)
 
@@ -866,6 +867,109 @@ function drawTabCharts() {
   }
 }
 
+// ---- volatility ------------------------------------------------------------
+let smIndex = 0;
+function smileInterp(sm, m) {
+  const xs = sm.m, ys = sm.iv;
+  if (m < xs[0] || m > xs[xs.length - 1]) return null;
+  for (let i = 1; i < xs.length; i++) if (xs[i] >= m) return ys[i - 1] + (ys[i] - ys[i - 1]) * (m - xs[i - 1]) / (xs[i] - xs[i - 1]);
+  return ys[ys.length - 1];
+}
+function smileAt(i) {
+  const V = D.periods[period].vol; if (!V) return;
+  smIndex = Math.max(0, Math.min(V.smile.date.length - 1, i));
+  const day = V.smile.date[smIndex], sm = V.smile.s[smIndex];
+  $('sm-range').value = smIndex; $('sm-date').value = day;
+  const atm = smileInterp(sm, 1.0), wing = smileInterp(sm, 0.9);
+  $('sm-info').innerHTML = `${day} · expiry <b>${sm.expiry}</b> (${sm.dte} days) · MA close <b>${money(sm.spot, 2)}</b>`
+    + (atm != null ? ` · at-the-money vol <b>${pct(100 * atm)}</b>` : '')
+    + (wing != null && atm != null ? ` · 90% strike <b>${pct(100 * wing)}</b> (put skew ${num(100 * (wing - atm), 1)} pts)` : '');
+  if (typeof Plotly === 'undefined' || !$('plot-smile').offsetParent) return;
+  const isPut = sm.m.map(m => m < 1);
+  const traces = [
+    {x: sm.m.map(m => 100 * m), y: sm.iv.map(v => 100 * v), name: 'Smile', mode: 'lines', line: {color: css('--text-2'), width: 1.5},
+     hoverinfo: 'skip', showlegend: false},
+    {x: sm.m.filter((_, i) => isPut[i]).map(m => 100 * m), y: sm.iv.filter((_, i) => isPut[i]).map(v => 100 * v),
+     name: 'Puts (below the close)', mode: 'markers', marker: {size: 8, color: css('--wheel')},
+     hovertemplate: 'strike %{x:.1f}% of close<br>implied vol %{y:.1f}%<extra>put</extra>'},
+    {x: sm.m.filter((_, i) => !isPut[i]).map(m => 100 * m), y: sm.iv.filter((_, i) => !isPut[i]).map(v => 100 * v),
+     name: 'Calls (above the close)', mode: 'markers', marker: {size: 8, color: css('--aqua')},
+     hovertemplate: 'strike %{x:.1f}% of close<br>implied vol %{y:.1f}%<extra>call</extra>'}];
+  const row = D.periods[period].ledger.find(r => r[0] === day);
+  if (row && row[5] && row[8] === sm.expiry) {
+    const m = row[7] / sm.spot, iv = smileInterp(sm, m);
+    if (iv != null) traces.push({x: [100 * m], y: [100 * iv], name: row[5] === 'P' ? "The wheel's short put" : "The wheel's covered call",
+      mode: 'markers', marker: {symbol: row[5] === 'P' ? 'triangle-down' : 'triangle-up', size: 15,
+      color: css(row[5] === 'P' ? '--mk-put' : '--mk-call'), line: {color: css('--base'), width: 1.5}},
+      hovertemplate: 'strike ' + money(row[7], 0) + ' (%{x:.1f}% of close)<br>implied vol %{y:.1f}%<extra>the wheel</extra>'});
+  }
+  Plotly.react('plot-smile', traces, layout({hovermode: 'closest',
+    shapes: [{type: 'line', x0: 100, x1: 100, y0: 0, y1: 1, yref: 'paper', line: {color: css('--axis'), width: 1}}],
+    annotations: [{x: 100, y: 1, yref: 'paper', text: 'close', showarrow: false, yanchor: 'bottom',
+                   font: {family: css('--mono'), size: 10.5, color: css('--muted')}}],
+    xaxis: {title: {text: 'strike, % of the close'}, ticksuffix: '%'}, yaxis: {title: {text: 'implied vol'}, ticksuffix: '%'}}),
+    {displayModeBar: false, responsive: true});
+}
+function smileJump(dir) {
+  const V = D.periods[period].vol, cur = V.smile.date[smIndex];
+  const sales = [...new Set(D.periods[period].blotter.filter(e => e.cp && e.side === 'SELL').map(e => e.date))].sort();
+  const t = dir > 0 ? sales.find(d => d > cur) : [...sales].reverse().find(d => d < cur);
+  if (t) { const j = V.smile.date.findIndex(d => d >= t); if (j >= 0) smileAt(j); }
+}
+function volCharts() {
+  const P = D.periods[period], V = P.vol, cfg = {displayModeBar: false, responsive: true};
+  if (!V || typeof Plotly === 'undefined') return;
+  if ($('plot-smile').offsetParent) smileAt(smIndex);
+  if ($('plot-surface').offsetParent) {
+    const S = V.surface, z = S.grid.map((_, j) => S.iv.map(row => row[j] == null ? null : 100 * row[j]));
+    const all = z.flat().filter(v => v != null).sort((a, b) => a - b);
+    const q = f => all[Math.floor(f * (all.length - 1))];
+    const close = new Map(P.ledger.map(r => [r[0], r[1]]));
+    const sold = P.blotter.filter(e => e.cp && e.side === 'SELL');
+    const mk = (cp, name, sym, color) => {
+      const ev = sold.filter(e => e.cp === cp);
+      return {x: ev.map(e => e.date), y: ev.map(e => 100 * e.strike / close.get(e.date)), name, mode: 'markers', type: 'scatter',
+        marker: {symbol: sym, size: 10, color: css(color), line: {color: css('--base'), width: 1.5}},
+        text: ev.map(e => e.occ), hovertemplate: '%{text}<br>strike %{y:.1f}% of close<extra>' + name.toLowerCase() + '</extra>'};
+    };
+    Plotly.react('plot-surface', [
+      {type: 'heatmap', x: S.date, y: S.grid.map(g => 100 * g), z, zmin: q(0.03), zmax: q(0.97),
+       colorscale: [[0, '#0d366b'], [0.35, '#256abf'], [0.7, '#6da7ec'], [1, '#cde2fb']],
+       colorbar: {title: {text: 'implied vol', side: 'right'}, ticksuffix: '%', thickness: 10, outlinewidth: 0,
+                  tickfont: {family: css('--mono'), color: css('--muted'), size: 10}},
+       hovertemplate: '%{x}<br>strike %{y:.1f}% of close<br>implied vol %{z:.1f}%<extra></extra>'},
+      mk('P', 'Puts sold', 'triangle-down', '--mk-put'), mk('C', 'Calls sold', 'triangle-up', '--mk-call')],
+      layout({hovermode: 'closest', margin: {l: 58, r: 16, t: 34, b: 40},
+              yaxis: {title: {text: 'strike, % of the close'}, ticksuffix: '%'}}), cfg);
+  }
+  if ($('plot-vrp').offsetParent) {
+    const c = P.cycles.filter(x => x.iv != null && x.realised_vol != null && x.cp);
+    const over = c.filter(x => x.iv > x.realised_vol).length;
+    const gap = c.reduce((a, x) => a + (x.iv - x.realised_vol), 0) / Math.max(c.length, 1);
+    $('vrp-info').innerHTML = `Implied above realised on <b>${over} of ${c.length}</b> options sold; on average `
+      + `<b>${num(100 * gap, 1)} vol points</b> higher.`;
+    const seg = {x: [], y: []};
+    c.forEach(x => { seg.x.push(x.entry, x.entry, null); seg.y.push(100 * x.iv, 100 * x.realised_vol, null); });
+    Plotly.react('plot-vrp', [
+      {x: seg.x, y: seg.y, mode: 'lines', line: {color: css('--axis'), width: 2}, hoverinfo: 'skip', showlegend: false},
+      {x: c.map(x => x.entry), y: c.map(x => 100 * x.iv), name: 'Implied vol, when sold', mode: 'markers',
+       marker: {size: 9, color: css('--wheel')}, text: c.map(x => x.occ || ''),
+       hovertemplate: '%{text}<br>implied %{y:.1f}%<extra></extra>'},
+      {x: c.map(x => x.entry), y: c.map(x => 100 * x.realised_vol), name: 'Realised vol, to expiry', mode: 'markers',
+       marker: {size: 9, color: css('--text-2')}, hovertemplate: 'realised %{y:.1f}%<extra></extra>'}],
+      layout({hovermode: 'closest', yaxis: {ticksuffix: '%', rangemode: 'tozero'}}), cfg);
+  }
+  if ($('plot-gdelta').offsetParent) {
+    const G = V.greeks;
+    const one = (id, y, fmt, label) => Plotly.react(id, [{x: G.date, y, mode: 'lines', line: {color: css('--wheel'), width: 1.6},
+      hovertemplate: fmt + '<extra>' + label + '</extra>'}],
+      layout({showlegend: false, hovermode: 'x unified', margin: {l: 64, r: 16, t: 8, b: 30}}), cfg);
+    one('plot-gdelta', G.delta, '%{y:,.0f} shares', 'delta');
+    one('plot-gvega', G.vega, '%{y:$,.0f} per vol point', 'vega');
+    one('plot-gtheta', G.theta, '%{y:$,.2f} per day', 'theta');
+  }
+}
+
 function fillHist() {
   const H = D.locations, n = H.labels.length, inside = H.labels.map((_, i) => i > 0 && i < n - 1);
   const bar = (keep, name, color) => ({type: 'bar', name, x: H.labels.map((l, i) => keep[i] ? l : null).filter(v => v !== null),
@@ -925,7 +1029,11 @@ function show(p) {
   const L = D.periods[p].ledger;
   $('pf-range').max = L.length - 1; $('pf-date').min = L[0][0]; $('pf-date').max = L[L.length - 1][0];
   kpis(); bench(); tables(); navTab(); regtTab();
-  if (typeof Plotly !== 'undefined') { navChart(); drawTabCharts(); }
+  const V = D.periods[p].vol;
+  if (V) { $('sm-range').max = V.smile.date.length - 1; $('sm-date').min = V.smile.date[0];
+           $('sm-date').max = V.smile.date[V.smile.date.length - 1]; smIndex = V.smile.date.length - 1;
+           smileJump(-1); smileAt(smIndex); }
+  if (typeof Plotly !== 'undefined') { navChart(); drawTabCharts(); volCharts(); }
   setDay(L.length - 1);
 }
 
@@ -943,11 +1051,58 @@ document.querySelectorAll('.tabs button').forEach(btn => btn.addEventListener('c
   const root = btn.closest('.panel');
   root.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b === btn));
   root.querySelectorAll('.pane').forEach(p => p.classList.toggle('on', p.dataset.pane === btn.dataset.tab));
-  drawTabCharts();                    // a chart drawn in a hidden tab has no width, so tabs draw when shown
+  drawTabCharts(); volCharts();       // a chart drawn in a hidden tab has no width, so tabs draw when shown
 }));
+$('sm-range').addEventListener('input', e => smileAt(+e.target.value));
+$('sm-date').addEventListener('change', e => {
+  const ds = D.periods[period].vol.smile.date; let j = ds.findIndex(d => d >= e.target.value);
+  if (j < 0) j = ds.length - 1; if (ds[j] > e.target.value && j > 0) j -= 1; smileAt(j);
+});
+$('sm-prev').addEventListener('click', () => smileJump(-1));
+$('sm-next').addEventListener('click', () => smileJump(1));
 show('test');
 if (typeof Plotly !== 'undefined') fillHist();
 """
+
+
+def vol_tabs(D: dict) -> str:
+    """The Volatility section's four views; each draws when its tab is shown."""
+    chk = D["fills"].get("iv_check") or {}
+    note = (f'Implied vols are inverted from each option\'s mid with Black-76. Across the {chk.get("n", 0):,} contract-days '
+            f'in the band the wheel sells they match LSEG\'s own implied-vol field with a correlation of '
+            f'{chk.get("corr", float("nan")):.3f} (median difference {chk.get("median_abs_diff_pts", float("nan")):.2f} vol points).')
+    panes = [
+        ("Smile", '<div class="cap" style="margin:0 0 10px">The implied vol of every out-of-the-money option (puts below '
+                  'the close, calls above it) of the monthly expiry closest to 30 days out, on one session. Puts below '
+                  'the money cost more vol than calls above it: the skew the wheel\'s puts are sold into. The option the '
+                  'account is short that day is marked when it belongs to the same expiry.</div>'
+                  '<div class="pf-controls"><button id="sm-prev">◀ previous sale</button>'
+                  '<input id="sm-range" type="range" min="0" value="0" aria-label="session">'
+                  '<button id="sm-next">next sale ▶</button><input id="sm-date" type="date" aria-label="date"></div>'
+                  '<div id="sm-info" class="pf-eq"></div><div id="plot-smile" style="height:340px"></div>'),
+        ("Surface over time", '<div class="cap" style="margin:0 0 10px">Every session\'s smile side by side: the date '
+                  'across, strike as a share of the close down, colour the implied vol of the monthly closest to 30 days '
+                  'out. The markers are the options the wheel sold, at their strike against the close on the day of sale. '
+                  'Only one or two monthlies are quoted on any day, so this is the surface at a fixed maturity over time '
+                  'rather than across maturities.</div><div id="plot-surface" style="height:380px"></div>'),
+        ("Implied vs realised", '<div class="cap" style="margin:0 0 10px">For each option the wheel sold: the implied '
+                  'vol it was sold at, and the volatility Mastercard then realised to its expiry (daily closes, '
+                  'annualised). Selling above what follows is the volatility risk premium the strategy is paid for. These are the '
+                  'options actually sold; the thesis table uses a fixed yardstick instead, the 0.25-delta put of every '
+                  'cycle, so its count can differ.</div>'
+                  '<div id="vrp-info" class="pf-eq" style="margin-top:0"></div><div id="plot-vrp" style="height:320px"></div>'),
+        ("Greeks", '<div class="cap" style="margin:0 0 10px">The account\'s exposures at every close: delta in shares of '
+                  'Mastercard (the shares plus the short option), vega in dollars per vol point and theta in dollars per '
+                  'day, from each day\'s mark. A short put is long a little delta, short vega and collects theta; '
+                  'assignment turns the delta into the full position.</div>'
+                  '<div class="sub" style="margin-top:0">Delta, share equivalents</div><div id="plot-gdelta" style="height:190px"></div>'
+                  '<div class="sub">Vega, dollars per vol point</div><div id="plot-gvega" style="height:190px"></div>'
+                  '<div class="sub">Theta, dollars per day</div><div id="plot-gtheta" style="height:190px"></div>'),
+    ]
+    return ('<div class="tabs">' + "".join(f'<button data-tab="{i}" class="{"on" if i == 0 else ""}">{escape(n)}</button>'
+                                         for i, (n, _) in enumerate(panes)) + "</div>"
+            + "".join(f'<div class="pane{" on" if i == 0 else ""}" data-pane="{i}">{b}</div>' for i, (_, b) in enumerate(panes))
+            + f'<div class="cap" style="padding:0 14px 12px">{escape(note)}</div>')
 
 
 def tip(prose: dict[str, str], label: str) -> str:
@@ -1070,7 +1225,9 @@ def render(D: dict, prose: dict[str, str], draft: bool, P2: dict | None = None,
               + '<div class="cap">' + re.sub(r"</?p>", "", prose.get("portfolio", "")) + "</div>",
               '<span data-window></span>', pid="portfolio"),
         '<div style="height:12px"></div>',
-        f'<section class="panel">{tab_html}</section>',
+        f'<section class="panel" id="records">{tab_html}</section>',
+        '<div style="height:12px"></div>',
+        f'<section class="panel" id="volatility"><div class="ph">Volatility<span class="tag"><span data-window></span></span></div>{vol_tabs(D)}</section>',
         '<div class="grid g-1-1">',
         panel("Fill prices", say("fills") + '<div class="sub">Notes</div>' + say("fills-note")
               + '<div class="sub">The stress test: the same wheel selling every option at the bid</div>'

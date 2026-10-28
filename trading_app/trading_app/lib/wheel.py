@@ -684,6 +684,72 @@ def summary(result: dict, tbill: pd.Series) -> dict:
     }
 
 
+# --------------------------------------------------------------------------
+# volatility views
+# --------------------------------------------------------------------------
+
+SMILE_DAYS = 30            # the smile and the surface use the monthly closest to this many days out
+SMILE_MIN_DAYS = 7
+
+
+def smile(market: dict, day, by_day: dict | None = None) -> dict | None:
+    """
+    The implied-volatility smile on `day`: every two-sided out-of-the-money option (puts below
+    the close, calls at or above it) of the monthly expiry closest to SMILE_DAYS out, at least
+    SMILE_MIN_DAYS away, each with its implied vol and delta from its own mid.
+    """
+    day = pd.Timestamp(day)
+    q = by_day.get(day) if by_day is not None else market["quotes"][market["quotes"]["date"] == day]
+    if q is None or q.empty or day not in market["stock"].index:
+        return None
+    q = q[q["mid"].notna() & (q["mid"] > 0)]
+    dte = (q["expiry"] - day).dt.days
+    q = q[dte >= SMILE_MIN_DAYS]
+    if q.empty:
+        return None
+    expiries = sorted(q["expiry"].unique(), key=lambda e: (abs((pd.Timestamp(e) - day).days - SMILE_DAYS), e))
+    expiry = pd.Timestamp(expiries[0])
+    spot = float(market["stock"].at[day, "close"])
+    c = q[(q["expiry"] == expiry) & (((q["cp"] == PUT) & (q["strike"] < spot)) | ((q["cp"] == CALL) & (q["strike"] >= spot)))]
+    r, yq = carry(market, day)
+    T = (expiry - day).days / DAYS_PER_YEAR
+    g = [option_greeks(float(m), spot, float(k), T, r, yq, cp) for m, k, cp in zip(c["mid"], c["strike"], c["cp"])]
+    pts = pd.DataFrame({"strike": c["strike"].to_numpy(float), "cp": c["cp"].to_numpy(), "ric": c["ric"].to_numpy(),
+                        "iv": [x["iv"] for x in g], "delta": [x["delta"] for x in g]})
+    pts = pts[pts["iv"].notna()].sort_values("strike").reset_index(drop=True)
+    pts["moneyness"] = pts["strike"] / spot
+    return {"day": day, "expiry": expiry, "dte": int((expiry - day).days), "spot": spot, "points": pts}
+
+
+def position_greeks(result: dict, market: dict) -> pd.DataFrame:
+    """
+    The account's greeks at every close: delta in share equivalents (the shares plus the short
+    option), gamma per $1 of the stock, vega in dollars per vol point and theta in dollars per
+    day, the option's from its own mark's implied vol (Black-76 against the forward, turned to
+    spot terms as option_greeks does). A short option enters with the opposite sign.
+    """
+    rows = []
+    for row in result["ledger"].itertuples():
+        day = row.date
+        delta, gamma, vega, theta, iv = float(row.shares), 0.0, 0.0, 0.0, np.nan
+        if row.short_ric is not None and np.isfinite(row.short_mark):
+            spot = float(row.stock_close)
+            r, yq = carry(market, day)
+            T = (pd.Timestamp(row.short_expiry) - day).days / DAYS_PER_YEAR
+            if T > 0:
+                F, D = spot * np.exp((r - yq) * T), np.exp(-r * T)
+                iv = implied_vol(float(row.short_mark), F, float(row.short_strike), T, D, row.short)
+                if np.isfinite(iv):
+                    g = bs_greeks(F, float(row.short_strike), T, iv, D, row.short)
+                    n = float(row.short_units)
+                    delta -= n * g["delta"] * F / spot
+                    gamma -= n * g["gamma"] * (F / spot) ** 2
+                    vega -= n * g["vega"] / 100.0
+                    theta -= n * g["theta"] / DAYS_PER_YEAR      # bs theta is the holder's decay; a short collects it
+        rows.append({"date": day, "delta": delta, "gamma": gamma, "vega": vega, "theta": theta, "iv": iv})
+    return pd.DataFrame(rows)
+
+
 def monthly_nav(ledger: pd.DataFrame, capital: float, tbill: pd.Series) -> list[dict]:
     """
     The month-end account values the Sharpe ratio is built from, as pmcc_daily.performance
