@@ -66,6 +66,7 @@ START_CASH = 100_000.0
 PUT, CALL = "P", "C"
 SELL, ASSIGN, EXPIRE, BUY = "SELL", "ASSIGN", "EXPIRE", "BUY"
 DAYS_PER_YEAR = 365.0
+EARLY_PUT_TIME_VALUE = 0.05    # config/wheel_managed.yaml: a put this close to intrinsic is exercised
 
 
 # --------------------------------------------------------------------------
@@ -147,7 +148,12 @@ def load_market(cache: str | Path) -> dict:
     div = div[pd.to_numeric(div["amount"], errors="coerce") > 0]
     div["amount"] = div["amount"].astype(float) * unit_factor(div["ex_date"], splits)
     earnings = pd.DatetimeIndex(pd.to_datetime(aux["earnings"].iloc[:, 1]).dropna()).normalize()
-    return {
+    extra = {}
+    if (cache / "stock_history.pkl").exists():      # closes before the window, for the trend average
+        h = pd.to_numeric(pd.read_pickle(cache / "stock_history.pkl"), errors="coerce").dropna().sort_index()
+        h.index = pd.DatetimeIndex(h.index).normalize()
+        extra["history"] = h * unit_factor(h.index, splits)
+    return {**extra,
         "quotes": quotes, "stock": stock,
         "lot": pd.Series(np.rint(CONTRACT / unit_factor(stock.index, splits)), index=stock.index),
         "tbill": tb.reindex(stock.index.union(tb.index)).ffill().reindex(stock.index),
@@ -239,13 +245,25 @@ def coverage(market: dict, start, end, lo: float = 0.15, hi: float = 0.35) -> di
 
 def run(market: dict, *, start, end, mode: str = "wheel", put_delta: float = 0.25,
         call_delta: float = 0.25, floor: bool = True, fill: str = "mid",
-        start_cash: float = START_CASH, ticker: str = "") -> dict:
+        start_cash: float = START_CASH, ticker: str = "", manage: dict | None = None) -> dict:
     """
     Walk the sessions of [start, end] and book what the rules say.
 
-    `fill` is "mid" or "cross" (sell at the bid; the book never buys an option
-    back). Returns the blotter, one record per cycle, and the daily ledger.
+    `fill` is "mid" or "cross" (sell at the bid, buy back at the ask). Returns
+    the blotter, one record per option written, and the daily ledger.
+
+    `manage` turns on config/wheel_managed.yaml's rules, each by its key; empty
+    or None is the wheel as first registered, every option held to expiry:
+
+        take_profit       buy the short back once it costs this fraction of its sale price
+        roll_days         a put in the money this many calendar days before expiry is
+                          rolled to the next monthly, same or lower strike, for a credit
+        max_rolls         rolls in a row before a put is held to assignment
+        early_assignment  American exercise: a put with EARLY_PUT_TIME_VALUE or less of
+                          time value; a call whose time value is below the next session's dividend
+        trend_sma         no new put while the close is below the average of this many closes
     """
+    manage = manage or {}
     stock, quotes = market["stock"], market["quotes"]
     lot = market.get("lot", pd.Series(float(CONTRACT), index=stock.index))
     sessions = stock.index[(stock.index >= pd.Timestamp(start)) & (stock.index <= pd.Timestamp(end))]
@@ -255,20 +273,103 @@ def run(market: dict, *, start, end, mode: str = "wheel", put_delta: float = 0.2
     empty = quotes.iloc[:0]
     marks = {}
     price = (lambda row: float(row["bid"])) if fill == "cross" else (lambda row: float(row["mid"]))
+    buy_price = (lambda row: float(row["ask"])) if fill == "cross" else (lambda row: float(row["mid"]))
+
+    # what the managed rules need to know in advance: roll dates, the next monthly,
+    # the session before each ex-dividend date, and the trend average
+    next_expiry = dict(zip(expiries[:-1], expiries[1:]))
+    roll_on = {}
+    if manage.get("roll_days"):
+        for e in expiries:
+            before = sessions[sessions <= e - pd.Timedelta(days=int(manage["roll_days"]))]
+            if len(before):
+                roll_on[e] = before[-1]
+    next_session = dict(zip(sessions[:-1], sessions[1:]))
+    ex_dates = set(market["dividends"].index)
+    sma, trend_n = None, manage.get("trend_sma")
+    if trend_n:
+        closes = stock["close"]
+        hist = market.get("history")
+        if hist is not None:
+            closes = pd.concat([hist[hist.index < closes.index[0]], closes]).sort_index()
+        sma = closes.rolling(int(trend_n), min_periods=int(trend_n)).mean()
+        if entries and not np.isfinite(sma.get(min(entries), np.nan)):
+            raise ValueError(f"the trend filter needs {trend_n} closes before {min(entries).date()}")
 
     cash, shares, basis = float(start_cash), 0, np.nan
-    option = None            # the open short: ric, cp, strike, expiry, units, cycle
+    option = None            # the open short: ric, cp, strike, expiry, units, fill, credit, rolls, cycle
     blotter, cycles, rows = [], [], []
     totals = {"premium": 0.0, "interest": 0.0, "dividends": 0.0}
     prev_day = None
 
-    def book(day, kind, side, qty, px, cash_delta, note, row=None):
+    def book(day, kind, side, qty, px, cash_delta, note, row=None, reason=None):
         ev = {"date": day, "kind": kind, "side": side, "qty": qty, "price": px,
               "cash_delta": cash_delta, "note": note, "instrument": ticker}
         if row is not None:
             ev.update(instrument=row["ric"], cp=row["cp"], strike=float(row["strike"]),
                       expiry=row["expiry"], bid=float(row["bid"]), ask=float(row["ask"]))
+        if reason is not None:
+            ev["reason"] = reason
         blotter.append(ev)
+
+    def quote(day, ric):
+        today = by_day.get(day, empty)
+        hit = today[today["ric"] == ric]
+        return None if hit.empty else hit.iloc[0]
+
+    def assign_put(day, note, status, reason=None):
+        nonlocal cash, shares, basis
+        rec, k, n = option["cycle"], option["strike"], option["units"]
+        book(day, "put", ASSIGN, n, k, 0.0, note, reason=reason)
+        book(day, "stock", BUY, n, k, -n * k, "bought at the strike against assignment")
+        cash -= n * k
+        shares += n
+        basis = k - option["credit"]
+        rec["status"] = status
+
+    def call_away(day, note, status, reason=None):
+        nonlocal cash, shares, basis
+        rec, k, n = option["cycle"], option["strike"], option["units"]
+        book(day, "call", ASSIGN, n, k, 0.0, note, reason=reason)
+        book(day, "stock", SELL, n, k, n * k, "delivered at the strike")
+        cash += n * k
+        shares -= n
+        rec["realised_vs_basis"] = n * (k - basis)
+        basis = np.nan
+        rec["status"] = status
+
+    def buy_back(day, row, p, note, reason):
+        nonlocal cash, basis
+        n = option["units"]
+        cash -= n * p
+        totals["premium"] -= n * p
+        option["credit"] -= p
+        if option["cp"] == CALL:
+            basis += p
+        book(day, "put" if option["cp"] == PUT else "call", BUY, n, p, -n * p, note, row=row, reason=reason)
+        option["cycle"].update(close_day=day, close_price=p)
+
+    def write(day, pick, cp, contracts, n, close, rec, note, reason=None):
+        nonlocal cash, basis
+        p = price(pick)
+        cash += n * p
+        totals["premium"] += n * p
+        if cp == CALL:
+            basis -= p
+        book(day, "put" if cp == PUT else "call", SELL, n, p, n * p, note, row=pick, reason=reason)
+        rec.update(cp=cp, strike=float(pick["strike"]), contracts=contracts, units=n, fill=p,
+                   bid=float(pick["bid"]), ask=float(pick["ask"]),
+                   delta=float(pick["delta"]), iv=float(pick["iv"]), premium=n * p,
+                   otm_pct=100.0 * (float(pick["strike"]) / close - 1.0), status="open")
+        return {"ric": pick["ric"], "cp": cp, "strike": float(pick["strike"]), "expiry": rec["expiry"],
+                "contracts": contracts, "units": n, "fill": p, "credit": p, "rolls": 0, "cycle": rec}
+
+    def new_record(day, expiry, close):
+        rec = {"entry": day, "expiry": expiry, "spot": close, "dte": (expiry - day).days,
+               "earnings_in_cycle": bool(((market["earnings"] > day) & (market["earnings"] <= expiry)).any()),
+               "shares_before": shares, "basis_before": basis}
+        cycles.append(rec)
+        return rec
 
     for day in sessions:
         close = float(stock.at[day, "close"])
@@ -294,70 +395,110 @@ def run(market: dict, *, start, end, mode: str = "wheel", put_delta: float = 0.2
 
         # ---- expiry: settle on the close --------------------------------
         if option is not None and day == option["expiry"]:
-            rec, k, n = option["cycle"], option["strike"], option["units"]
-            rec["settle"] = close
+            k = option["strike"]
+            option["cycle"]["settle"] = close
             if option["cp"] == PUT and close < k:
-                book(day, "put", ASSIGN, n, k, 0.0, f"assigned: close {close:.2f} < strike {k:.2f}")
-                book(day, "stock", BUY, n, k, -n * k, "bought at the strike against assignment")
-                cash -= n * k
-                shares += n
-                basis = k - option["fill"]
-                rec["status"] = "assigned"
+                assign_put(day, f"assigned: close {close:.2f} < strike {k:.2f}", "assigned")
             elif option["cp"] == CALL and close > k:
-                book(day, "call", ASSIGN, n, k, 0.0, f"called away: close {close:.2f} > strike {k:.2f}")
-                book(day, "stock", SELL, n, k, n * k, "delivered at the strike")
-                cash += n * k
-                shares -= n
-                rec["realised_vs_basis"] = n * (k - basis)
-                basis = np.nan
-                rec["status"] = "called away"
+                call_away(day, f"called away: close {close:.2f} > strike {k:.2f}", "called away")
             else:
-                book(day, "put" if option["cp"] == PUT else "call", EXPIRE, n, 0.0, 0.0,
+                book(day, "put" if option["cp"] == PUT else "call", EXPIRE, option["units"], 0.0, 0.0,
                      f"expired: close {close:.2f} vs strike {k:.2f}")
-                rec["status"] = "expired"
+                option["cycle"]["status"] = "expired"
             option = None
 
+        # ---- early assignment: the holder exercises an American option ---
+        if option is not None and manage.get("early_assignment"):
+            row = quote(day, option["ric"])
+            k = option["strike"]
+            if row is not None and np.isfinite(row["mid"]):
+                if option["cp"] == PUT and close < k:
+                    tv = float(row["mid"]) - (k - close)
+                    if tv <= EARLY_PUT_TIME_VALUE + 1e-12:
+                        option["cycle"]["settle"] = close
+                        assign_put(day, f"assigned early: close {close:.2f} < strike {k:.2f}, "
+                                        f"{tv:.2f} of time value left", "assigned early", reason="early")
+                        option = None
+                elif option["cp"] == CALL and close > k and next_session.get(day) in ex_dates:
+                    div = float(market["dividends"].loc[[next_session[day]]].sum())
+                    tv = float(row["mid"]) - (close - k)
+                    if tv < div:
+                        option["cycle"]["settle"] = close
+                        call_away(day, f"called away early: close {close:.2f} > strike {k:.2f}, time value "
+                                       f"{tv:.2f} below tomorrow's {div:.2f} dividend", "called away early",
+                                  reason="early")
+                        option = None
+
+        # ---- early close: buy back at the take-profit price -------------
+        if option is not None and manage.get("take_profit"):
+            row = quote(day, option["ric"])
+            if row is not None:
+                p = buy_price(row)
+                if np.isfinite(p) and p <= manage["take_profit"] * option["fill"] + 1e-12:
+                    buy_back(day, row, p, f"close: bought back at {p:.2f}, "
+                                          f"{100 * p / option['fill']:.0f}% of the {option['fill']:.2f} it was sold at",
+                             "take_profit")
+                    option["cycle"]["status"] = "closed early"
+                    option = None
+
+        # ---- roll a challenged put down and out for a credit ------------
+        if (option is not None and option["cp"] == PUT and roll_on.get(option["expiry"]) == day
+                and close < option["strike"] and option["rolls"] < int(manage.get("max_rolls", 0))
+                and option["expiry"] in next_expiry):
+            row, nxt, k = quote(day, option["ric"]), next_expiry[option["expiry"]], option["strike"]
+            if row is not None and np.isfinite(buy_price(row)):
+                pb = buy_price(row)
+                chain = by_day.get(day, empty)
+                c = chain[(chain["cp"] == PUT) & (chain["expiry"] == nxt) & chain["mid"].notna()
+                          & (chain["mid"] > 0) & (chain["strike"] <= k + 1e-9)]
+                if not c.empty:
+                    c = c[np.array([price(r) for _, r in c.iterrows()]) >= pb - 1e-12]
+                if not c.empty:
+                    new = c.sort_values("strike").iloc[-1]
+                    r, q = carry(market, day)
+                    g = option_greeks(price(new), close, float(new["strike"]), (nxt - day).days / DAYS_PER_YEAR,
+                                      r, q, PUT)
+                    new = new.copy()
+                    new["delta"], new["iv"] = g["delta"], g["iv"]
+                    old = option
+                    buy_back(day, row, pb, f"roll: buy back the {k:.2f} put at {pb:.2f}; close {close:.2f} is "
+                                           f"below the strike {(old['expiry'] - day).days} days before expiry", "roll")
+                    old["cycle"]["status"] = "rolled"
+                    rec = new_record(day, nxt, close)
+                    rec["rolled_from"] = old["ric"]
+                    option = write(day, new, PUT, old["contracts"], old["units"], close, rec,
+                                   f"roll: sell the {nxt.date()} {float(new['strike']):.2f} put at {price(new):.2f}, "
+                                   f"a net credit of {price(new) - pb:.2f}", reason="roll")
+                    option.update(credit=old["credit"] + option["fill"], rolls=old["rolls"] + 1)
+
         # ---- entry: open the cycle --------------------------------------
-        if mode == "wheel" and day in entries:
+        if mode == "wheel" and day in entries and option is None:
             expiry = entries[day]
             r, q = carry(market, day)
             per = int(lot.get(day, CONTRACT))
-            rec = {"entry": day, "expiry": expiry, "spot": close, "dte": (expiry - day).days,
-                   "earnings_in_cycle": bool(((market["earnings"] > day)
-                                              & (market["earnings"] <= expiry)).any()),
-                   "shares_before": shares, "basis_before": basis}
-            cycles.append(rec)
+            rec = new_record(day, expiry, close)
             if shares == 0:
                 cp, target, lo = PUT, put_delta, None
             else:
                 cp, target, lo = CALL, call_delta, (basis if floor else None)
                 rec["floor"] = lo
-            pick = select(by_day.get(day, empty), cp, expiry, close, day, r, q, target, lo)
-            if pick is None:
+            filtered = cp == PUT and sma is not None and close < float(sma.loc[day])
+            if filtered:
+                rec.update(status=f"skipped: below the {trend_n}-close average", sma=float(sma.loc[day]))
+            pick = None if filtered else select(by_day.get(day, empty), cp, expiry, close, day, r, q, target, lo)
+            if pick is None and not filtered:
                 rec["status"] = ("held: no qualifying call" if cp == CALL else "idle: no quoted put")
-            else:
+            elif pick is not None:
                 k = float(pick["strike"])
                 contracts = int(cash // (per * k)) if cp == PUT else shares // per
                 if contracts == 0:
                     rec["status"] = "idle: cash secures no contract"
                 else:
-                    n = contracts * per
-                    p = price(pick)
-                    cash += n * p
-                    totals["premium"] += n * p
-                    if cp == CALL:
-                        basis -= p
                     side = "put" if cp == PUT else "call"
-                    book(day, side, SELL, n, p, n * p,
-                         f"write {contracts} {side}{'s' if contracts > 1 else ''}: delta closest to "
-                         f"{target:.2f} (delta {pick['delta']:.2f}, implied vol {100 * pick['iv']:.1f}%), "
-                         f"spot {close:.2f}; quote {pick['bid']:.2f}/{pick['ask']:.2f}", row=pick)
-                    rec.update(cp=cp, strike=k, contracts=contracts, units=n, fill=p,
-                               bid=float(pick["bid"]), ask=float(pick["ask"]),
-                               delta=float(pick["delta"]), iv=float(pick["iv"]), premium=n * p,
-                               otm_pct=100.0 * (k / close - 1.0), status="open")
-                    option = {"ric": pick["ric"], "cp": cp, "strike": k, "expiry": expiry,
-                              "contracts": contracts, "units": n, "fill": p, "cycle": rec}
+                    option = write(day, pick, cp, contracts, contracts * per, close, rec,
+                                   f"write {contracts} {side}{'s' if contracts > 1 else ''}: delta closest to "
+                                   f"{target:.2f} (delta {pick['delta']:.2f}, implied vol {100 * pick['iv']:.1f}%), "
+                                   f"spot {close:.2f}; quote {pick['bid']:.2f}/{pick['ask']:.2f}")
 
         # ---- mark --------------------------------------------------------
         option_mv, mark = 0.0, np.nan
@@ -384,7 +525,7 @@ def run(market: dict, *, start, end, mode: str = "wheel", put_delta: float = 0.2
     return {"blotter": blotter, "cycles": cycles, "ledger": ledger, "totals": totals,
             "mode": mode, "put_delta": put_delta, "call_delta": call_delta, "floor": floor,
             "fill": fill, "start_cash": float(start_cash), "start": pd.Timestamp(start),
-            "end": pd.Timestamp(end), "ticker": ticker}
+            "end": pd.Timestamp(end), "ticker": ticker, "manage": dict(manage)}
 
 
 # --------------------------------------------------------------------------
@@ -419,10 +560,16 @@ def summary(result: dict, tbill: pd.Series) -> dict:
         **{k: v for k, v in perf.items() if k != "monthly_returns"},
         "attribution": attribution(result),
         "cycles": len(c),
-        "puts_written": len(puts), "assigned": int(sum(x["status"] == "assigned" for x in puts)),
-        "calls_written": len(calls), "called_away": int(sum(x["status"] == "called away" for x in calls)),
+        "puts_written": len(puts),
+        "assigned": int(sum(x["status"] in ("assigned", "assigned early") for x in puts)),
+        "calls_written": len(calls),
+        "called_away": int(sum(x["status"] in ("called away", "called away early") for x in calls)),
         "held_no_call": int((status == "held: no qualifying call").sum()),
         "idle": int(status.str.startswith("idle").sum()),
+        "closed_early": int((status == "closed early").sum()), "rolled": int((status == "rolled").sum()),
+        "assigned_early": int((status == "assigned early").sum()),
+        "called_away_early": int((status == "called away early").sum()),
+        "filtered": int(status.str.startswith("skipped").sum()),
         "share_days_pct": 100.0 * float((led["shares"] > 0).mean()) if len(led) else np.nan,
         "monthly_returns": perf["monthly_returns"],
     }

@@ -239,6 +239,9 @@ def main() -> int:
     ap.add_argument("--root", required=True, choices=sorted(UNDERLYINGS))
     ap.add_argument("--plan", action="store_true")
     ap.add_argument("--retry-failed", action="store_true")
+    ap.add_argument("--history", action="store_true",
+                    help="only pull unadjusted closes from 400 days before the window into stock_history.pkl "
+                         "(config/wheel_managed.yaml's 200-close average), then stop")
     ap.add_argument("--stop-after-failures", type=int, default=None,
                     help="stop after this many failures in a row (e.g. LSEG's daily cap); resume with --retry-failed")
     args = ap.parse_args()
@@ -251,6 +254,20 @@ def main() -> int:
         seed_files(cache, seed_dir)
 
     ld = None
+    if args.history:
+        import lseg.data as ld
+        open_session(ld)
+        try:
+            raw = ld.get_history(universe=cfg["stock"], fields=["TRDPRC_1"], interval="daily",
+                                 start=str(window(cfg)[0] - dt.timedelta(days=400)), end=str(window(cfg)[0]),
+                                 adjustments=["exchangeCorrection"])
+        finally:
+            ld.close_session()
+        closes = pd.to_numeric(raw["TRDPRC_1"], errors="coerce").dropna()
+        closes.index = pd.DatetimeIndex(closes.index)
+        closes.to_pickle(cache / "stock_history.pkl")
+        print(f"{args.root}: {len(closes)} closes, {closes.index.min().date()} to {closes.index.max().date()}")
+        return 0
     stock_path = cache / "stock_unadjusted.pkl"
     if not stock_path.exists() or not (cache / "aux.pkl").exists():
         if args.plan and stock_path.exists():
