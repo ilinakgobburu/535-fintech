@@ -1,0 +1,15 @@
+# Choice 13: the plain wheel on all five class-run stocks at once. Registered 2026-10-27, before it is run.
+# The user chose five $100,000 wheels side by side over one shared account. Nothing is chosen from these
+# results: they describe what diversification does to the wheel, and the page stays on Mastercard alone.
+registered: 2026-10-27
+
+books: >
+  the plain hold-to-expiry wheel on MA, APA, V, FISV and ADI, each from $100,000 at its committed pick
+  (config/wheel_mr_picks), run exactly as before; the portfolio is their daily account values added
+  together, $500,000 to start. A session one stock lacks carries that stock's last value
+windows: 2024-01-02 to 2025-12-31 and 2026-01-02 to 2026-10-16, each from the starting cash
+benchmarks: the same five stocks bought and held ($100,000 each), and T-bills
+reported: >
+  the portfolio's return, Sharpe ratio, maximum drawdown and worst month, at mid and at the stress fills,
+  against each stock's own wheel and the average of the five; the correlations of the five wheels'
+  monthly returns; and the portfolio's volatility against the average volatility of the five
