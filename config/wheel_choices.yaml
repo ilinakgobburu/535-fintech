@@ -1,0 +1,62 @@
+# Three strategy choices for the plain wheel, tested the way the user laid out on 2026-10-27: try each
+# on the training windows, adjust there, commit the decisions, then confirm once on the test windows.
+# Registered before any of these rules is run. The three ideas, the train-then-confirm flow and the
+# rule that the final version must still be assigned on Mastercard were the user's; each rule's numbers
+# below are a practitioner convention set by Claude, not tuned, and may be adjusted on the training
+# windows only, with every adjustment recorded here before the test windows are run.
+registered: 2026-10-27
+
+base: >
+  the plain hold-to-expiry wheel (config/wheel.yaml's rules), each stock at its committed pick
+  (config/wheel_picks, config/wheel_mr_picks). None of config/wheel_managed.yaml's rules is used
+
+rules:
+  skip_earnings: >
+    (choice 10) no new put is sold on an entry session when an earnings date falls after that session
+    and on or before the put's expiry; the cash waits for the next entry session. Calls are written as
+    usual
+  skip_earnings_reason: >
+    a put held through earnings is where a gap down turns into an assignment at a strike set before the
+    news; the richer premium before earnings is the compensation. A covered call over earnings only caps
+    a gap up, and skipping it would leave the shares unhedged. Earnings dates are announced in advance
+    and fall in the same weeks each quarter
+  iv_over_rv: >
+    (choice 11) no new put is sold unless the chosen put's implied volatility, from its own mid as at
+    selection, is above the stock's realised volatility over the last 21 sessions (close-to-close log
+    returns, annualised by the square root of 252); otherwise the cash waits for the next entry session.
+    Calls are written as usual
+  iv_over_rv_reason: >
+    the thesis says options are priced above the moves that follow; this sells only when the option is
+    priced above the moves that just happened, the usual implied-against-historical comparison over the
+    option's own length (about a month). It decides when to take on new stock risk; once shares are held,
+    the call only lowers it
+  unstick: >
+    (choice 12) once shares have been held through 3 call cycles without being called away, the cost-basis
+    floor is dropped for that holding: calls are written at the target delta even below the cost basis,
+    until the shares are called away. Settings whose pick already has the floor off are unchanged
+  unstick_reason: >
+    the floor never realises a loss, but when the stock falls well below the cost basis it leaves calls
+    that pay pennies, and the shares stranded (DIS 2022-2023). Three months is a common point at which
+    practitioners stop waiting for a recovery
+
+judging:
+  training: >
+    stage 1: the 9 training windows only (NVDA, AMD, DIS, COST on 2019-01-02 to 2021-12-31; MA, APA, V,
+    FISV, ADI on 2024-01-02 to 2025-12-31), each rule alone against the plain wheel. A rule helps if it
+    beats the plain wheel's Sharpe ratio at mid on at least 5 of the 9 and at the stress fills on at least 5
+  adjust: >
+    the user may change a rule, its number or the combination after seeing stage 1, still on the training
+    windows only; each change is written under decisions below and committed before stage 2
+  test: >
+    stage 2: the version recorded under decisions is run once on the 9 test windows (2022-01-03 to
+    2023-12-29; 2026-01-02 to 2026-10-16). It is confirmed if it beats the plain wheel's Sharpe ratio at
+    mid on at least 5 of the 9 and at the stress fills on at least 5
+  page: >
+    a confirmed version replaces the plain wheel on docs/hw4.html only if it is assigned at least once on
+    Mastercard in 2026, so the page still shows shares and a covered call; otherwise the page keeps the
+    plain wheel
+  caveat: >
+    the test windows have already been seen under the plain wheel and the managed versions, though not
+    under these rules, so stage 2 is a cleaner check than stage 1 but not a fresh one
+
+decisions: {}   # filled after stage 1, committed before stage 2
