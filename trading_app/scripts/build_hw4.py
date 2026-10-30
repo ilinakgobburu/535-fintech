@@ -30,7 +30,6 @@ ROOT = Path(__file__).resolve().parents[1]
 REPO = ROOT.parent
 DATA = REPO / "cache" / "wheel_page_MA.json"
 PORTFOLIO = REPO / "cache" / "wheel_portfolio_results.json"      # Part II, scripts/run_portfolio.py
-WF_STOCK = REPO / "cache" / "wf_stock_page.json"                   # Part II, scripts/wf_stock_data.py
 PROSE = ROOT / "scripts" / "hw4_prose.md"
 RULES = REPO / "config" / "wheel.yaml"
 OUT = REPO / "docs" / "hw4.html"
@@ -408,69 +407,6 @@ def page_data(D: dict) -> dict:
 # the page
 # --------------------------------------------------------------------------
 
-def wfs_facts(S: dict, D: dict) -> dict[str, str]:
-    """The stock walk-forward's figures for the prose, beside Part I's Mastercard walked forward."""
-    j, ma = S["joined"], D["walk_forward"]["joined"]
-    ordinal = lambda n: f"{n}{'th' if 10 <= n % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')}" if n else "unranked"
-    last = {t["ric"]: t for t in S["folds"][-1]["top"]}             # both from the latest screen's window
-    return {"wfs_commit": short_commit(S["commits"]["design"]),
-            "wfs_ma_rank_1": ordinal(S["folds"][0]["ma_rank"]), "wfs_ma_rank_2": ordinal(S["folds"][1]["ma_rank"]),
-            "wfs_return": pct(j["wheel"]["return_pct"], sign=True), "wfs_sharpe": num(j["wheel"]["sharpe"]),
-            "wfs_dd": pct(j["wheel"]["max_drawdown_pct"]), "wfs_hold_return": pct(j["hold"]["return_pct"], sign=True),
-            "wfs_hold_sharpe": num(j["hold"]["sharpe"]), "wfs_putw_return": pct(j["putw"]["return_pct"], sign=True),
-            "wfs_ma_return": pct(ma["wheel"]["return_pct"], sign=True), "wfs_ma_sharpe": num(ma["wheel"]["sharpe"]),
-            "wfs_ma_dd": pct(ma["wheel"]["max_drawdown_pct"]),
-            "wfs_apa_vol": pct(100 * last[S["folds"][-1]["ric"]]["vol"], 0),
-            "wfs_ma_vol": pct(100 * last["MA.N"]["vol"], 0) if "MA.N" in last else "–"}
-
-
-def wfs_tables(S: dict, D: dict) -> tuple[str, str]:
-    """Each fold's stock, setting and result, the folds joined, and Part I's Mastercard beside them; then each screen."""
-    yr = lambda w: w[0][:4] if w[0][:4] == w[1][:4] else f"{w[0][:4]}–{w[1][2:4]}"
-    rows, notes = [], []
-    for f in S["folds"]:
-        p, b = f["pick"], f["books"]
-        tie = f["tied_calls"] > 1
-        rows.append([f"Fold {f['fold']}", yr(f["screen_window"]),
-                     f'<span class="code">{escape(f["ticker"])}</span> (1st; MA {f["ma_rank"]})',
-                     f"{num(p['put_delta'])} / {num(p['call_delta'])}{'*' if tie else ''} / {'on' if p['floor'] else 'off'}",
-                     yr(f["test"]), pct(b["wheel"]["return_pct"], sign=True), num(b["wheel"]["sharpe"]),
-                     pct(b["wheel"]["max_drawdown_pct"]), num(b["baseline"]["sharpe"]), num(b["hold"]["sharpe"]),
-                     num(b["putw"]["sharpe"])])
-        if tie:
-            notes.append(f'* Fold {f["fold"]}\'s put was assigned {f["train_assigned"]} times in {f["train_puts"]} during its '
-                         f'training year, so no call was sold and the {f["tied"]} settings with that put tied at a training '
-                         f'Sharpe ratio of {num(f["train_sharpe"])}; the registered tie rule set the call delta.')
-    j, ma = S["joined"], D["walk_forward"]["joined"]
-    span = f'{S["folds"][0]["test"][0][:4]}–{S["folds"][-1]["test"][1][2:4]}'
-    rows.append(["Joined", "", "", "", span, pct(j["wheel"]["return_pct"], sign=True), num(j["wheel"]["sharpe"]),
-                 pct(j["wheel"]["max_drawdown_pct"]), num(j["baseline"]["sharpe"]), num(j["hold"]["sharpe"]),
-                 num(j["putw"]["sharpe"]), "__hi__"])
-    rows.append(["Part I", "2014–23", '<span class="code">MA</span> (fixed)', "walked forward", span,
-                 pct(ma["wheel"]["return_pct"], sign=True), num(ma["wheel"]["sharpe"]), pct(ma["wheel"]["max_drawdown_pct"]),
-                 num(ma["baseline"]["sharpe"]), num(ma["hold"]["sharpe"]), num(ma["putw"]["sharpe"])])
-    c = S["commits"]
-    notes.append(f'Each fold starts from $100,000, and the joined row puts the {j["wheel"]["months"]} month-end returns end to '
-                 f'end. Default is the default setting (0.25 / 0.25 / on) on the same stock; Hold is that stock bought and '
-                 f'held. The design was registered ({escape(short_commit(c["design"]))}) before any price after 2023 was '
-                 f'pulled, the picks recorded ({escape(short_commit(c["picks"]))}) before any training run, and the '
-                 f'settings committed ({escape(short_commit(c["settings"]))}) before either test.')
-    main_t = (table(["", "Screened on", "Stock", "Put / call / floor", "Traded", "Return", "Sharpe", "Max DD",
-                     "Default", "Hold", "PutWrite"], rows, left=5, cls="small")
-              + "".join(f'<div class="cap">{n}</div>' for n in notes))
-    screens = ""
-    for f in S["folds"]:
-        r = [[str(t["rank"]), f'<span class="code">{escape(t["ric"])}</span>',
-              escape(re.sub(r"\s+Ord$", "", str(t["name"]).title())), num(t["vr"], 3), num(t["rho"], 2),
-              '<span class="st st-good">✓ Pick</span>' if t["status"] == "pick" else
-              '<span class="st st-neutral">Follow-up</span>' if t["status"] == "follow-up" else ""]
-             + (["__hi__"] if t["ric"] == "MA.N" else []) for t in f["top"]]
-        screens += (f'<div class="sub">Fold {f["fold"]}: the S&amp;P 500 of {f["as_of"]}, ranked on '
-                    f'{f["screen_window"][0][:4]}–{f["screen_window"][1][:4]} ({f["ranked"]} of {f["eligible"]} eligible ranked)</div>'
-                    + table(["#", "RIC", "Company", "Variance ratio", "Autocorr.", ""], r, left=3, cls="small"))
-    return main_t, screens
-
-
 def part2_tables(P2: dict) -> tuple[str, str, str]:
     W = P2["windows"]
     books = [("Five wheels together", lambda w: w["wheel_mid"]["portfolio"]),
@@ -537,20 +473,6 @@ if (typeof Plotly !== 'undefined') {
        xaxis: axis, yaxis: {...axis, tickformat: '$,.0f'}},
       {displayModeBar: false, responsive: true});
   });
-  if (P2.wf && document.getElementById('p2-wf')) {
-    const d = P2.wf, axis = {gridcolor: css2('--line-soft'), linecolor: css2('--axis'), zeroline: false,
-                             tickfont: {family: css2('--mono'), color: css2('--muted'), size: 10.5}};
-    const line = (k, name, color, width) => ({x: d.date, y: d[k], name, mode: 'lines', line: {color: css2(color), width},
-                                               hovertemplate: '%{y:$,.0f}<extra>' + name + '</extra>'});
-    Plotly.newPlot('p2-wf', [line('cash', 'T-bills', '--cash', 1.5), line('hold', 'Each year\'s stock held', '--hold', 1.5),
-                             line('putw', 'Cboe PutWrite', '--aqua', 1.5), line('wheel', 'Wheel, walked forward', '--wheel', 2)],
-      {paper_bgcolor: css2('--panel'), plot_bgcolor: css2('--panel'), font: {family: css2('--font'), color: css2('--muted'), size: 11},
-       margin: {l: 74, r: 16, t: 30, b: 40}, hovermode: 'x unified',
-       hoverlabel: {bgcolor: css2('--panel-hover'), bordercolor: css2('--axis'), font: {family: css2('--mono'), color: css2('--text'), size: 11.5}},
-       legend: {orientation: 'h', x: 0, xanchor: 'left', y: 1.0, yanchor: 'bottom', font: {color: css2('--text-2'), size: 11.5}},
-       xaxis: axis, yaxis: {...axis, tickformat: '$,.0f'}},
-      {displayModeBar: false, responsive: true});
-  }
 }
 """
 
@@ -1379,7 +1301,7 @@ def tip(prose: dict[str, str], label: str) -> str:
 
 
 def render(D: dict, prose: dict[str, str], draft: bool, P2: dict | None = None,
-           names: tuple[str, str] = ("hw4.html", "hw4_part2.html"), S: dict | None = None) -> tuple[str, str | None]:
+           names: tuple[str, str] = ("hw4.html", "hw4_part2.html")) -> tuple[str, str | None]:
     """Part I's page and, with P2, Part II's: `names` are their file names, for the links between them."""
     missing = []
 
@@ -1531,7 +1453,7 @@ def render(D: dict, prose: dict[str, str], draft: bool, P2: dict | None = None,
     ]
     second = None
     if P2:
-        second = "\n".join([page_top("Wheel Strategy · Five Stocks", "2"), *part2_html(P2, say, panel, heading, S, D),
+        second = "\n".join([page_top("Wheel Strategy · Five Stocks", "2"), *part2_html(P2, say, panel, heading),
                             f'<a class="next" href="{names[0]}">← Back to Part I · The assignment, the wheel on Mastercard</a>',
                             "</div></body></html>"])
     if missing:
@@ -1539,9 +1461,8 @@ def render(D: dict, prose: dict[str, str], draft: bool, P2: dict | None = None,
     return "\n".join(parts), second
 
 
-def part2_html(P2: dict, say, panel, heading, S: dict | None = None, D: dict | None = None) -> list[str]:
+def part2_html(P2: dict, say, panel, heading) -> list[str]:
     results, each_t, corr = part2_tables(P2)
-    data = {**part2_data(P2), **({"wf": S["path"]} if S else {})}
     lo, hi = P2["windows"]["train"]["window"], P2["windows"]["test"]["window"]
     return [
         heading("part2", "Part II · Further exploration", "The same wheel on five stocks",
@@ -1561,21 +1482,8 @@ def part2_html(P2: dict, say, panel, heading, S: dict | None = None, D: dict | N
         '<div style="height:12px"></div>',
         panel("Each stock's wheel", each_t + "<details><summary>Correlations of the five wheels' monthly returns"
               "</summary>" + corr + "</details>", "$100,000 each"),
-        *(wfs_html(S, D, say, panel) if S else []),
-        f"<script>{PART2_SCRIPT.replace('/*__P2__*/null', json.dumps(data, separators=(',', ':')))}</script>",
+        f"<script>{PART2_SCRIPT.replace('/*__P2__*/null', json.dumps(part2_data(P2), separators=(',', ':')))}</script>",
     ]
-
-
-def wfs_html(S: dict, D: dict, say, panel) -> list[str]:
-    main_t, screens = wfs_tables(S, D)
-    span = f'{S["folds"][0]["test"][0]} to {S["folds"][-1]["test"][1]}'
-    return ['<div style="height:12px"></div>',
-            panel("The stock choice, walked forward", say("part2-wf")),
-            '<div style="height:12px"></div>',
-            panel("Walked-forward results", main_t + "<details><summary>Each year's screen, top ten (Mastercard highlighted)"
-                  "</summary>" + screens + "</details>", "each fold from $100,000"),
-            panel("Account value, walked forward", '<div id="p2-wf" style="height:320px"></div>', span, flush=True),
-            panel("What it shows", say("part2-wf-findings"))]
 
 
 def main() -> int:
@@ -1586,14 +1494,13 @@ def main() -> int:
     args = ap.parse_args()
     D = json.loads(DATA.read_text())
     P2 = json.loads(PORTFOLIO.read_text()) if PORTFOLIO.exists() else None
-    S = json.loads(WF_STOCK.read_text()) if WF_STOCK.exists() and D.get("walk_forward") else None
-    f = {**facts(D), **(part2_facts(P2) if P2 else {}), **(wfs_facts(S, D) if S else {})}
+    f = {**facts(D), **(part2_facts(P2) if P2 else {})}
     if args.facts:
         for k, v in f.items():
             print(f"{{{{{k}}}}}  =  {v}")
         return 0
     second_path = args.out.with_name(args.out.stem + "_part2.html")
-    first, second = render(D, load_prose(f), args.draft, P2, (args.out.name, second_path.name), S)
+    first, second = render(D, load_prose(f), args.draft, P2, (args.out.name, second_path.name))
     for path, html in ((args.out, first), (second_path, second)):
         if html is not None:
             path.write_text(html, encoding="utf-8")

@@ -68,3 +68,9 @@ what_was_seen: >
 reported: >
   each fold's top ten, its pick and why any higher-ranked stock was skipped; each fold's setting,
   test result and rank of 18; the joined record. Kept off Part I, whose stock stays Mastercard
+
+site: >
+  2026-10-29, after both folds had been run: left off the site at the user's choice. The joined
+  record (+94.3%, Sharpe 1.42) earned more than Part I's Mastercard walked forward (+19.9%, 1.51)
+  but not more per unit of risk, and Part II already trades APA among its five stocks. The run
+  stays reproducible from scripts/wf_screen.py and scripts/wf_stock_data.py

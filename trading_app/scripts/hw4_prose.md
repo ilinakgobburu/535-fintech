@@ -61,16 +61,6 @@ The largest losses in this project came from a single stock falling while the wh
 ## part2-setup
 Five plain wheels, each with $100,000 at its stock's committed setting and run exactly as in Part I, with their daily account values added into one $500,000 portfolio. The benchmarks are the same five stocks bought and held, $100,000 each, and T-bills.
 
-## part2-wf
-// The stock choice, walked forward.
-Part I's stock was chosen once: the screen ranked the S&P 500 of 2023 on 2014-2023, and Mastercard came first. Here that screen is re-run at the end of each year, on the index as it stood then and the ten years before, and its top stock is traded the next year with a setting picked only from that stock's earlier years. Every rule is the original screen's and the original wheel's; only the dates move, and the design was committed ({{wfs_commit}}) before any price after 2023 was pulled. **APA ranked first at the end of 2024 and again at the end of 2025**, while Mastercard fell to {{wfs_ma_rank_1}} and then {{wfs_ma_rank_2}}.
-
-## part2-wf-findings
-- **Return:** Walked forward, the stock choice traded APA in both years and made **{{wfs_return}}** over 2025-2026, against {{wfs_hold_return}} for holding APA, {{wfs_putw_return}} for the PutWrite index and {{wfs_ma_return}} for Part I's Mastercard with its setting walked forward.
-- **Risk:** The higher return came with a much deeper fall: **{{wfs_dd}}** at worst, against {{wfs_ma_dd}} for Mastercard. APA moved about {{wfs_apa_vol}} a year on the screen, against {{wfs_ma_vol}} for Mastercard.
-- **Sharpe ratio:** {{wfs_sharpe}}, against {{wfs_hold_sharpe}} for holding APA, so the wheel still beat the stock it traded, as Part I's thesis claims. However, it was below Mastercard's {{wfs_ma_sharpe}}: re-screening swapped a calm stock for a volatile one and was paid in return, not in return per unit of risk.
-- **What was already known:** The 2026 fold trades the same stock with the same setting as the class run's APA test, so that year's result had been seen before this was run. The 2025 fold is new.
-
 ## part2-findings
 - **Less risk for the same return:** The portfolio's return is the average of the five by construction ({{p2_train_return}} in 2024-2025), but its volatility was **{{p2_train_vol}}** against {{p2_train_avg_vol}} for a single wheel on average, and its maximum drawdown **{{p2_train_dd}}** against {{p2_train_avg_dd}}.
 - **Why:** The five wheels' monthly results barely moved together, with a median correlation of {{p2_corr_train}} in 2024-2025 and {{p2_corr_test}} in 2026. Specifically, a wheel loses when its own stock falls through the strike, and that happened at different times for different stocks.
