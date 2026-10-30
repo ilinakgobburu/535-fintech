@@ -84,6 +84,12 @@ def premium_split(D: dict, period: str) -> tuple[int, int, float, float]:
     return over, len(rows), sum(p["iv"] for p in rows) / len(rows), sum(p["realised"] for p in rows) / len(rows)
 
 
+def sold_split(D: dict, period: str) -> tuple[int, int, float]:
+    """The options the wheel actually sold: how many were sold above the vol that followed, and the average gap."""
+    c = [x for x in D["periods"][period]["cycles"] if x.get("cp") and x.get("iv") is not None and x.get("realised_vol") is not None]
+    return sum(x["iv"] > x["realised_vol"] for x in c), len(c), sum(x["iv"] - x["realised_vol"] for x in c) / len(c)
+
+
 def portfolio_commit() -> str:
     import subprocess
     out = subprocess.run(["git", "log", "--format=%h", "--diff-filter=A", "-1", "--", "config/wheel_portfolio.yaml"],
@@ -124,7 +130,8 @@ def facts(D: dict) -> dict[str, str]:
     w, h, c, b, wb = t["wheel"], t["hold"], t["cash"], t["baseline"], t["wheel_bid"]
     f = D["fills"]["in_band"]
     rv = D["reversal"]
-    over, n, _, _ = premium_split(D, "test")
+    over, n, iv, rvol = premium_split(D, "test")
+    sold_over, sold_n, sold_gap = sold_split(D, "test")
     return {
         "test_wheel_return": pct(w["return_pct"], sign=True), "test_hold_return": pct(h["return_pct"], sign=True),
         "test_cash_return": pct(c["return_pct"], sign=True), "test_bid_return": pct(wb["return_pct"], sign=True),
@@ -134,7 +141,8 @@ def facts(D: dict) -> dict[str, str]:
         "test_puts": str(w["puts_written"]), "test_assigned": str(w["assigned"]),
         "test_calls": str(w["calls_written"]), "test_called_away": str(w["called_away"]),
         "test_cycles": str(w["cycles"]),
-        "test_iv_over_rv": str(over), "test_premium_cycles": str(n),
+        "test_iv_over_rv": str(over), "test_premium_cycles": str(n), "test_iv": pct(100 * iv), "test_rv": pct(100 * rvol),
+        "sold_over": str(sold_over), "sold_n": str(sold_n), "sold_gap": num(100 * sold_gap, 1),
         "vr_screen": num(rv["screen"]["vr"]), "vr_run": num(rv["run"]["vr"]),
         "vr_median": num(rv["median_vr"]),
         "rw_vr": f'{num(rv["random_walk_vr_mean"])} ± {num(rv["random_walk_vr_sd"])}',
@@ -215,8 +223,8 @@ def verdict_table(D: dict) -> str:
     over, n, iv, rv = premium_split(D, "test")
     run = D["reversal"]["run"]
     rows = [
-        ["Reason 1: options are priced above the moves that follow",
-         "0.25-delta put's implied vol on entry against the vol realised to expiry",
+        ["Reason 1: implied volatility above realised (the volatility risk premium)",
+         "Each cycle's 0.25-delta put: implied vol on entry against the vol Mastercard realised to expiry",
          f"{over} of {n} cycles; {pct(100 * iv)} against {pct(100 * rv)} on average",
          HELD if over > n / 2 else MISSED],
         ["Reason 2: Mastercard's monthly moves reverse",
