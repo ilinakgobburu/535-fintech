@@ -59,7 +59,7 @@ Some limits to these findings include: one stock over a short test of {{test_cyc
 The largest losses in this project came from a single stock falling while the wheel held it: Fiserv's wheel lost **{{p2_fisv_train}}** in 2024-2025. Hence, the same wheel was run on all five stocks the mean-reversion screen picked, side by side, to see whether spreading it across names reduces that risk. The setup was committed ({{p2_commit}}) before it was run, and nothing in Part I was chosen from its result.
 
 ## part2-setup
-Five plain wheels, each with $100,000 at its stock's committed setting and run exactly as in Part I, with their daily account values added into one $500,000 portfolio. The benchmarks are the same five stocks bought and held, $100,000 each, and T-bills.
+Five plain wheels, each with $100,000 at its stock's committed setting and run exactly as in Part I, with their daily account values added into one $500,000 portfolio. The benchmarks are the same five stocks bought and held, $100,000 each, and T-bills; the Cboe PutWrite index was added afterwards, as in Part I.
 
 ## part2-findings
 - **Less risk for the same return:** The portfolio's return is the average of the five by construction ({{p2_train_return}} in 2024-2025), but its volatility was **{{p2_train_vol}}** against {{p2_train_avg_vol}} for a single wheel on average, and its maximum drawdown **{{p2_train_dd}}** against {{p2_train_avg_dd}}.

@@ -21,10 +21,12 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from trading_app.lib import wheel as W  # noqa: E402
 from trading_app.lib.pmcc_daily import performance  # noqa: E402
+from wheel_page_data import CBOE_PUT, index_book, read_cboe  # noqa: E402
 
 OUT = REPO / "cache" / "wheel_portfolio_results.json"
 STOCKS = ["MA", "APA", "V", "FISV", "ADI"]
 FILLS = ("mid", "cross")
+COUNTS = ("puts_written", "assigned", "calls_written", "called_away", "held_no_call")
 
 
 def combine(ledgers: list[pd.DataFrame]) -> pd.DataFrame:
@@ -58,6 +60,16 @@ def figures(p: dict) -> dict:
                               "monthly_sd_pct")} | {"vol_pct": p["monthly_sd_pct"] * np.sqrt(12)}
 
 
+def trades(runs: dict, tbill: pd.Series) -> dict:
+    """Each wheel's premium written, T-bill interest and option counts, and the five added together."""
+    each = {}
+    for s, r in runs.items():
+        sm = W.summary(r, tbill)
+        each[s] = {"premium": sm["attribution"]["premium"], "interest": sm["attribution"]["interest"],
+                   **{k: sm[k] for k in COUNTS}}
+    return {"each": each, "total": {k: sum(e[k] for e in each.values()) for k in next(iter(each.values()))}}
+
+
 def main() -> int:
     warnings.filterwarnings("ignore")
     from run_managed import stocks
@@ -65,7 +77,9 @@ def main() -> int:
     for sw in stocks():
         if sw["stock"] in STOCKS:
             windows.setdefault(sw["window_name"], []).append(sw)
-    out = {"stocks": STOCKS, "windows": {}}
+    out = {"stocks": STOCKS, "windows": {},
+           "picks": {sw["stock"]: sw["pick"] for sws in windows.values() for sw in sws}}
+    bench = read_cboe(CBOE_PUT) if CBOE_PUT.exists() else None
     markets = {}
     for name, sws in windows.items():
         lo, hi = sws[0]["window"]
@@ -94,9 +108,15 @@ def main() -> int:
                 corr = rets.corr()
                 w["correlations"] = corr.round(3).to_dict()
                 w["median_correlation"] = float(np.median(corr.to_numpy()[np.triu_indices(len(corr), 1)]))
+                w[book]["trades"] = trades(runs, tbill)
         w["cash"] = figures(performance(cash["ledger"], 100_000.0, tbill))
         w["cash"]["nav"] = {"date": [str(d.date()) for d in cash["ledger"]["date"]],
                             "value": (cash["ledger"]["nav"] * len(sws)).round(2).tolist()}
+        if bench is not None:       # the Cboe PutWrite index, added after the test as on Part I (config/wheel_mr.yaml)
+            capital = 100_000.0 * len(sws)
+            idx = index_book(bench, pd.to_datetime(w["wheel_mid"]["nav"]["date"]), capital)
+            w["putw"] = figures(performance(idx, capital, tbill))
+            w["putw"]["nav"] = {"date": w["wheel_mid"]["nav"]["date"], "value": idx["nav"].round(2).tolist()}
         out["windows"][name] = w
         p, a, h = w["wheel_mid"]["portfolio"], w["wheel_mid"]["average_of_five"], w["hold"]["portfolio"]
         print(f"\n{name} {lo} to {hi}")

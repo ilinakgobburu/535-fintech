@@ -407,73 +407,117 @@ def page_data(D: dict) -> dict:
 # the page
 # --------------------------------------------------------------------------
 
-def part2_tables(P2: dict) -> tuple[str, str, str]:
-    W = P2["windows"]
-    books = [("Five wheels together", lambda w: w["wheel_mid"]["portfolio"]),
-             ("Five wheels, fills at the bid", lambda w: w["wheel_cross"]["portfolio"]),
-             ("One wheel, average of the five", lambda w: w["wheel_mid"]["average_of_five"]),
-             ("Five stocks bought and held", lambda w: w["hold"]["portfolio"]),
-             ("T-bills", lambda w: w["cash"])]
-    rows = []
-    for label, get in books:
-        row = [escape(label)]
-        for n in ("train", "test"):
-            x = get(W[n])
-            row += [pct(x["return_pct"], sign=True), "–" if label == "T-bills" else num(x["sharpe"]),
-                    pct(x["max_drawdown_pct"]), pct(x["vol_pct"])]
-        rows.append(row + (["__hi__"] if label == "Five wheels together" else []))
-    hdr = ["", "2024–25 return", "Sharpe", "Max drawdown", "Volatility", "2026 return", "Sharpe", "Max drawdown", "Volatility"]
-    results = table(hdr, rows, cls="small")
-    each = []
-    for s_ in P2["stocks"]:
-        row = [escape(s_)]
-        for n in ("train", "test"):
-            e = W[n]["wheel_mid"]["each"][s_]
-            row += [pct(e["return_pct"], sign=True), num(e["sharpe"]), pct(e["max_drawdown_pct"])]
-        each.append(row)
-    each_t = table(["Stock", "2024–25 return", "Sharpe", "Max drawdown", "2026 return", "Sharpe", "Max drawdown"],
-                   each, cls="small")
-    corr = ""
-    for n, label in (("train", "2024–25"), ("test", "2026")):
-        c = W[n]["correlations"]
-        names = list(c)
-        corr += f'<div class="sub">{label}</div>' + table(
-            [""] + names, [[escape(a)] + [num(c[a][b]) for b in names] for a in names], cls="small")
-    return results, each_t, corr
-
-
 def part2_data(P2: dict) -> dict:
+    """Each period's books, trades, stocks and account values, for Part II's switch (as Part I's page_data)."""
+    figs = lambda b: {k: v for k, v in b.items() if k != "nav"}
     out = {}
     for n in ("train", "test"):
         w = P2["windows"][n]
-        out[n] = {"date": w["wheel_mid"]["nav"]["date"], "wheel": w["wheel_mid"]["nav"]["value"],
-                  "hold": w["hold"]["nav"]["value"], "cash": w["cash"]["nav"]["value"]}
+        books = {"wheel": w["wheel_mid"]["portfolio"], "wheel_bid": w["wheel_cross"]["portfolio"],
+                 "avg": w["wheel_mid"]["average_of_five"], "hold": w["hold"]["portfolio"], "cash": figs(w["cash"])}
+        nav = {"date": w["wheel_mid"]["nav"]["date"], "wheel": w["wheel_mid"]["nav"]["value"],
+               "hold": w["hold"]["nav"]["value"], "cash": w["cash"]["nav"]["value"]}
+        if "putw" in w:
+            books["putw"], nav["putw"] = figs(w["putw"]), w["putw"]["nav"]["value"]
+        tr = w["wheel_mid"]["trades"]
+        each = [{"stock": s, "pick": P2["picks"][s], **w["wheel_mid"]["each"][s], **tr["each"][s],
+                 "hold": w["hold"]["each"][s]} for s in P2["stocks"]]
+        out[n] = {"window": w["window"], "books": books, "trades": tr["total"], "each": each, "nav": nav,
+                  "corr": w["correlations"], "median_corr": w["median_correlation"]}
     return out
 
 
-PART2_SCRIPT = r"""
-const P2 = /*__P2__*/null;
-if (typeof Plotly !== 'undefined') {
-  const css2 = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-  [['train', 'p2-train'], ['test', 'p2-test']].forEach(([k, id]) => {
-    const d = P2[k];
-    const axis = {gridcolor: css2('--line-soft'), linecolor: css2('--axis'), zeroline: false,
-                  tickfont: {family: css2('--mono'), color: css2('--muted'), size: 10.5}};
-    Plotly.newPlot(id, [
-      {x: d.date, y: d.cash, name: 'T-bills', mode: 'lines', line: {color: css2('--cash'), width: 1.5},
-       hovertemplate: '%{y:$,.0f}<extra>T-bills</extra>'},
-      {x: d.date, y: d.hold, name: 'Five stocks held', mode: 'lines', line: {color: css2('--hold'), width: 1.5},
-       hovertemplate: '%{y:$,.0f}<extra>Five stocks held</extra>'},
-      {x: d.date, y: d.wheel, name: 'Five wheels together', mode: 'lines', line: {color: css2('--wheel'), width: 2},
-       hovertemplate: '%{y:$,.0f}<extra>Five wheels together</extra>'}],
-      {paper_bgcolor: css2('--panel'), plot_bgcolor: css2('--panel'), font: {family: css2('--font'), color: css2('--muted'), size: 11},
-       margin: {l: 74, r: 16, t: 30, b: 40}, hovermode: 'x unified',
-       hoverlabel: {bgcolor: css2('--panel-hover'), bordercolor: css2('--axis'), font: {family: css2('--mono'), color: css2('--text'), size: 11.5}},
-       legend: {orientation: 'h', x: 0, xanchor: 'left', y: 1.0, yanchor: 'bottom', font: {color: css2('--text-2'), size: 11.5}},
-       xaxis: axis, yaxis: {...axis, tickformat: '$,.0f'}},
-      {displayModeBar: false, responsive: true});
-  });
+# Shared by both pages' scripts: number formats, and one chart style.
+JS_COMMON = r"""
+const $ = id => document.getElementById(id);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+const money = (x, dp = 0, sign = false) => x == null ? '–' :
+  (x < 0 ? '−' : (sign && x > 0 ? '+' : '')) + '$' + Math.abs(x).toLocaleString('en-US', {minimumFractionDigits: dp, maximumFractionDigits: dp});
+const pct = (x, dp = 1, sign = false) => x == null ? '–' : (x < 0 ? '−' : (sign && x > 0 ? '+' : '')) + Math.abs(x).toFixed(dp) + '%';
+const num = (x, dp = 2) => x == null ? '–' : x.toFixed(dp).replace('-', '−');
+const cls = x => x == null ? '' : (x < 0 ? 'neg' : 'pos');
+
+// One chart style: the page's surface and type, hairline grid, legend above the plot, a dark tooltip.
+function layout(o = {}) {
+  const axis = {gridcolor: css('--line-soft'), linecolor: css('--axis'), zeroline: false,
+                tickfont: {family: css('--mono'), color: css('--muted'), size: 10.5},
+                title: {font: {color: css('--muted'), size: 11}}};
+  return {paper_bgcolor: css('--panel'), plot_bgcolor: css('--panel'),
+    font: {family: css('--font'), color: css('--muted'), size: 11}, margin: {l: 70, r: 16, t: 30, b: 40},
+    hoverlabel: {bgcolor: css('--panel-hover'), bordercolor: css('--axis'), font: {family: css('--mono'), color: css('--text'), size: 11.5}},
+    legend: {orientation: 'h', x: 0, xanchor: 'left', y: 1.0, yanchor: 'bottom', font: {color: css('--text-2'), size: 11.5}},
+    ...o, xaxis: {...axis, ...(o.xaxis || {})}, yaxis: {...axis, ...(o.yaxis || {})}};
 }
+"""
+
+# Part II's page: the same period switch, KPI strip, account value and benchmarks as Part I, for the five wheels.
+PART2_SCRIPT = JS_COMMON + r"""
+const P2 = /*__P2__*/null;
+let period = 'test';
+const LABELS = {wheel: 'Five wheels together', hold: 'Five stocks held', cash: 'T-bills', putw: 'Cboe PutWrite index'};
+const COLORS = {wheel: '--wheel', hold: '--hold', cash: '--cash', putw: '--aqua'};
+const tbl = (head, rows, left = 1) => '<div class="tbl-wrap"><table class="tbl small"><thead><tr>' +
+  head.map((h, i) => `<th class="${i < left ? 'l' : ''}">${h}</th>`).join('') + '</tr></thead><tbody>' + rows.join('') + '</tbody></table></div>';
+
+function bench() {
+  const B = P2[period].books;
+  const rows = [['wheel', 'Five wheels together'], ['avg', 'One wheel, average of the five'], ['putw', 'Cboe PutWrite'],
+                ['hold', 'Five stocks held'], ['cash', 'T-bills']].filter(([k]) => B[k]);
+  $('bench').innerHTML = tbl(['', 'Return', 'Sharpe', 'Max DD', 'Vol'], rows.map(([k, label]) =>
+    `<tr${k === 'wheel' ? ' class="hi"' : ''}><td class="l">${label}</td><td class="${cls(B[k].return_pct)}">${pct(B[k].return_pct, 1, true)}</td>
+     <td>${k === 'cash' ? '–' : num(B[k].sharpe)}</td><td>${pct(B[k].max_drawdown_pct)}</td><td>${pct(B[k].vol_pct)}</td></tr>`));
+}
+
+function kpis() {
+  const W = P2[period], B = W.books, w = B.wheel, h = B.hold, u = B.putw, t = W.trades;
+  const vs = f => 'five held ' + f(h) + (u ? ' · PutWrite ' + f(u) : '');
+  const tiles = [
+    ['Portfolio return', pct(w.return_pct, 1, true), vs(x => pct(x.return_pct, 1, true)), w.return_pct],
+    ['Sharpe ratio', num(w.sharpe), vs(x => num(x.sharpe)), w.sharpe],
+    ['Max drawdown', pct(w.max_drawdown_pct), vs(x => pct(x.max_drawdown_pct)), w.max_drawdown_pct],
+    ['Volatility', pct(w.vol_pct), 'one wheel ' + pct(B.avg.vol_pct) + ' on average', null],
+    ['Median correlation', num(W.median_corr), 'of the five wheels\' monthly returns', null],
+    ['Return at the bid', pct(B.wheel_bid.return_pct, 1, true), 'stress test on fills', B.wheel_bid.return_pct],
+    ['Premium collected', money(t.premium), (t.puts_written + t.calls_written) + ' options sold', null],
+    ['T-bill interest', money(t.interest), 'T-bills alone ' + pct(B.cash.return_pct, 1, true), null],
+  ];
+  $('kpis').innerHTML = tiles.map(([k, v, d, x]) =>
+    `<div class="kpi"><div class="k">${esc(k)}${TIPS[k] || ''}</div><div class="v ${cls(x)}">${v}</div><div class="d">${esc(d)}</div></div>`).join('');
+}
+
+function stocks() {
+  const W = P2[period], onoff = f => f ? 'on' : 'off';
+  $('each').innerHTML = tbl(['Stock', 'Put / call / floor', 'Return', 'Sharpe', 'Max DD', 'Vol', 'Puts / assigned',
+                             'Calls / called away', 'Hold return', 'Hold Sharpe'], W.each.map(e =>
+    `<tr><td class="l"><span class="code">${esc(e.stock)}</span></td>
+     <td class="l num">${num(e.pick.put_delta)} / ${num(e.pick.call_delta)} / ${onoff(e.pick.floor)}</td>
+     <td>${pct(e.return_pct, 1, true)}</td><td>${num(e.sharpe)}</td><td>${pct(e.max_drawdown_pct)}</td><td>${pct(e.vol_pct)}</td>
+     <td>${e.puts_written} / ${e.assigned}</td><td>${e.calls_written} / ${e.called_away}</td>
+     <td>${pct(e.hold.return_pct, 1, true)}</td><td>${num(e.hold.sharpe)}</td></tr>`), 2);
+  const names = Object.keys(W.corr);
+  $('corr').innerHTML = tbl(['', ...names.map(esc)], names.map(a =>
+    `<tr><td class="l"><span class="code">${esc(a)}</span></td>${names.map(b => `<td>${num(W.corr[a][b])}</td>`).join('')}</tr>`));
+}
+
+function navChart() {
+  const N = P2[period].nav;
+  Plotly.react('p2-nav', ['cash', 'hold', 'putw', 'wheel'].filter(k => N[k]).map(k => ({
+    x: N.date, y: N[k], name: LABELS[k], mode: 'lines', line: {color: css(COLORS[k]), width: k === 'wheel' ? 2 : 1.5},
+    hovertemplate: '%{y:$,.0f}<extra>' + LABELS[k] + '</extra>'})),
+    layout({hovermode: 'x unified', yaxis: {tickformat: '$,.0f'}}), {displayModeBar: false, responsive: true});
+}
+
+function show(p) {
+  period = p;
+  document.querySelectorAll('.switch button[data-period]').forEach(b => b.classList.toggle('on', b.dataset.period === p));
+  document.querySelectorAll('[data-window]').forEach(el => el.textContent = P2[p].window.join(' to '));
+  kpis(); bench(); stocks();
+  if (typeof Plotly !== 'undefined') navChart();
+}
+
+document.querySelectorAll('.switch button[data-period]').forEach(b => b.addEventListener('click', () => show(b.dataset.period)));
+show('test');
 """
 
 
@@ -673,16 +717,8 @@ STYLE = """
   .tip:hover .bubble,.tip:focus .bubble{display:block}
 """
 
-SCRIPT = r"""
+SCRIPT = JS_COMMON + r"""
 const D = /*__DATA__*/null;
-const $ = id => document.getElementById(id);
-const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
-const money = (x, dp = 0, sign = false) => x == null ? '–' :
-  (x < 0 ? '−' : (sign && x > 0 ? '+' : '')) + '$' + Math.abs(x).toLocaleString('en-US', {minimumFractionDigits: dp, maximumFractionDigits: dp});
-const pct = (x, dp = 1, sign = false) => x == null ? '–' : (x < 0 ? '−' : (sign && x > 0 ? '+' : '')) + Math.abs(x).toFixed(dp) + '%';
-const num = (x, dp = 2) => x == null ? '–' : x.toFixed(dp).replace('-', '−');
-const cls = x => x == null ? '' : (x < 0 ? 'neg' : 'pos');
 let period = 'test';
 
 const LABELS = {wheel: 'Wheel', wheel_bid: 'Wheel (fills at the bid)', hold: 'Buy and hold MA', cash: 'T-bills',
@@ -725,18 +761,6 @@ function kpis() {
   ];
   $('kpis').innerHTML = tiles.map(([k, v, d, x]) =>
     `<div class="kpi"><div class="k">${esc(k)}${TIPS[k] || ''}</div><div class="v ${cls(x)}">${v}</div><div class="d">${esc(d)}</div></div>`).join('');
-}
-
-// One chart style: the page's surface and type, hairline grid, legend above the plot, a dark tooltip.
-function layout(o = {}) {
-  const axis = {gridcolor: css('--line-soft'), linecolor: css('--axis'), zeroline: false,
-                tickfont: {family: css('--mono'), color: css('--muted'), size: 10.5},
-                title: {font: {color: css('--muted'), size: 11}}};
-  return {paper_bgcolor: css('--panel'), plot_bgcolor: css('--panel'),
-    font: {family: css('--font'), color: css('--muted'), size: 11}, margin: {l: 70, r: 16, t: 30, b: 40},
-    hoverlabel: {bgcolor: css('--panel-hover'), bordercolor: css('--axis'), font: {family: css('--mono'), color: css('--text'), size: 11.5}},
-    legend: {orientation: 'h', x: 0, xanchor: 'left', y: 1.0, yanchor: 'bottom', font: {color: css('--text-2'), size: 11.5}},
-    ...o, xaxis: {...axis, ...(o.xaxis || {})}, yaxis: {...axis, ...(o.yaxis || {})}};
 }
 
 // ▼ put sold, ▲ call sold, ✕ assigned or called away, each on the account-value line at its date
@@ -1453,7 +1477,7 @@ def render(D: dict, prose: dict[str, str], draft: bool, P2: dict | None = None,
     ]
     second = None
     if P2:
-        second = "\n".join([page_top("Wheel Strategy · Five Stocks", "2"), *part2_html(P2, say, panel, heading),
+        second = "\n".join([page_top("Wheel Strategy · Five Stocks", "2"), *part2_html(P2, say, panel, heading, tips),
                             f'<a class="next" href="{names[0]}">← Back to Part I · The assignment, the wheel on Mastercard</a>',
                             "</div></body></html>"])
     if missing:
@@ -1461,28 +1485,37 @@ def render(D: dict, prose: dict[str, str], draft: bool, P2: dict | None = None,
     return "\n".join(parts), second
 
 
-def part2_html(P2: dict, say, panel, heading) -> list[str]:
-    results, each_t, corr = part2_tables(P2)
+def part2_html(P2: dict, say, panel, heading, tips: dict[str, str]) -> list[str]:
+    """Part II laid out as Part I: heading, motivation, the period switch, KPIs, account value beside benchmarks."""
     lo, hi = P2["windows"]["train"]["window"], P2["windows"]["test"]["window"]
+    script = (PART2_SCRIPT.replace("/*__P2__*/null", json.dumps(part2_data(P2), separators=(",", ":")))
+              .replace("const P2 =", "const TIPS = " + json.dumps(tips) + ";\nconst P2 ="))
+    labels = {"test": PERIOD_LABEL["test"], "train": "2024–25 training: where the settings were chosen"}
     return [
         heading("part2", "Part II · Further exploration", "The same wheel on five stocks",
                 "Not required by the assignment. The plain wheel of Part I, run on all five stocks the screen "
                 "picked at once.",
-                [("Periods", f"{lo[0]} → {lo[1]}  ·  {hi[0]} → {hi[1]}"), ("Stocks", " · ".join(P2["stocks"])),
-                 ("Starting cash", "5 × $100,000"), ("Data", "Daily closes · LSEG")]),
-        '<div style="height:6px"></div>',
-        panel("Motivation", say("part2-motivation") + '<div style="height:8px"></div>' + say("part2-setup")),
+                [("Test period", f"{hi[0]} → {hi[1]}"), ("Settings chosen on", f"{lo[0]} → {lo[1]}"),
+                 ("Stocks", " · ".join(P2["stocks"])), ("Starting cash", "5 × $100,000"), ("Data", "Daily closes · LSEG")]),
         '<div style="height:12px"></div>',
-        panel("Results", results, "$500,000 to start in each period; each period starts from cash"),
-        '<div class="grid g-1-1">',
-        panel("Account value, 2024–25", '<div id="p2-train" style="height:320px"></div>', f"{lo[0]} to {lo[1]}", flush=True),
-        panel("Account value, 2026", '<div id="p2-test" style="height:320px"></div>', f"{hi[0]} to {hi[1]}", flush=True),
+        panel("Motivation", say("part2-motivation", "lead") + '<div style="height:12px"></div>' + say("part2-setup")),
+        '<div class="switch">' + "".join(f'<button data-period="{k}" class="{"on" if k == "test" else ""}">{escape(v)}</button>'
+                                         for k, v in labels.items()) + "</div>",
+        '<div id="kpis" class="kpis"></div>',
+        '<div class="grid g-2-1" style="margin-top:0">',
+        panel("Account value", '<div id="p2-nav" style="height:400px"></div>',
+              'from $500,000 · <span data-window></span>', flush=True),
+        panel("Benchmarks", '<div id="bench"></div><div class="cap">One wheel, average of the five: each figure averaged '
+              'over the five single-stock wheels. The Cboe S&amp;P 500 PutWrite index sells a one-month at-the-money '
+              'S&amp;P 500 put each month, secured by cash in T-bills: the industry standard for systematic put '
+              'selling. Added as a benchmark after the test, as in Part I.</div>',
+              '<span data-window></span>'),
         "</div>",
         panel("What it shows", say("part2-findings")),
         '<div style="height:12px"></div>',
-        panel("Each stock's wheel", each_t + "<details><summary>Correlations of the five wheels' monthly returns"
-              "</summary>" + corr + "</details>", "$100,000 each"),
-        f"<script>{PART2_SCRIPT.replace('/*__P2__*/null', json.dumps(part2_data(P2), separators=(',', ':')))}</script>",
+        panel("Each stock's wheel", '<div id="each"></div><details><summary>Correlations of the five wheels\' monthly '
+              'returns</summary><div id="corr"></div></details>', '$100,000 each · <span data-window></span>'),
+        f"<script>{script}</script>",
     ]
 
 
