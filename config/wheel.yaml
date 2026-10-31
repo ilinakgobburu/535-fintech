@@ -67,7 +67,7 @@ rules:
   expiry: >
     settles on the expiry day's close. A put with the close below its strike is assigned (the
     shares are bought at the strike); a call with the close above its strike is called away (the
-    shares are sold at the strike); otherwise it expires. Early assignment is not modelled
+    shares are sold at the strike); otherwise it expires. Early assignment is not modeled
   earnings: sold through, for every setting; cycles with an earnings date are flagged in the output
   contracts: whole real contracts. One NVDA contract before 2021-07-20 is 400 shares in the units above
   cash: earns the 3-month T-bill over the calendar days between closes, collateral included

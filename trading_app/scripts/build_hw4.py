@@ -6,7 +6,7 @@ Build docs/hw4.html, the wheel page, from two inputs:
 
 As on the PMCC page, prose is never generated: `{{name}}` in hw4_prose.md is
 replaced by a computed figure, and an unknown placeholder stops the build.
-The page carries its own stylesheet (STYLE below, colours first), so restyling
+The page carries its own stylesheet (STYLE below, colors first), so restyling
 it touches no other page.
 
     python3 scripts/wheel_page_data.py && python3 scripts/build_hw4.py
@@ -231,8 +231,8 @@ def verdict_table(D: dict) -> str:
     over, n, iv, rv = premium_split(D, "test")
     run = D["reversal"]["run"]
     rows = [
-        ["Reason 1: implied volatility above realised (the volatility risk premium)",
-         "Each cycle's 0.25-delta put: implied vol on entry against the vol Mastercard realised to expiry",
+        ["Reason 1: implied volatility above realized (the volatility risk premium)",
+         "Each cycle's 0.25-delta put: implied vol on entry against the vol Mastercard realized to expiry",
          f"{over} of {n} cycles; {pct(100 * iv)} against {pct(100 * rv)} on average",
          HELD if over > n / 2 else MISSED],
         ["Reason 2: Mastercard's monthly moves reverse",
@@ -540,7 +540,7 @@ show('test');
 STYLE = """
   /* ---- design tokens: restyle the page here -------------------------------
      Terminal-style dark: crisp 1px rules, square corners, IBM Plex Sans for words
-     and IBM Plex Mono for every figure. Series colours validated for this surface
+     and IBM Plex Mono for every figure. Series colors validated for this surface
      with the dataviz palette script (blue, orange, aqua pass every check). */
   :root{
     color-scheme:dark;
@@ -691,7 +691,11 @@ STYLE = """
   details{margin-top:12px}
   details summary{cursor:pointer;color:var(--text-2);font-size:12.5px;font-weight:500;padding:6px 0;list-style:none}
   details summary::before{content:"+";display:inline-block;width:16px;font-family:var(--mono);color:var(--accent)}
-  details[open] summary::before{content:"−"}
+  details[open] > summary::before{content:"−"}
+  details.panel{display:block;margin-top:0;align-self:start}
+  details.panel > summary.ph{cursor:pointer;list-style:none}
+  details.panel > summary.ph:hover{color:var(--text)}
+  details.panel:not([open]) > summary.ph{border-bottom:none}
   details summary::-webkit-details-marker{display:none}
 
   /* ---- the portfolio on any date ----------------------------------------- */
@@ -869,7 +873,7 @@ function tables() {
   }));
 
   $('cycles').innerHTML = '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
-    ['Entry', 'Expiry', 'Days', 'Sold', 'Contract', 'Strike', 'From spot', 'Delta', 'Implied vol', 'Realised vol',
+    ['Entry', 'Expiry', 'Days', 'Sold', 'Contract', 'Strike', 'From spot', 'Delta', 'Implied vol', 'Realized vol',
      'Premium', 'Close at expiry', 'Outcome'].map((h, i) => `<th class="${i < 2 || i === 3 || i === 4 || i === 12 ? 'l' : ''}">${h}</th>`).join('') +
     '</tr></thead><tbody>' + P.cycles.map(c => `<tr><td class="l num">${c.entry}</td><td class="l num">${c.expiry}</td><td>${c.dte}</td>
       <td class="l">${c.cp === 'P' ? 'put' : c.cp === 'C' ? 'call' : '–'}</td><td class="l">${c.occ ? '<span class="code">' + esc(c.occ) + '</span>' : '–'}</td>
@@ -973,9 +977,9 @@ function smileAt(i) {
   const day = V.smile.date[smIndex], sm = V.smile.s[smIndex];
   $('sm-range').value = smIndex; $('sm-date').value = day;
   const atm = smileInterp(sm, 1.0), wing = smileInterp(sm, 0.9);
-  $('sm-info').innerHTML = `${day} · expiry <b>${sm.expiry}</b> (${sm.dte} days) · MA close <b>${money(sm.spot, 2)}</b>`
-    + (atm != null ? ` · at-the-money vol <b>${pct(100 * atm)}</b>` : '')
-    + (wing != null && atm != null ? ` · 90% strike <b>${pct(100 * wing)}</b> (put skew ${num(100 * (wing - atm), 1)} pts)` : '');
+  $('sm-info').innerHTML = `${day} · expiry ${sm.expiry} (${sm.dte} days) · MA close ${money(sm.spot, 2)}`
+    + (atm != null ? ` · at-the-money vol ${pct(100 * atm)}` : '')
+    + (wing != null && atm != null ? ` · 90% strike ${pct(100 * wing)} (put skew ${num(100 * (wing - atm), 1)} pts)` : '');
   if (typeof Plotly === 'undefined' || !$('plot-smile').offsetParent) return;
   const isPut = sm.m.map(m => m < 1);
   const traces = [
@@ -1087,8 +1091,8 @@ function volCharts() {
     const c = P.cycles.filter(x => x.iv != null && x.realised_vol != null && x.cp);
     const over = c.filter(x => x.iv > x.realised_vol).length;
     const gap = c.reduce((a, x) => a + (x.iv - x.realised_vol), 0) / Math.max(c.length, 1);
-    $('vrp-info').innerHTML = `Implied above realised on <b>${over} of ${c.length}</b> options sold; on average `
-      + `<b>${num(100 * gap, 1)} vol points</b> higher.`;
+    $('vrp-info').innerHTML = `Implied above realized on ${over} of ${c.length} options sold; on average `
+      + `${num(100 * gap, 1)} vol points higher.`;
     const seg = {x: [], y: []};
     c.forEach(x => { seg.x.push(x.entry, x.entry, null); seg.y.push(100 * x.iv, 100 * x.realised_vol, null); });
     Plotly.react('plot-vrp', [
@@ -1096,8 +1100,8 @@ function volCharts() {
       {x: c.map(x => x.entry), y: c.map(x => 100 * x.iv), name: 'Implied vol, when sold', mode: 'markers',
        marker: {size: 9, color: css('--wheel')}, text: c.map(x => x.occ || ''),
        hovertemplate: '%{text}<br>implied %{y:.1f}%<extra></extra>'},
-      {x: c.map(x => x.entry), y: c.map(x => 100 * x.realised_vol), name: 'Realised vol, to expiry', mode: 'markers',
-       marker: {size: 9, color: css('--text-2')}, hovertemplate: 'realised %{y:.1f}%<extra></extra>'}],
+      {x: c.map(x => x.entry), y: c.map(x => 100 * x.realised_vol), name: 'Realized vol, to expiry', mode: 'markers',
+       marker: {size: 9, color: css('--text-2')}, hovertemplate: 'realized %{y:.1f}%<extra></extra>'}],
       layout({hovermode: 'closest', yaxis: {ticksuffix: '%', rangemode: 'tozero'}}), cfg);
   }
   if ($('plot-gsurf').offsetParent) greekCharts(V.greeks, cfg);
@@ -1119,8 +1123,8 @@ function greekCharts(G, cfg) {
   const lo = Math.min(...flat), hi = Math.max(...flat), lift = 0.015 * (hi - lo);   // keeps a path drawn above the surface it sits on
   const x0 = G.m[0], x1 = G.m[G.m.length - 1], y0 = G.dte[0], y1 = G.dte[G.dte.length - 1];
   const far = $('plot-gsurf').clientWidth < 700 ? 1.75 : 1;            // a phone sees the whole surface
-  $('gk-info').innerHTML = `Held fixed, as in the lecture: Mastercard at <b>${money(G.spot, 2)}</b> (median close), implied vol `
-    + `<b>${pct(100 * G.sigma)}</b> (median of the options sold), rate <b>${pct(100 * G.rate)}</b>, no dividend yield.`;
+  $('gk-info').innerHTML = `Held fixed, as in the lecture: Mastercard at ${money(G.spot, 2)} (median close), implied vol `
+    + `${pct(100 * G.sigma)} (median of the options sold), rate ${pct(100 * G.rate)}, no dividend yield.`;
   // each option sold, traced from its sale (dot) to the session before expiry
   const traced = (cp, name, color) => {
     const o = G.sold.filter(s => s.cp === cp), X = [], Y = [], H = [], T = [];
@@ -1292,7 +1296,7 @@ def vol_tabs(D: dict) -> str:
                   '<button id="sm-next">next sale ▶</button><input id="sm-date" type="date" aria-label="date"></div>'
                   '<div id="sm-info" class="pf-eq"></div><div id="plot-smile" style="height:340px"></div>'),
         ("Surface over time", '<div class="cap" style="margin:0 0 10px">Every session\'s smile side by side: the date '
-                  'across, strike as a share of the close down, colour the implied vol of the monthly closest to 30 days '
+                  'across, strike as a share of the close down, color the implied vol of the monthly closest to 30 days '
                   'out. The markers are the options the wheel sold, at their strike against the close on the day of sale. '
                   'Only one or two monthlies are quoted on any day, so this is the surface at a fixed maturity over time '
                   'rather than across maturities.</div>'
@@ -1301,9 +1305,9 @@ def vol_tabs(D: dict) -> str:
                   '<div id="plot-surface" style="height:470px"></div>'
                   '<div class="cap" id="surf-hint" style="display:none">Drag to rotate, scroll to zoom, double-click to reset. '
                   'Gaps are strikes with no quote that day.</div>'),
-        ("Implied vs realised", '<div class="cap" style="margin:0 0 10px">For each option the wheel sold: the implied '
-                  'vol it was sold at, and the volatility Mastercard then realised to its expiry (daily closes, '
-                  'annualised). Selling above what follows is the volatility risk premium the strategy is paid for. These are the '
+        ("Implied vs realized", '<div class="cap" style="margin:0 0 10px">For each option the wheel sold: the implied '
+                  'vol it was sold at, and the volatility Mastercard then realized to its expiry (daily closes, '
+                  'annualized). Selling above what follows is the volatility risk premium the strategy is paid for. These are the '
                   'options actually sold; the thesis table uses a fixed yardstick instead, the 0.25-delta put of every '
                   'cycle, so its count can differ.</div>'
                   '<div id="vrp-info" class="pf-eq" style="margin-top:0"></div><div id="plot-vrp" style="height:320px"></div>'),
@@ -1352,10 +1356,12 @@ def render(D: dict, prose: dict[str, str], draft: bool, P2: dict | None = None,
         missing.append(key)
         return f'<div class="todo">Not yet written: {escape(key)}</div>' if draft else ""
 
-    def panel(title: str, body: str, tag: str = "", flush: bool = False, pid: str = "") -> str:
-        return (f'<section class="panel"{f" id={chr(34)}{pid}{chr(34)}" if pid else ""}><div class="ph">{escape(title)}{tip(prose, title)}'
+    def panel(title: str, body: str, tag: str = "", flush: bool = False, pid: str = "", fold: bool = False) -> str:
+        """A titled panel; with `fold`, closed until its title bar is clicked."""
+        el, bar = ("details", "summary") if fold else ("section", "div")
+        return (f'<{el} class="panel"{f" id={chr(34)}{pid}{chr(34)}" if pid else ""}><{bar} class="ph">{escape(title)}{tip(prose, title)}'
                 + (f'<span class="tag">{tag}</span>' if tag else "")
-                + f'</div><div class="pb{" flush" if flush else ""}">{body}</div></section>')
+                + f'</{bar}><div class="pb{" flush" if flush else ""}">{body}</div></{el}>')
 
     T, R = D["periods"]["test"], D["periods"]["train"]
     tips = {k: tip(prose, k) for k in ("Sharpe ratio", "Max drawdown", "Premium collected", "T-bill interest")}
@@ -1466,7 +1472,7 @@ def render(D: dict, prose: dict[str, str], draft: bool, P2: dict | None = None,
               '<div class="fv on" data-view="hist"><div id="plot-fill" style="height:340px"></div>'
               f'<div class="cap" style="padding:0 10px 8px">Each bar is the share of the {D["fills"]["in_band"]["n"]:,} '
               'contract-days in the band the wheel sells, 2024 to October 2026, whose last trade printed in that part of '
-              'the closing quote: 0 is the bid, 0.5 the mid, 1 the ask. Inside the quote the prints centre on the mid. '
+              'the closing quote: 0 is the bid, 0.5 the mid, 1 the ask. Inside the quote the prints center on the mid. '
               'Prints outside it mostly reflect the last trade coming hours before the closing quote.</div></div>'
               '<div class="fv" data-view="scatter"><div id="plot-scatter" style="height:340px"></div>'
               '<div class="cap" style="padding:0 10px 8px">Each point is one of the same trades: the closing mid against '
@@ -1480,11 +1486,11 @@ def render(D: dict, prose: dict[str, str], draft: bool, P2: dict | None = None,
               "location: 0 = bid, 0.5 = mid, 1 = ask"),
         '<div class="grid g-1-1">',
         panel("Stock choice", say("stock") + '<div class="sub">The screen, top ten</div>' + screen_table(D),
-              f'{D["reversal"]["ranked"]} of {D["reversal"]["eligible"]} eligible stocks ranked'),
+              f'{D["reversal"]["ranked"]} of {D["reversal"]["eligible"]} eligible stocks ranked', fold=True),
         panel("Setting choice", say("setting") + setting_verdict(D) + '<div class="sub">All 18 settings, at mid fills</div>' + grid_table(D)
               + '<div class="sub">Walk-forward: the choice made again each year, from the years before it</div>'
               + walk_forward_table(D),
-              "highlighted: the pick"),
+              "highlighted: the pick", fold=True),
         "</div>",
         (f'<a class="next" href="{names[1]}">Next: Part II · Further exploration, the same wheel on five stocks →</a>'
          if P2 else ""),
