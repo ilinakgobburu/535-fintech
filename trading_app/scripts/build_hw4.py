@@ -1545,10 +1545,13 @@ def main() -> int:
     ap.add_argument("--facts", action="store_true", help="print the placeholders and exit")
     ap.add_argument("--draft", action="store_true", help="mark unwritten prose sections on the page")
     ap.add_argument("--out", type=Path, default=OUT)
+    ap.add_argument("--part2", action="store_true",
+                    help="also build Part II, the five-stock portfolio (taken off the site on 2026-10-30 at the user's choice)")
     args = ap.parse_args()
     D = json.loads(DATA.read_text())
-    P2 = json.loads(PORTFOLIO.read_text()) if PORTFOLIO.exists() else None
-    f = {**facts(D), **(part2_facts(P2) if P2 else {})}
+    portfolio = json.loads(PORTFOLIO.read_text()) if PORTFOLIO.exists() else None
+    P2 = portfolio if args.part2 else None
+    f = {**facts(D), **(part2_facts(portfolio) if portfolio else {})}
     if args.facts:
         for k, v in f.items():
             print(f"{{{{{k}}}}}  =  {v}")

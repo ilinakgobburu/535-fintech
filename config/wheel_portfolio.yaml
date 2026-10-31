@@ -13,3 +13,8 @@ reported: >
   the portfolio's return, Sharpe ratio, maximum drawdown and worst month, at mid and at the stress fills,
   against each stock's own wheel and the average of the five; the correlations of the five wheels'
   monthly returns; and the portfolio's volatility against the average volatility of the five
+
+site: >
+  2026-10-30: taken off the site at the user's choice, after both periods had been seen (five wheels
+  +28.8%, Sharpe 0.88, against +8.4%, 0.04 for the five stocks held in 2024-2025; +14.0%, 1.55
+  against +28.4%, 1.59 in 2026). scripts/build_hw4.py --part2 builds the page again
