@@ -1448,7 +1448,7 @@ def render(D: dict, prose: dict[str, str], draft: bool, P2: dict | None = None,
 
     def page_top(title: str, active: str) -> str:
         """The head and the site header both pages share: Part I and Part II as two pages of one site."""
-        links = [("1", "Part I · The assignment", names[0])] + ([("2", "Part II · Further exploration", names[1])] if P2 else [])
+        links = [("1", "The assignment", names[0])] + ([("2", "Part II · Further exploration", names[1])] if P2 else [])
         nav = "".join(f'<a href="{href}"' + (' class="on" aria-current="page"' if k == active else "") + f'>{escape(label)}</a>'
                       for k, label, href in links)
         return f"""<!doctype html>
@@ -1475,7 +1475,7 @@ def render(D: dict, prose: dict[str, str], draft: bool, P2: dict | None = None,
 
     parts = [
         page_top("Wheel Strategy · MA", "1"),
-        heading("part1", "Part I · The assignment", "The wheel on Mastercard (MA)",
+        heading("part1", "The assignment", "The wheel on Mastercard (MA)",
                 "",
                 [("Test period", f'{T["window"][0]} → {T["window"][1]}'),
                  ("Setting chosen on", f'{R["window"][0]} → {R["window"][1]}'),
@@ -1543,7 +1543,7 @@ def render(D: dict, prose: dict[str, str], draft: bool, P2: dict | None = None,
     second = None
     if P2:
         second = "\n".join([page_top("Wheel Strategy · Five Stocks", "2"), *part2_html(P2, say, panel, heading, tips),
-                            f'<a class="next" href="{names[0]}">← Back to Part I · The assignment, the wheel on Mastercard</a>',
+                            f'<a class="next" href="{names[0]}">← Back to the assignment, the wheel on Mastercard</a>',
                             "</div></body></html>"])
     if missing:
         print(f"  prose sections still empty: {', '.join(missing)}", file=sys.stderr)
