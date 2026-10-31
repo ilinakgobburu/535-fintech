@@ -1127,13 +1127,17 @@ function greekCharts(G, cfg) {
     + `${pct(100 * G.sigma)} (median of the options sold), rate ${pct(100 * G.rate)}, no dividend yield.`;
   // each option sold, traced from its sale (dot) to the session before expiry
   const traced = (cp, name, color) => {
-    const o = G.sold.filter(s => s.cp === cp), X = [], Y = [], H = [], T = [];
-    o.forEach(s => { s.m.forEach((m, i) => { X.push(m); Y.push(s.dte[i]); H.push(s[k.key][i] + lift);
-                       T.push(`${s.occ}<br>${s.date[i]} · close ${money(s.close[i], 2)}<br>${s.dte[i]} days left · K/S ${num(m, 3)}`
-                              + `<br>${s.status}`); });
-                     X.push(null); Y.push(null); H.push(null); T.push(null); });
-    return [{type: 'scatter3d', mode: 'lines', name, legendgroup: cp, x: X, y: Y, z: H, text: T,
-             line: {color: css(color), width: 5}, hovertemplate: '%{text}<br>' + k.fmt + '<extra></extra>'},
+    const o = G.sold.filter(s => s.cp === cp), X = [], Y = [], H = [], hx = [], hy = [], hz = [], T = [];
+    o.forEach(s => {                  // the line follows the surface between sessions; the hover sits on each session
+      s.line.m.forEach((m, i) => { X.push(m); Y.push(s.line.dte[i]); H.push(s.line[k.key][i] + lift); });
+      X.push(null); Y.push(null); H.push(null);
+      s.m.forEach((m, i) => { hx.push(m); hy.push(s.dte[i]); hz.push(s[k.key][i] + lift);
+        T.push(`${s.occ}<br>${s.date[i]} · close ${money(s.close[i], 2)}<br>${s.dte[i]} days left · K/S ${num(m, 3)}`
+               + `<br>${s.status}`); }); });
+    return [{type: 'scatter3d', mode: 'lines', name, legendgroup: cp, x: X, y: Y, z: H, hoverinfo: 'skip',
+             line: {color: css(color), width: 5}},
+            {type: 'scatter3d', mode: 'markers', name, legendgroup: cp, showlegend: false, x: hx, y: hy, z: hz, text: T,
+             marker: {size: 2, color: css(color)}, hovertemplate: '%{text}<br>' + k.fmt + '<extra></extra>'},
             {type: 'scatter3d', mode: 'markers', name, legendgroup: cp, showlegend: false,
              x: o.map(s => s.m[0]), y: o.map(s => s.dte[0]), z: o.map(s => s[k.key][0] + lift), text: o.map(s => s.occ + ' sold ' + s.date[0]),
              marker: {size: 5, color: css(color), line: {color: css('--base'), width: 1}}, hovertemplate: '%{text}<br>' + k.fmt + '<extra></extra>'}];

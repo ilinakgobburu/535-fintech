@@ -23,7 +23,7 @@ The cost of selling volatility is a payoff of many small wins and a rare large l
 
 ## stock
 // Why Mastercard. The Stock choice block.
-Mastercard was chosen by a screen, not by hand. The screen ranked the S&P 500 as it stood on December 29, 2023 ({{universe}} stocks, including ones that have since been removed, to avoid survivorship bias) by how strongly each stock's monthly moves reversed over 2014-2023. It used the three-month variance ratio and the monthly autocorrelation, and a stock was only ranked if both pointed to reversal. Mastercard came first, with a variance ratio of {{vr_screen}} against a median of {{vr_median}}.
+Mastercard was chosen by a screen. The screen ranked the S&P 500 as it stood on December 29, 2023 ({{universe}} stocks, including ones that have since been removed, to avoid survivorship bias) by how strongly each stock's monthly moves reversed over 2014-2023. It used the three-month variance ratio and the monthly autocorrelation, and a stock was only ranked if both pointed to reversal. Mastercard came first, with a variance ratio of {{vr_screen}} against a median of {{vr_median}}.
 
 The backtest only uses the years after that window, because testing a stock on the same years that picked it would be grading it on its own selection.
 
@@ -31,7 +31,7 @@ The backtest only uses the years after that window, because testing a stock on t
 // How the put delta, call delta and floor were chosen.
 The put delta, call delta and cost-basis floor were picked out of 18 settings by their Sharpe ratio in 2024-2025. The pick was committed ({{pick_commit}}) before 2026 was run, and 2026 was only run once. It ranked {{rank}} of 18 in 2026, with a Sharpe ratio of {{test_wheel_sharpe}}, close to the {{test_baseline_sharpe}} of the default setting, which was fixed before looking at any data.
 
-I then walked the choice forward, so that each year is traded with a setting picked only from the years before it: picked on 2024 and tested on 2025, then picked on 2024-2025 and tested on 2026. The 2025 pick ranked {{wf1_rank}} of 18, with a Sharpe ratio of {{wf1_sharpe}} against {{wf1_baseline_sharpe}} for the default. Over 2025-2026 together, the walk-forward picks had a Sharpe ratio of {{wf_sharpe}}, against {{wf_baseline_sharpe}} for the default and {{wf_hold_sharpe}} for holding Mastercard.
+Walk-forward testing was then used, so that each year is traded with a setting picked only from the years before it: picked on 2024 and tested on 2025, then picked on 2024-2025 and tested on 2026. The 2025 pick ranked {{wf1_rank}} of 18, with a Sharpe ratio of {{wf1_sharpe}} against {{wf1_baseline_sharpe}} for the default. Over 2025-2026 together, the walk-forward picks had a Sharpe ratio of {{wf_sharpe}}, against {{wf_baseline_sharpe}} for the default and {{wf_hold_sharpe}} for holding Mastercard.
 
 Hence, picking the setting from past Sharpe ratios did not beat the default. The result depends much more on the stock and the period than on the setting.
 

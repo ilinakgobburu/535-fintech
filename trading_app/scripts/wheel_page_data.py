@@ -214,7 +214,10 @@ def vol_views(market: dict, result: dict, by_day: dict) -> dict:
 # and a coarser grid leaves the drawn surface off the options traced across it
 GREEK_MONEYNESS = np.unique(np.round(np.r_[np.arange(0.70, 0.94, 0.01), np.arange(0.94, 1.06, 0.0025),
                                            np.arange(1.06, 1.3001, 0.01)], 4))
-GREEK_DAYS = np.r_[1:11, 12:41:2, 45:121:5]                            # finer where the wheel's options live
+# days to expiry: from a quarter of a day, so the options' last sessions are not on the surface's edge, to 45,
+# past the longest the wheel sells (the long end is the three clocks' job)
+GREEK_DAYS = np.r_[0.25, 0.5, 1:11, 12:31:2, 33:46:3]
+PATH_STEPS = 8            # points drawn between two sessions, so a traced option follows the surface's bend
 CLOCK_DAYS = np.arange(1, 361)
 
 
@@ -240,11 +243,18 @@ def greek_views(market: dict, result: dict) -> dict:
         dte = (pd.Timestamp(c["expiry"]) - held["date"]).dt.days.to_numpy()
         p = W.spot_greeks(spot, m * spot, dte / W.DAYS_PER_YEAR, sigma, rate)
         side = "call" if c["cp"] == W.CALL else "put"
+        fill = lambda a: np.r_[np.concatenate([np.linspace(a[i], a[i + 1], PATH_STEPS, endpoint=False)
+                                               for i in range(len(a) - 1)]), a[-1:]] if len(a) > 1 else a
+        lm, ld = fill(m), fill(dte.astype(float))
+        q = W.spot_greeks(spot, lm * spot, ld / W.DAYS_PER_YEAR, sigma, rate)
         paths.append({"occ": occ(c["cp"], c["strike"], c["expiry"]), "cp": c["cp"], "status": c.get("status"),
                       "date": list(held["date"]), "close": held["stock_close"].round(2).tolist(),
                       "m": np.round(m, 4).tolist(), "dte": dte.tolist(),
                       **{k: np.round(p[f"{side}_{k}" if k in ("delta", "theta") else k], 6).tolist()
-                         for k in ("delta", "theta", "gamma", "vega")}})
+                         for k in ("delta", "theta", "gamma", "vega")},
+                      "line": {"m": np.round(lm, 4).tolist(), "dte": np.round(ld, 3).tolist(),
+                               **{k: np.round(q[f"{side}_{k}" if k in ("delta", "theta") else k], 6).tolist()
+                                  for k in ("delta", "theta", "gamma", "vega")}}})
     atm = W.spot_greeks(spot, spot, CLOCK_DAYS / W.DAYS_PER_YEAR, sigma, rate)
     return {"spot": spot, "sigma": sigma, "rate": rate, "m": GREEK_MONEYNESS.tolist(), "dte": GREEK_DAYS.tolist(),
             "surfaces": {k: np.round(g[k], 6).tolist() for k in keys}, "sold": paths,
