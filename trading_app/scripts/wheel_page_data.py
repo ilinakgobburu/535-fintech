@@ -210,7 +210,10 @@ def vol_views(market: dict, result: dict, by_day: dict) -> dict:
             "greeks": greek_views(market, result)}
 
 
-GREEK_MONEYNESS = np.round(np.arange(0.70, 1.3001, 0.01), 2)          # strike / spot, as the lecture's surfaces
+# strike / spot, as the lecture's surfaces; finer near the money, where a few days out delta is a cliff
+# and a coarser grid leaves the drawn surface off the options traced across it
+GREEK_MONEYNESS = np.unique(np.round(np.r_[np.arange(0.70, 0.94, 0.01), np.arange(0.94, 1.06, 0.0025),
+                                           np.arange(1.06, 1.3001, 0.01)], 4))
 GREEK_DAYS = np.r_[1:11, 12:41:2, 45:121:5]                            # finer where the wheel's options live
 CLOCK_DAYS = np.arange(1, 361)
 

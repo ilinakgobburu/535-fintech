@@ -110,6 +110,14 @@ def part2_facts(P2: dict) -> dict[str, str]:
                   f"p2_{tag}_hold_return": pct(hold["return_pct"], sign=True), f"p2_{tag}_hold_sharpe": num(hold["sharpe"]),
                   f"p2_corr_{tag}": num(w["median_correlation"])})
     f["p2_fisv_train"] = pct(P2["windows"]["train"]["wheel_mid"]["each"]["FISV"]["return_pct"], sign=True)
+    for n in ("train", "test"):                      # each stock's wheel against holding it, and the gap in dollars
+        w, gap = P2["windows"][n], 0.0
+        for s_ in P2["stocks"]:
+            a, h = w["wheel_mid"]["each"][s_]["return_pct"], w["hold"]["each"][s_]["return_pct"]
+            f.update({f"p2_{n}_{s_.lower()}_wheel": pct(a, sign=True), f"p2_{n}_{s_.lower()}_hold": pct(h, sign=True),
+                      f"p2_{n}_{s_.lower()}_gap": usd(1000 * (h - a))})
+            gap += 1000 * (h - a)
+        f[f"p2_{n}_gap"] = usd(gap)
     return f
 
 
