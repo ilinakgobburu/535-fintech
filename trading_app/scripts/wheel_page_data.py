@@ -248,6 +248,7 @@ def greek_views(market: dict, result: dict) -> dict:
         lm, ld = fill(m), fill(dte.astype(float))
         q = W.spot_greeks(spot, lm * spot, ld / W.DAYS_PER_YEAR, sigma, rate)
         paths.append({"occ": occ(c["cp"], c["strike"], c["expiry"]), "cp": c["cp"], "status": c.get("status"),
+                      "strike": c["strike"], "delta_sold": c["delta"], "iv_sold": c["iv"],
                       "date": list(held["date"]), "close": held["stock_close"].round(2).tolist(),
                       "m": np.round(m, 4).tolist(), "dte": dte.tolist(),
                       **{k: np.round(p[f"{side}_{k}" if k in ("delta", "theta") else k], 6).tolist()
