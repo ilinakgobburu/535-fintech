@@ -9,13 +9,17 @@
 ## thesis
 // The assignment: "State your thesis for why this should make money/beat a
 // benchmark/improve sharpe, then show whether it actually did."
-I expected the wheel to improve the Sharpe ratio compared to holding Mastercard, for two reasons. First, the wheel is short volatility. Each option is sold at its implied volatility, but what it actually costs the seller depends on the volatility Mastercard realizes afterwards. Implied volatility is usually higher than realized volatility (the volatility risk premium), so the premium collected should be more than the options end up costing. Second, the wheel buys after a fall, when a put is assigned, and sells after a rise, when the shares are called away. Hence, it works like a long-only mean-reversion position and should do best on a stock whose monthly moves tend to reverse. Though the short call caps the upside, I expected a return close to the stock's with much less risk.
+I expected the wheel to improve the Sharpe ratio compared to holding Mastercard, for two reasons. First, the wheel is short volatility. Selling an option works like selling insurance: the seller is paid a premium up front for taking on the risk of a big move. Per lecture, the wheel collects theta and is short gamma and vega, so it does well when moves are small. Each option is sold at its implied volatility, but what it actually costs the seller depends on the volatility Mastercard realizes afterwards. Implied volatility is usually higher than realized volatility (the volatility risk premium), so the premium collected should be more than the options end up costing. Second, the wheel buys after a fall, when a put is assigned, and sells after a rise, when the shares are called away. Hence, it works like a long-only mean-reversion position and should do best on a stock whose monthly moves tend to reverse. Though the short call caps the upside, I expected a return close to the stock's with much less risk.
+
+Buying a put and a call together (a long straddle or strangle) is the opposite bet. The buyer pays theta every day and needs the stock to move more than the market expected just to break even. Since implied volatility is usually above realized, the buyer is usually the one overpaying. It would also not be a wheel, because a long put is the right to sell shares, not buy them, so it never gets into the stock.
 
 ## verdict
 // Under the table of claims.
 Implied volatility was higher than realized in {{test_iv_over_rv}} of {{test_premium_cycles}} test cycles, {{test_iv}} against {{test_rv}} on average. The options the wheel actually sold show the same thing: {{sold_over}} of {{sold_n}} were sold above the volatility that followed, by {{sold_gap}} points on average (see Implied vs realized under Volatility).
 
 Mean reversion did not hold up. Mastercard's variance ratio was {{vr_screen}} in 2014-2023 but {{vr_run}} in 2024-2026, which is about what a random walk gives ({{rw_vr}}). Hence, the higher Sharpe ratio came from selling volatility and from the cash earning T-bills, not from mean reversion. The Benchmarks table has the return and risk against each benchmark.
+
+The cost of selling volatility is a payoff of many small wins and a rare large loss. Ordinary moves tend to be overpriced, but extreme moves may be underpriced (Taleb's argument for buying cheap far out-of-the-money options as crash insurance), and those are exactly the moves the wheel is short. Mastercard's worst drop in 2026 was {{test_hold_dd}}, against {{test_wheel_dd}} for the wheel, so one stock over about ten months does not show how the wheel would handle a real crash.
 
 ## stock
 // Why Mastercard. The Stock choice block.

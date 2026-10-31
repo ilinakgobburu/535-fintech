@@ -1514,8 +1514,8 @@ def part2_html(P2: dict, say, panel, heading, tips: dict[str, str]) -> list[str]
     labels = {"test": PERIOD_LABEL["test"], "train": "2024–25 training: where the settings were chosen"}
     return [
         heading("part2", "Part II · Further exploration", "The same wheel on five stocks",
-                "Not required by the assignment. The plain wheel of Part I, run on all five stocks the screen "
-                "picked at once.",
+                "Not required by the assignment, but explored out of personal curiosity. The plain wheel of Part I, "
+                "run on all five stocks the screen picked at once.",
                 [("Test period", f"{hi[0]} → {hi[1]}"), ("Settings chosen on", f"{lo[0]} → {lo[1]}"),
                  ("Stocks", " · ".join(P2["stocks"])), ("Starting cash", "5 × $100,000"), ("Data", "Daily closes · LSEG")]),
         '<div style="height:12px"></div>',
