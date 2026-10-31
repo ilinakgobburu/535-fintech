@@ -1425,15 +1425,14 @@ def render(D: dict, prose: dict[str, str], draft: bool, P2: dict | None = None,
     def heading(anchor: str, eyebrow: str, title: str, what: str, facts: list[tuple[str, str]]) -> str:
         """A page's heading: what part it is, its title, one line on what it holds, and its key facts."""
         return (f'<div class="part" id="{anchor}"><span class="no">{escape(eyebrow)}</span><h2>{escape(title)}</h2>'
-                f'<span class="what">{escape(what)}</span></div>'
+                + (f'<span class="what">{escape(what)}</span>' if what else "") + '</div>'
                 + '<div class="meta">' + "".join(f'<span class="chip"><i>{escape(k)}</i><b>{escape(v)}</b></span>'
                                                for k, v in facts) + "</div>")
 
     parts = [
         page_top("Wheel Strategy · MA", "1"),
         heading("part1", "Part I · The assignment", "The wheel on Mastercard (MA)",
-                "Everything the assignment asks for: the thesis and whether it held, the blotter, the ledger, "
-                "the portfolio on any date, and the evidence for the fill prices.",
+                "",
                 [("Test period", f'{T["window"][0]} → {T["window"][1]}'),
                  ("Setting chosen on", f'{R["window"][0]} → {R["window"][1]}'),
                  ("Starting cash", "$100,000"), ("Data", "Daily closes · LSEG")]),
