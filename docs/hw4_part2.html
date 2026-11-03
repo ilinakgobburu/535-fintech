@@ -229,7 +229,8 @@ const $ = id => document.getElementById(id);
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
 const money = (x, dp = 0, sign = false) => x == null ? '–' :
-  (x < 0 ? '−' : (sign && x > 0 ? '+' : '')) + '$' + Math.abs(x).toLocaleString('en-US', {minimumFractionDigits: dp, maximumFractionDigits: dp});
+  (x < 0 && Math.abs(x) >= 0.5 * 10 ** -dp ? '−' : (sign && x > 0 ? '+' : ''))     // no "−$0.00"
+  + '$' + Math.abs(x).toLocaleString('en-US', {minimumFractionDigits: dp, maximumFractionDigits: dp});
 const pct = (x, dp = 1, sign = false) => x == null ? '–' : (x < 0 ? '−' : (sign && x > 0 ? '+' : '')) + Math.abs(x).toFixed(dp) + '%';
 const num = (x, dp = 2) => x == null ? '–' : (Math.abs(x) < 0.5 * 10 ** -dp ? 0 : x).toFixed(dp).replace('-', '−');   // no −0.00
 const cls = x => x == null ? '' : (x < 0 ? 'neg' : 'pos');
