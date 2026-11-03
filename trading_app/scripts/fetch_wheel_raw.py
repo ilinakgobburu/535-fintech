@@ -118,6 +118,15 @@ UNDERLYINGS["CPRT_2024"] = {"stock": "CPRT.OQ", "root": "CPRT", "roots_from": []
 UNDERLYINGS["YUM_2024"] = {"stock": "YUM.N", "root": "YUM", "roots_from": [], "splits": [], "units_after": None,
                            "seed": None, "window": CLASS_RUN, "C": [(math.inf, (5.0,))], "P": [(math.inf, (5.0,))]}
 
+# A curiosity run (config/random_wheel_2026.yaml): random S&P 100 stocks, the class run's test window only, generic
+# grid. BNY's options are still listed under BK (a probe on 2026-11-03 found BK, not BNY). None split in 2026.
+RANDOM_2026 = (dt.date(2026, 1, 2), dt.date(2026, 10, 16))
+for _ticker, _ric, _root in (("BMY", "BMY.N", "BMY"), ("BNY", "BNY.N", "BK"), ("WFC", "WFC.N", "WFC"),
+                             ("AVGO", "AVGO.OQ", "AVGO"), ("UNH", "UNH.N", "UNH"), ("DE", "DE.N", "DE"),
+                             ("BA", "BA.N", "BA"), ("MMM", "MMM.N", "MMM"), ("SPG", "SPG.N", "SPG"), ("LIN", "LIN.OQ", "LIN")):
+    UNDERLYINGS[f"{_ticker}_R26"] = {"stock": _ric, "root": _root, "roots_from": [], "splits": [], "units_after": None,
+                                     "seed": None, "window": RANDOM_2026, "C": GENERIC, "P": GENERIC}
+
 
 def cache_dir(key: str) -> Path:
     return ROOT.parent / "cache" / f"wheel_raw_{key}"
