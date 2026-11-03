@@ -110,6 +110,10 @@ def part2_facts(P2: dict) -> dict[str, str]:
                   f"p2_{tag}_hold_return": pct(hold["return_pct"], sign=True), f"p2_{tag}_hold_sharpe": num(hold["sharpe"]),
                   f"p2_corr_{tag}": num(w["median_correlation"])})
     f["p2_fisv_train"] = pct(P2["windows"]["train"]["wheel_mid"]["each"]["FISV"]["return_pct"], sign=True)
+    fisv = P2["windows"]["train"]["wheel_mid"]["each"]["FISV"]["return_pct"]
+    f["p2_fisv_train_loss"] = usd(abs(1000 * fisv))
+    f["p2_fisv_train_of_portfolio"] = pct(abs(fisv) / len(P2["stocks"]))
+    f["p2_corr_ma_v_test"] = num(P2["windows"]["test"]["correlations"]["MA"]["V"])
     for n in ("train", "test"):                      # each stock's wheel against holding it, and the gap in dollars
         w, gap = P2["windows"][n], 0.0
         for s_ in P2["stocks"]:
@@ -118,6 +122,41 @@ def part2_facts(P2: dict) -> dict[str, str]:
                       f"p2_{n}_{s_.lower()}_gap": usd(1000 * (h - a))})
             gap += 1000 * (h - a)
         f[f"p2_{n}_gap"] = usd(gap)
+        v = w["wheel_mid"].get("vol")       # implied against realized vol of the options the five wheels sold
+        if v:
+            sg = lambda x: ("+" if x > 0 else "") + num(x, 1)
+            gaps = {s_: e["gap_pts"] for s_, e in v["each"].items()}
+            lo, hi = min(gaps, key=gaps.get), max(gaps, key=gaps.get)
+            f.update({f"p2_{n}_vol_above": str(v["total"]["above"]), f"p2_{n}_vol_sold": str(v["total"]["sold"]),
+                      f"p2_{n}_vol_gap": sg(v["total"]["gap_pts"]),
+                      f"p2_{n}_vol_range": f"{sg(gaps[lo])} ({lo}) to {sg(gaps[hi])} ({hi})"})
+            meds = {s_: e["median_gap_pts"] for s_, e in v["each"].items()}
+            f[f"p2_{n}_vol_median_range"] = f"{sg(min(meds.values()))} to {sg(max(meds.values()))}"
+            by = {}                                  # the cycle in which every stock's option was sold below realized
+            for s_, e in v["each"].items():
+                for o in e["options"]:
+                    by.setdefault(o["entry"], {})[s_] = o["gap_pts"]
+            shared = {d: g for d, g in by.items() if len(g) == len(v["each"]) and all(x < 0 for x in g.values())}
+            if shared:
+                d = min(shared, key=lambda d: sum(shared[d].values()))
+                f[f"p2_{n}_shock_range"] = f"{num(max(shared[d].values()), 0)} to {num(min(shared[d].values()), 0)}"
+                f[f"p2_{n}_shock_month"] = pd.Timestamp(next(o["expiry"] for e in v["each"].values()
+                                                             for o in e["options"] if o["entry"] == d)).strftime("%B %Y")
+            s_w, o_w = min(((s_, o) for s_, e in v["each"].items() for o in e["options"]), key=lambda t: t[1]["gap_pts"])
+            f[f"p2_{n}_worst_option"] = num(o_w["gap_pts"], 0)
+            f[f"p2_{n}_worst_option_month"] = pd.Timestamp(o_w["entry"]).strftime("%B %Y")
+        nav = pd.Series(w["wheel_mid"]["nav"]["value"], index=pd.to_datetime(w["wheel_mid"]["nav"]["date"]))
+        trough = (nav / nav.cummax().clip(lower=500_000.0) - 1).idxmin()
+        mo = str(trough.to_period("M"))
+        if "monthly" in w["wheel_mid"]:
+            losers = sum(m.get(mo, 0.0) < 0 for m in w["wheel_mid"]["monthly"].values())
+            f[f"p2_{n}_dd_month"] = trough.strftime("%B %Y")
+            f[f"p2_{n}_dd_losers"] = {1: "one", 2: "two", 3: "three", 4: "four", 5: "all five"}.get(losers, str(losers))
+        each_gap = {s_: 1000 * (w["hold"]["each"][s_]["return_pct"] - w["wheel_mid"]["each"][s_]["return_pct"])
+                    for s_ in P2["stocks"]}
+        f[f"p2_{n}_gap_abs"] = usd(abs(sum(each_gap.values())))
+        f[f"p2_{n}_apa_gap_abs"] = usd(abs(each_gap["APA"]))
+        f[f"p2_{n}_apa_adi_gap"] = usd(each_gap["APA"] + each_gap["ADI"])
     return f
 
 
@@ -133,6 +172,25 @@ def wf_facts(D: dict) -> dict[str, str]:
             "wf_commit": short_commit(D["commits"]["wf_config"])}
 
 
+def vol_screen_facts() -> dict[str, str]:
+    """Mastercard's data check, and the curiosity volatility screen (config/vol_screen_2023.yaml) beside it."""
+    f = {}
+    cov = REPO / "cache" / "wheel_mr_coverage_MA.json"
+    if cov.exists():
+        c = json.loads(cov.read_text())
+        f.update({"ma_cycles": str(c["cycles"]), "ma_cycles_short": str(c["short"])})
+    vs = REPO / "cache" / "vol_screen_2023.json"
+    if vs.exists():
+        v = json.loads(vs.read_text())
+        f.update({"vs_ma_rank": str(v["ma"]["rank"]), "vs_eligible": str(v["ma"]["of"]),
+                  "vs_ma_points": num(abs(v["ma"]["mean_points"]), 1),
+                  "vs_ma_side": "below" if v["ma"]["mean_points"] < 0 else "above"})
+        shorts = [json.loads(p.read_text())["short_pct"] for p in (REPO / "cache").glob("wheel_vol_2023_coverage_*.json")]
+        if shorts:
+            f.update({"vs_short_lo": pct(min(shorts), 0), "vs_short_hi": pct(max(shorts), 0)})
+    return f
+
+
 def facts(D: dict) -> dict[str, str]:
     t = D["periods"]["test"]["books"]
     w, h, c, b, wb = t["wheel"], t["hold"], t["cash"], t["baseline"], t["wheel_bid"]
@@ -145,6 +203,7 @@ def facts(D: dict) -> dict[str, str]:
     put_in = next((c for c in cyc if c.get("cp") == "P" and str(c.get("status", "")).startswith("assigned")), None)
     call_out = next((c for c in cyc if c.get("cp") == "C" and str(c.get("status", "")).startswith("called away")), None)
     sold_over, sold_n, sold_gap = sold_split(D, "test")
+    tr_over, tr_n, tr_gap = sold_split(D, "train")
     return {
         "test_wheel_return": pct(w["return_pct"], sign=True), "test_hold_return": pct(h["return_pct"], sign=True),
         "test_cash_return": pct(c["return_pct"], sign=True), "test_bid_return": pct(wb["return_pct"], sign=True),
@@ -159,6 +218,8 @@ def facts(D: dict) -> dict[str, str]:
         "test_assigned_strike": usd(put_in["strike"]) if put_in else "–", "test_called_strike": usd(call_out["strike"]) if call_out else "–",
         "test_iv_over_rv": str(over), "test_premium_cycles": str(n), "test_iv": pct(100 * iv), "test_rv": pct(100 * rvol),
         "sold_over": str(sold_over), "sold_n": str(sold_n), "sold_gap": num(100 * sold_gap, 1),
+        "train_sold_over": str(tr_over), "train_sold_n": str(tr_n),
+        "test_div": usd(att["dividends"]), "test_shares_div_share": share(att["shares"] + att["dividends"]),
         "vr_screen": num(rv["screen"]["vr"]), "vr_run": num(rv["run"]["vr"]),
         "vr_median": num(rv["median_vr"]),
         "rw_vr": f'{num(rv["random_walk_vr_mean"])} ± {num(rv["random_walk_vr_sd"])}',
@@ -166,6 +227,7 @@ def facts(D: dict) -> dict[str, str]:
         "universe": str(rv["universe"]), "rank": str(D["selection"]["rank"]),
         "pick_commit": short_commit(D["commits"]["pick"]), "screen_commit": short_commit(D["commits"]["screen_picks"]),
         **wf_facts(D),
+        **vol_screen_facts(),
         "band_n": f'{f["n"]:,}', "band_location": num(f["median_location"]), "band_slope": num(f["slope"], 3),
         "band_r2": num(f["r2"], 3), "band_within": pct(f["within_quarter_pct"], 0),
         "band_at_bid": pct(f["at_or_below_bid_pct"], 0), "band_outside": pct(f["outside_pct"], 0),
@@ -440,8 +502,10 @@ def part2_data(P2: dict) -> dict:
         if "putw" in w:
             books["putw"], nav["putw"] = figs(w["putw"]), w["putw"]["nav"]["value"]
         tr = w["wheel_mid"]["trades"]
+        vol = w["wheel_mid"].get("vol", {}).get("each", {})
         each = [{"stock": s, "pick": P2["picks"][s], **w["wheel_mid"]["each"][s], **tr["each"][s],
-                 "hold": w["hold"]["each"][s]} for s in P2["stocks"]]
+                 "hold": w["hold"]["each"][s],
+                 "vol": {k: vol[s][k] for k in ("sold", "above", "gap_pts")} if s in vol else None} for s in P2["stocks"]]
         out[n] = {"window": w["window"], "books": books, "trades": tr["total"], "each": each, "nav": nav,
                   "corr": w["correlations"], "median_corr": w["median_correlation"]}
     return out
@@ -508,11 +572,12 @@ function kpis() {
 
 function stocks() {
   const W = P2[period], onoff = f => f ? 'on' : 'off';
-  $('each').innerHTML = tbl(['Stock', 'Put / call / floor', 'Return', 'Sharpe', 'Max DD', 'Vol', 'Puts / assigned',
-                             'Calls / called away', 'Hold return', 'Hold Sharpe'], W.each.map(e =>
+  const above = v => v ? `${v.above} / ${v.sold}, ${v.gap_pts > 0 ? '+' : ''}${num(v.gap_pts, 1)}` : '–';
+  $('each').innerHTML = tbl(['Stock', 'Put / call / floor', 'Sold above realized', 'Return', 'Sharpe', 'Max DD', 'Vol',
+                             'Puts / assigned', 'Calls / called away', 'Hold return', 'Hold Sharpe'], W.each.map(e =>
     `<tr><td class="l"><span class="code">${esc(e.stock)}</span></td>
      <td class="l num">${num(e.pick.put_delta)} / ${num(e.pick.call_delta)} / ${onoff(e.pick.floor)}</td>
-     <td>${pct(e.return_pct, 1, true)}</td><td>${num(e.sharpe)}</td><td>${pct(e.max_drawdown_pct)}</td><td>${pct(e.vol_pct)}</td>
+     <td>${above(e.vol)}</td><td>${pct(e.return_pct, 1, true)}</td><td>${num(e.sharpe)}</td><td>${pct(e.max_drawdown_pct)}</td><td>${pct(e.vol_pct)}</td>
      <td>${e.puts_written} / ${e.assigned}</td><td>${e.calls_written} / ${e.called_away}</td>
      <td>${pct(e.hold.return_pct, 1, true)}</td><td>${num(e.hold.sharpe)}</td></tr>`), 2);
   const names = Object.keys(W.corr);
@@ -1583,7 +1648,9 @@ def part2_html(P2: dict, say, panel, heading, tips: dict[str, str]) -> list[str]
         "</div>",
         panel("What it shows", say("part2-findings")),
         '<div style="height:12px"></div>',
-        panel("Each stock's wheel", '<div id="each"></div><details><summary>Correlations of the five wheels\' monthly '
+        panel("Each stock's wheel", '<div id="each"></div><div class="cap">Sold above realized: the options sold at an '
+              'implied vol above the vol the stock then realized to expiry, out of all options sold, then the average of '
+              'implied minus realized, in vol points.</div><details><summary>Correlations of the five wheels\' monthly '
               'returns</summary><div id="corr"></div></details>', '$100,000 each · <span data-window></span>', fold=True),
         f"<script>{script}</script>",
     ]

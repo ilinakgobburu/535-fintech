@@ -21,7 +21,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from trading_app.lib import wheel as W  # noqa: E402
 from trading_app.lib.pmcc_daily import performance  # noqa: E402
-from wheel_page_data import CBOE_PUT, index_book, read_cboe  # noqa: E402
+from wheel_page_data import CBOE_PUT, index_book, read_cboe, realised_vol  # noqa: E402
 
 OUT = REPO / "cache" / "wheel_portfolio_results.json"
 STOCKS = ["MA", "APA", "V", "FISV", "ADI"]
@@ -70,6 +70,25 @@ def trades(runs: dict, tbill: pd.Series) -> dict:
     return {"each": each, "total": {k: sum(e[k] for e in each.values()) for k in next(iter(each.values()))}}
 
 
+def premium_vs_realised(run: dict, close: pd.Series) -> dict:
+    """
+    The options a wheel sold: each one's implied vol at sale less the vol the stock then realized to expiry, in vol
+    points; how many were sold above it; and the mean and median gap.
+    """
+    day = lambda d: str(pd.Timestamp(d).date())
+    rows = []
+    for c in run["cycles"]:
+        if c.get("cp") and c.get("iv") is not None and np.isfinite(c["iv"]):
+            rv = realised_vol(close, c["entry"], c["expiry"])
+            if np.isfinite(rv):
+                rows.append({"entry": day(c["entry"]), "expiry": day(c["expiry"]), "cp": c["cp"],
+                             "gap_pts": 100.0 * (c["iv"] - rv)})
+    gaps = [r["gap_pts"] for r in rows]
+    return {"sold": len(rows), "above": int(sum(g > 0 for g in gaps)),
+            "gap_pts": float(np.mean(gaps)) if gaps else None,
+            "median_gap_pts": float(np.median(gaps)) if gaps else None, "options": rows}
+
+
 def main() -> int:
     warnings.filterwarnings("ignore")
     from run_managed import stocks
@@ -109,6 +128,14 @@ def main() -> int:
                 w["correlations"] = corr.round(3).to_dict()
                 w["median_correlation"] = float(np.median(corr.to_numpy()[np.triu_indices(len(corr), 1)]))
                 w[book]["trades"] = trades(runs, tbill)
+                w[book]["monthly"] = {s: {str(k): float(v) for k, v in monthly_returns(r["ledger"], 100_000.0).items()}
+                                      for s, r in runs.items()}
+                close = {sw["stock"]: markets[sw["cache"]]["stock"]["close"] for sw in sws}
+                vol = {s: premium_vs_realised(r, close[s]) for s, r in runs.items()}
+                n = sum(v["sold"] for v in vol.values())
+                w[book]["vol"] = {"each": vol, "total": {
+                    "sold": n, "above": sum(v["above"] for v in vol.values()),
+                    "gap_pts": sum(v["gap_pts"] * v["sold"] for v in vol.values() if v["sold"]) / n if n else None}}
         w["cash"] = figures(performance(cash["ledger"], 100_000.0, tbill))
         w["cash"]["nav"] = {"date": [str(d.date()) for d in cash["ledger"]["date"]],
                             "value": (cash["ledger"]["nav"] * len(sws)).round(2).tolist()}

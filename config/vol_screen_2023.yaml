@@ -57,3 +57,9 @@ outputs:
   raw: cache/vol_screen_2023_raw.pkl   # resumable
   result: cache/vol_screen_2023.json
   log: cache/vol_screen_2023.log
+
+on_the_site: >
+  2026-11-03, after the run: at the user's choice, Part I's Stock choice cites this screen as context only, namely
+  Mastercard's rank on it (240 of 343, implied 0.2 points below realized on average over 2014-2023) and that its
+  top three picks failed data check (d) for thin quotes. Nothing on the site is chosen from it; the ranking and
+  pick above are unchanged
