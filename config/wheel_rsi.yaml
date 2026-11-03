@@ -1,0 +1,70 @@
+# RSI as an entry-timing filter for the plain wheel. Asked for by the user on 2026-11-03 ("is there an RSI
+# check angle bc mean reversion can be measured with rsi right?"), after the class run's results were seen,
+# and after the mean-reversion follow-ups (config/mr_screen.yaml's reversal not persisting, four other
+# reversal measures showing nothing MA-specific, config/random_wheel_2026.yaml's p 0.22) were seen.
+# Registered before any engine code for it was written and before any of it was run. The idea is the
+# user's; the period and the two thresholds are Wilder's own defaults (14, 70, 30), set by Claude before any
+# result. Nothing below is tuned, and there is no adjustment round.
+registered: 2026-11-03
+
+base: >
+  v1 of config/wheel_choices.yaml: the plain hold-to-expiry wheel (config/wheel.yaml's rules), each stock at
+  its committed pick (config/wheel_picks, config/wheel_mr_picks). No rule of config/wheel_managed.yaml or of
+  config/wheel_choices.yaml is used
+
+rsi: >
+  RSI(14), Wilder smoothing, on daily closes up to and including the entry session's close (no later data).
+  Each session's change is its close less the previous close; a gain is a positive change, a loss a negative
+  change made positive. The first average gain and average loss are the simple means of the first 14 changes
+  the closes allow; each later one is (13 x the previous average + the session's own) / 14.
+  RSI = 100 - 100 / (1 + average gain / average loss): 100 when the average loss is zero, 50 when both are
+  zero (a flat stock, which only a synthetic test market has). The closes are the ones run() already joins
+  for the trend filter: the cache's stock_history before its first close, then the cache's closes, in the
+  backtest's split-adjusted units. Every window has at least 287 of them before its first entry; run()
+  refuses to run the filter if fewer than 30 closes precede the first entry
+
+rules:
+  rsi_put_max: >
+    70: no new put is sold on an entry session whose RSI(14) is above 70; the cash waits for the next entry,
+    exactly as the existing filters do. Calls are written as usual
+  rsi_call_min: >
+    30: no new covered call is sold on an entry session whose RSI(14) is below 30; the shares stay uncovered
+    until the next call entry. Puts are sold as usual
+  reason: >
+    RSI is the usual oscillator for a stretched price: above 70 overbought, below 30 oversold. Read as a
+    mean-reversion bet, a put sold after a run-up takes on the stock just when it should fall back, and a
+    call sold after a sell-off caps the bounce a mean-reverting stock should make. Each rule only stops an
+    option being sold; it never sells one the plain wheel would not
+
+versions:   # as run() reads them, each against v1
+  rsi_put: {rsi_put_max: 70}                     # the put rule only
+  rsi_call: {rsi_call_min: 30}                   # the call rule only
+  rsi_both: {rsi_put_max: 70, rsi_call_min: 30}  # both
+
+windows: >
+  config/wheel_choices.yaml's, by reference. Training: the 9 stock-windows of its judging.training (NVDA, AMD,
+  DIS, COST on 2019-01-02 to 2021-12-31; MA, APA, V, FISV, ADI on 2024-01-02 to 2025-12-31). Test: the 9 of
+  its judging.test (the same stocks on 2022-01-03 to 2023-12-29 and 2026-01-02 to 2026-10-16). Each at its
+  committed pick, from $100,000 in cash
+
+judging:
+  compare: >
+    each version against v1 on the same stock-window, at mid fills and at the stress fill (fill 'cross':
+    sell at the bid, buy back at the ask), as config/wheel_choices.yaml compares them
+  bar: >
+    a version passes if it beats v1's Sharpe ratio on at least 7 of the 9 training windows at mid AND on at
+    least 7 of the 9 at the stress fill. This is stricter than the 5-of-9 bar used before, which a coin flip
+    passes about half the time; a coin flip reaches 7 of 9 at one fill 9% of the time (46 of 512)
+  test: >
+    only a version that passes is run, once, on the 9 test windows, and that result is reported whatever it
+    is. If none passes, stop after training: the test windows are not run
+  reported: >
+    for each version: wins against v1 at mid and at the stress fill; the median change in Sharpe ratio and
+    the median change in return (percentage points) against v1 over the 9 windows, at each fill; the entries
+    filtered, as a count and as a share of the version's entries (and of the put-phase and call-phase entries
+    separately); and each window's figures. Results go to cache/wheel_rsi_train.json and _test.json, from
+    scripts/run_rsi.py
+  page: nothing here goes on docs/hw4.html or the site
+  caveat: >
+    the test windows have already been seen under the plain wheel, the managed versions and the choice rules,
+    though not under RSI, so a test-stage run is a cleaner check than training but not a fresh one
