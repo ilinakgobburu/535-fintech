@@ -1197,7 +1197,9 @@ function greekCharts(G, cfg) {
   const k = GK[gkView], Z = G.surfaces[gkView], flat = Z.flat();
   const lo = Math.min(...flat), hi = Math.max(...flat), lift = 0.015 * (hi - lo);   // keeps a path drawn above the surface it sits on
   const x0 = G.m[0], x1 = G.m[G.m.length - 1], y0 = G.dte[0], y1 = G.dte[G.dte.length - 1];
-  const far = $('plot-gsurf').clientWidth < 700 ? 1.75 : 1;            // a phone sees the whole surface
+  const far = $('plot-gsurf').clientWidth < 700 ? 2.6 : 1;             // a phone sees the whole box, axes included
+  // Θ's trough near expiry faces away from the default view, so the Θ views look from the front, as the lecture does
+  const eye = k.key === 'theta' ? {x: 0.5, y: -2.0, z: 1.0} : {x: 1.2, y: -1.5, z: 0.85};
   $('gk-info').innerHTML = `Held fixed, as in the lecture: Mastercard at ${money(G.spot, 2)} (median close), implied vol `
     + `${pct(100 * G.sigma, 2)} (median of the options sold), rate ${pct(100 * G.rate)}, no dividend yield.`;
   const list = gkList(G);           // one option at a time; it opens on one that was assigned or called away
@@ -1261,10 +1263,11 @@ function greekCharts(G, cfg) {
      title: {text: k.title, x: 0.5, y: 0.97, font: {family: css('--font'), color: css('--text'), size: 14}},
      margin: {l: 0, r: 0, t: 34, b: 0}, legend: {orientation: 'h', x: 0, y: 1.0, font: {color: css('--text-2')}},
      hoverlabel: {bgcolor: css('--panel-hover'), bordercolor: css('--axis'), font: {family: css('--mono'), color: css('--text'), size: 11.5}},
-     scene: {xaxis: ax('moneyness  K / S', {range: [x0, x1]}), yaxis: ax('expiry (DTE)', {range: [0, y1]}),
+     scene: {xaxis: ax('moneyness  K / S', {range: [x0, x1], tickvals: [0.8, 0.9, 1.0, 1.1, 1.2, 1.3]}),
+             yaxis: ax('expiry (DTE)', {range: [0, y1]}),
              zaxis: ax(k.z, {range: [Math.min(lo, 0) - 4 * lift, Math.max(hi, 0) + 4 * lift]}),
              aspectmode: 'manual', aspectratio: {x: 1.35, y: 1.35, z: 0.8},
-             camera: {eye: {x: 1.2 * far, y: -1.5 * far, z: 0.85 * far}, center: {x: 0, y: 0, z: -0.22}}, bgcolor: css('--panel')}},
+             camera: {eye: {x: eye.x * far, y: eye.y * far, z: eye.z * far}, center: {x: 0, y: 0, z: -0.22}}, bgcolor: css('--panel')}},
     cfg);
   // three clocks, one at-the-money option: gamma and the vol piece of theta blow up into expiry, vega dies
   const C = G.clocks, band = G.sold_days[1];
@@ -1439,8 +1442,10 @@ def vol_tabs(D: dict) -> str:
                   + "".join(f'<button data-gk="{k}" class="{"on" if i == 0 else ""}">{n}</button>' for i, (k, n) in enumerate(
                       [("put_delta", "Put Δ"), ("call_delta", "Call Δ"), ("put_theta", "Put Θ"), ("call_theta", "Call Θ"),
                        ("gamma", "Γ"), ("vega", "ν (vega)")]))
-                  + '</div><div class="pf-controls" style="margin:0 0 8px"><button id="gk-prev">◀ previous</button>'
-                  '<select id="gk-pick" aria-label="option traced"></select><button id="gk-next">next ▶</button></div>'
+                  + '</div><div class="pf-controls" style="margin:0 0 8px;flex-wrap:nowrap">'
+                  '<button id="gk-prev" aria-label="previous option" title="previous option">◀</button>'
+                  '<select id="gk-pick" aria-label="option traced" style="flex:1 1 auto;min-width:0"></select>'
+                  '<button id="gk-next" aria-label="next option" title="next option">▶</button></div>'
                   '<div id="gk-info" class="pf-eq" style="margin-top:0"></div>'
                   '<div id="plot-gsurf" style="height:560px"></div><div id="gk-story" class="pf-eq"></div>'
                   '<div class="cap">Drag to rotate, scroll to zoom, double-click to reset.</div>'
