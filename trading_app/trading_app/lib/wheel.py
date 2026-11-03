@@ -68,6 +68,8 @@ PUT, CALL = "P", "C"
 SELL, ASSIGN, EXPIRE, BUY = "SELL", "ASSIGN", "EXPIRE", "BUY"
 DAYS_PER_YEAR = 365.0
 EARLY_PUT_TIME_VALUE = 0.05    # config/wheel_managed.yaml: a put this close to intrinsic is exercised
+RSI_PERIOD = 14                # config/wheel_rsi.yaml: Wilder's RSI over this many sessions
+RSI_MIN_CLOSES = 30            # the RSI filter refuses to run with fewer closes before the first entry
 
 
 # --------------------------------------------------------------------------
@@ -249,6 +251,31 @@ def _num(x) -> float:
     return float("nan") if x is None or x is pd.NA or pd.isna(x) else float(x)
 
 
+def rsi(closes: pd.Series, n: int = RSI_PERIOD) -> pd.Series:
+    """
+    Wilder's relative strength index of `closes`, as config/wheel_rsi.yaml defines it. A
+    session's change is its close less the previous close; the first average gain and loss
+    are the plain means of the first `n` changes, and each later one is
+    (previous x (n - 1) + the session's own) / n. RSI = 100 - 100 / (1 + gain / loss): 100
+    when the average loss is zero, 50 when both are (a flat stock). NaN until `n` changes
+    exist. The averages run forward, so each value uses only the closes up to and including
+    its own session.
+    """
+    c = pd.to_numeric(closes, errors="coerce").dropna().astype(float)
+    x = c.to_numpy()
+    out = np.full(len(x), np.nan)
+    if len(x) > n:
+        d = np.diff(x)
+        gain, loss = np.clip(d, 0.0, None), np.clip(-d, 0.0, None)
+        g, l = gain[:n].mean(), loss[:n].mean()
+        for i in range(n, len(x)):
+            if i > n:                                  # the change into session i is d[i - 1]
+                g = (g * (n - 1) + gain[i - 1]) / n
+                l = (l * (n - 1) + loss[i - 1]) / n
+            out[i] = 50.0 if g == 0 and l == 0 else 100.0 if l == 0 else 100.0 - 100.0 / (1.0 + g / l)
+    return pd.Series(out, index=c.index)
+
+
 def run(market: dict, *, start, end, mode: str = "wheel", put_delta: float = 0.25,
         call_delta: float = 0.25, floor: bool = True, fill: str = "mid",
         start_cash: float = START_CASH, ticker: str = "", manage: dict | None = None) -> dict:
@@ -279,6 +306,12 @@ def run(market: dict, *, start, end, mode: str = "wheel", put_delta: float = 0.2
                           new one into the same expiry after it, if a week or more remains
         iv_over_rv        no new put unless its implied vol is above the realised vol of this many sessions
         unstick_after     drop the cost-basis floor once shares have been held through this many call cycles
+
+    and config/wheel_rsi.yaml's, from rsi(): RSI(14) of the closes up to and including the session:
+
+        rsi_put_max       no new put while the RSI is above this; the cash waits for the next entry
+        rsi_call_min      no new covered call while the RSI is below this; the shares stay uncovered
+                          until the next call entry
     """
     manage = manage or {}
     stock, quotes = market["stock"], market["quotes"]
@@ -317,6 +350,15 @@ def run(market: dict, *, start, end, mode: str = "wheel", put_delta: float = 0.2
         rv = np.log(closes.astype(float)).diff().rolling(int(rv_n)).std(ddof=1) * np.sqrt(252)
         if entries and not np.isfinite(rv.get(min(entries), np.nan)):
             raise ValueError(f"the implied-over-realised filter needs {rv_n} returns before {min(entries).date()}")
+    rsi_put_max, rsi_call_min = manage.get("rsi_put_max"), manage.get("rsi_call_min")
+    rsi_now = None
+    if rsi_put_max is not None or rsi_call_min is not None:
+        if entries:
+            have = int((closes.index < min(entries)).sum())
+            if have < RSI_MIN_CLOSES:
+                raise ValueError(f"the RSI filter needs {RSI_MIN_CLOSES} closes before {min(entries).date()}, "
+                                 f"and has {have}")
+        rsi_now = rsi(closes, RSI_PERIOD)
     unstick_after = manage.get("unstick_after")
     share_cycles = 0         # call-cycle entries since the shares now held were assigned
 
@@ -407,11 +449,17 @@ def run(market: dict, *, start, end, mode: str = "wheel", put_delta: float = 0.2
             if unstick_after and share_cycles >= int(unstick_after) and floor:
                 lo = None
                 info["unstuck"] = True
+        if rsi_now is not None and (rsi_put_max if cp == PUT else rsi_call_min) is not None:
+            info["rsi"] = float(rsi_now.loc[day])
         if cp == PUT and sma is not None and close < float(sma.loc[day]):
             skip, info["sma"] = f"skipped: below the {trend_n}-close average", float(sma.loc[day])
         elif cp == PUT and manage.get("skip_earnings") and bool(
                 ((market["earnings"] > day) & (market["earnings"] <= expiry)).any()):
             skip = "skipped: earnings before expiry"
+        elif cp == PUT and rsi_put_max is not None and info["rsi"] > float(rsi_put_max):
+            skip = f"skipped: RSI {info['rsi']:.1f} above {float(rsi_put_max):g}"
+        elif cp == CALL and rsi_call_min is not None and info["rsi"] < float(rsi_call_min):
+            skip = f"skipped: RSI {info['rsi']:.1f} below {float(rsi_call_min):g}, shares left uncovered"
         pick = None if skip else select(by_day.get(day, empty), cp, expiry, close, day, r, q, target, lo)
         if pick is not None and cp == PUT and rv is not None:
             info["rv"] = float(rv.loc[day])
