@@ -234,20 +234,15 @@ HELD, MISSED = '<span class="st st-good">✓ Held</span>', '<span class="st st-b
 
 
 def verdict_table(D: dict) -> str:
-    """The thesis's two reasons and its claim, each against the 2026 test."""
+    """The thesis's reason and its claim, each against the 2026 test."""
     t = D["periods"]["test"]["books"]
     w, h = t["wheel"], t["hold"]
     over, n, iv, rv = premium_split(D, "test")
-    run = D["reversal"]["run"]
     rows = [
-        ["Reason 1: implied volatility above realized (the volatility risk premium)",
+        ["The reason: implied volatility above realized (the volatility risk premium)",
          "Each cycle's 0.25-delta put: implied vol on entry against the vol Mastercard realized to expiry",
          f"{over} of {n} cycles; {pct(100 * iv)} against {pct(100 * rv)} on average",
          HELD if over > n / 2 else MISSED],
-        ["Reason 2: Mastercard's monthly moves reverse",
-         "The screen's own rule: variance ratio below 1 and autocorrelation below 0, over 2024-01 to 2026-09",
-         f"variance ratio {num(run['vr'])}, autocorrelation {num(run['rho'], 2)}",
-         HELD if run["vr"] < 1 and run["rho"] < 0 else MISSED],
         ["The claim: a higher Sharpe ratio than holding Mastercard", "Sharpe ratio, monthly, T-bill as risk-free",
          f"{num(w['sharpe'])} against {num(h['sharpe'])}", HELD if w["sharpe"] > h["sharpe"] else MISSED],
     ]
