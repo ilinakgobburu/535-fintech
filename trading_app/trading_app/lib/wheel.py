@@ -762,7 +762,7 @@ def spot_greeks(S, K, T, sigma: float, r: float) -> dict:
         call_theta  -S n(d1) sigma / (2 sqrt T) - r K e^(-rT) N(d2), per calendar day
         put_theta   -S n(d1) sigma / (2 sqrt T) + r K e^(-rT) N(-d2), per calendar day
         theta_vol   the first term alone, which the identities tie to the other two:
-                    theta_vol = -1/2 sigma^2 S^2 gamma = -(sigma / 2T) vega
+                    theta_vol = -1/2 sigma^2 S^2 gamma = -(sigma / 2T) vega, per year and per 1.00 of vol (theta_vol*365, vega*100)
 
     S, K and T broadcast against each other, so one call draws a whole surface.
     """

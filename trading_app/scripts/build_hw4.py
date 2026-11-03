@@ -517,7 +517,8 @@ const $ = id => document.getElementById(id);
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
 const money = (x, dp = 0, sign = false) => x == null ? '–' :
-  (x < 0 ? '−' : (sign && x > 0 ? '+' : '')) + '$' + Math.abs(x).toLocaleString('en-US', {minimumFractionDigits: dp, maximumFractionDigits: dp});
+  (x < 0 && Math.abs(x) >= 0.5 * 10 ** -dp ? '−' : (sign && x > 0 ? '+' : ''))     // no "−$0.00"
+  + '$' + Math.abs(x).toLocaleString('en-US', {minimumFractionDigits: dp, maximumFractionDigits: dp});
 const pct = (x, dp = 1, sign = false) => x == null ? '–' : (x < 0 ? '−' : (sign && x > 0 ? '+' : '')) + Math.abs(x).toFixed(dp) + '%';
 const num = (x, dp = 2) => x == null ? '–' : (Math.abs(x) < 0.5 * 10 ** -dp ? 0 : x).toFixed(dp).replace('-', '−');   // no −0.00
 const cls = x => x == null ? '' : (x < 0 ? 'neg' : 'pos');
@@ -1185,7 +1186,7 @@ const GK = {
   put_theta:  {title: 'PUT   Θ   ($ / day)', z: 'Θ  $ / day', cp: 'P', key: 'theta', fmt: '%{z:$.3f} per day'},
   call_theta: {title: 'CALL   Θ   ($ / day)', z: 'Θ  $ / day', cp: 'C', key: 'theta', fmt: '%{z:$.3f} per day'},
   gamma:      {title: 'Γ   call = put', z: 'Γ  per $1', cp: null, key: 'gamma', fmt: '%{z:.4f} per $1'},
-  vega:       {title: 'ν   call = put   ($ / vol point)', z: 'ν  $ / vol point', cp: null, key: 'vega', fmt: '%{z:$.3f} per vol point'},
+  vega:       {title: 'ν (vega)   call = put   ($ / vol point)', z: 'ν (vega)  $ / vol point', cp: null, key: 'vega', fmt: '%{z:$.3f} per vol point'},
 };
 let gkView = 'put_delta';
 let gkPick = null;                  // the option traced across the surface: its OCC code, or 'all'
@@ -1198,7 +1199,7 @@ function greekCharts(G, cfg) {
   const x0 = G.m[0], x1 = G.m[G.m.length - 1], y0 = G.dte[0], y1 = G.dte[G.dte.length - 1];
   const far = $('plot-gsurf').clientWidth < 700 ? 1.75 : 1;            // a phone sees the whole surface
   $('gk-info').innerHTML = `Held fixed, as in the lecture: Mastercard at ${money(G.spot, 2)} (median close), implied vol `
-    + `${pct(100 * G.sigma)} (median of the options sold), rate ${pct(100 * G.rate)}, no dividend yield.`;
+    + `${pct(100 * G.sigma, 2)} (median of the options sold), rate ${pct(100 * G.rate)}, no dividend yield.`;
   const list = gkList(G);           // one option at a time; it opens on one that was assigned or called away
   if (gkPick !== 'all' && !list.some(s => s.occ === gkPick)) gkPick = (list.find(s => s.status !== 'expired') || list[0] || {}).occ || 'all';
   $('gk-pick').innerHTML = list.map(s => `<option value="${esc(s.occ)}">${esc(gkLabel(s))}</option>`).join('')
@@ -1212,32 +1213,37 @@ function greekCharts(G, cfg) {
     $('gk-story').innerHTML = `<span class="code">${esc(s.occ)}</span>: sold ${s.date[0]}, ${s.dte[0]} days out, at a delta of `
       + `${num(s.delta_sold, 3)} (its own implied vol, ${pct(100 * s.iv_sold)}). Mastercard went from ${money(s.close[0], 2)} to `
       + `${money(s.close[n], 2)} by ${s.date[n]}, the last session before expiry, against a ${money(s.strike)} strike. On this surface, `
-      + `which holds vol at ${pct(100 * G.sigma)}: ${what} ${val(s[k.key][0])} when sold and ${val(s[k.key][n])} on that last session. `
+      + `which holds Mastercard at ${money(G.spot, 2)} and vol at ${pct(100 * G.sigma, 2)}: ${what} ${val(s[k.key][0])} when sold and `
+      + `${val(s[k.key][n])} on that last session`
+      + (k.key === 'delta' ? '. ' : ' (for a stock at that fixed price, not that day\'s close). ')
       + `Outcome: ${esc(s.status)}.`;
   } else $('gk-story').textContent = 'Every option sold in this period, each from the day it was sold (dot) to the session before its expiry.';
   // each option sold, traced from its sale (dot) to the session before expiry
   const traced = (cp, name, color) => {
-    const o = shown.filter(s => s.cp === cp), X = [], Y = [], H = [], hx = [], hy = [], hz = [], T = [];
+    const o = shown.filter(s => s.cp === cp), X = [], Y = [], H = [], hx = [], hy = [], hz = [], hc = [], T = [];
+    const hov = '%{text}<br>' + k.fmt.replace('%{z', '%{customdata') + '<extra></extra>';   // the value, not the drawn height
     if (!o.length) return [];
     o.forEach(s => {                  // the line follows the surface between sessions; the hover sits on each session
       s.line.m.forEach((m, i) => { X.push(m); Y.push(s.line.dte[i]); H.push(s.line[k.key][i] + lift); });
       X.push(null); Y.push(null); H.push(null);
-      s.m.forEach((m, i) => { hx.push(m); hy.push(s.dte[i]); hz.push(s[k.key][i] + lift);
-        T.push(`${s.occ}<br>${s.date[i]} · close ${money(s.close[i], 2)}<br>${s.dte[i]} days left · K/S ${num(m, 3)}`
+      s.m.forEach((m, i) => { hx.push(m); hy.push(s.dte[i]); hz.push(s[k.key][i] + lift); hc.push(s[k.key][i]);
+        T.push(`${s.occ}<br>${s.date[i]} · close ${money(s.close[i], 2)}<br>${s.dte[i]} day${s.dte[i] === 1 ? '' : 's'} left · K/S ${num(m, 3)}`
                + `<br>${s.status}`); }); });
     return [{type: 'scatter3d', mode: 'lines', name, legendgroup: cp, x: X, y: Y, z: H, hoverinfo: 'skip',
              line: {color: css(color), width: one ? 7 : 4}},
             {type: 'scatter3d', mode: 'markers', name, legendgroup: cp, showlegend: false, x: hx, y: hy, z: hz, text: T,
-             marker: {size: one ? 3.5 : 2, color: css(one ? '--text' : color), opacity: one ? 1 : 0},
-             hovertemplate: '%{text}<br>' + k.fmt + '<extra></extra>'},
+             customdata: hc, marker: {size: one ? 3.5 : 2, color: css(one ? '--text' : color), opacity: one ? 1 : 0},
+             hovertemplate: hov},
             {type: 'scatter3d', mode: 'markers', name, legendgroup: cp, showlegend: false,
              x: o.map(s => s.m[0]), y: o.map(s => s.dte[0]), z: o.map(s => s[k.key][0] + lift), text: o.map(s => s.occ + ' sold ' + s.date[0]),
-             marker: {size: one ? 8 : 5, color: css(color), line: {color: css('--base'), width: 1}}, hovertemplate: '%{text}<br>' + k.fmt + '<extra></extra>'},
+             customdata: o.map(s => s[k.key][0]),
+             marker: {size: one ? 8 : 5, color: css(color), line: {color: css('--base'), width: 1}}, hovertemplate: hov},
             ...(one ? [{type: 'scatter3d', mode: 'markers', name, legendgroup: cp, showlegend: false,
               x: o.map(s => s.m[s.m.length - 1]), y: o.map(s => s.dte[s.dte.length - 1]),
               z: o.map(s => s[k.key][s.m.length - 1] + lift), text: o.map(s => s.occ + ' last session ' + s.date[s.date.length - 1]),
+              customdata: o.map(s => s[k.key][s.m.length - 1]),
               marker: {size: 8, symbol: 'diamond', color: css(color), line: {color: css('--base'), width: 1}},
-              hovertemplate: '%{text}<br>' + k.fmt + '<extra></extra>'}] : [])];
+              hovertemplate: hov}] : [])];
   };
   const ax = (title, extra = {}) => ({title: {text: title, font: {color: css('--muted'), size: 11}}, color: css('--muted'),
     gridcolor: css('--line'), zerolinecolor: css('--axis'), backgroundcolor: css('--panel'), showbackground: true,
@@ -1246,7 +1252,7 @@ function greekCharts(G, cfg) {
     {type: 'surface', x: G.m, y: G.dte, z: Z, showscale: false,
      colorscale: [[0, '#0d366b'], [0.35, '#256abf'], [0.7, '#6da7ec'], [1, '#cde2fb']],
      contours: {z: {show: false}}, lighting: {ambient: 0.85, diffuse: 0.4, specular: 0.05},
-     hovertemplate: 'K/S %{x:.2f}<br>%{y} days to expiry<br>' + k.fmt + '<extra></extra>'},
+     hovertemplate: 'K/S %{x:.4f}<br>%{y} days to expiry<br>' + k.fmt + '<extra></extra>'},
     {type: 'scatter3d', mode: 'lines', x: [x0, x1, x1, x0, x0], y: [y0, y0, y1, y1, y0], z: [0, 0, 0, 0, 0],
      line: {color: css('--text'), width: 4}, hoverinfo: 'skip', showlegend: false},
     ...(k.cp !== 'C' ? traced('P', one ? 'Put sold' : 'Puts sold', '--mk-put') : []),
@@ -1271,9 +1277,9 @@ function greekCharts(G, cfg) {
                 fillcolor: css('--accent-soft'), line: {width: 0}}],
       annotations: [{x: band, xref: 'x', y: 1, yref: 'paper', xanchor: 'left', yanchor: 'top', showarrow: false,
                      text: ' the wheel', font: {family: css('--mono'), size: 10, color: css('--text-2')}}]}), cfg);
-  clock('plot-gclk-gamma', C.gamma, 'Γ   ATM', '%{y:.4f} per $1');
+  clock('plot-gclk-gamma', C.gamma, 'Γ   ATM   (Δ per $1)', '%{y:.4f} per $1');
   clock('plot-gclk-theta', C.theta_vol.map(v => -v), '|Θ_vol|   ATM   ($ / day)', '%{y:$.3f} per day');
-  clock('plot-gclk-vega', C.vega, 'ν   ATM   ($ / vol point)', '%{y:$.3f} per vol point');
+  clock('plot-gclk-vega', C.vega, 'ν (vega)   ATM   ($ / vol point)', '%{y:$.3f} per vol point');
 }
 
 function fillHist() {
@@ -1423,14 +1429,16 @@ def vol_tabs(D: dict) -> str:
                   'cycle, so its count can differ.</div>'
                   '<div id="vrp-info" class="pf-eq" style="margin-top:0"></div><div id="plot-vrp" style="height:320px"></div>'),
         ("Greeks", '<div class="cap" style="margin:0 0 10px">The four greeks the course uses, drawn as the lecture '
-                  'draws them: each over strike as a share of the close (K/S) and days to expiry, for one option held '
-                  'long, per share, with the white frame at zero. Θ is in dollars per day and ν in dollars per vol point. '
+                  'draws them: each over strike as a share of the close (K/S, 0.70 to 1.30, as in the lecture) and days to '
+                  'expiry, for one option held long, per share, with the white frame at zero. Θ is in dollars per day and ν '
+                  'in dollars per vol point. The lecture\'s surfaces run to 180 days; these stop at 45, since the wheel sells '
+                  '24 to 32 days out, and the three clocks below carry the long end. '
                   'Pick an option the wheel sold to trace it across the surface: the dot is the day it was sold, each '
                   'small dot one session, and the diamond the session before its expiry.</div>'
                   '<div class="switch gkview" style="margin:0 0 8px">'
                   + "".join(f'<button data-gk="{k}" class="{"on" if i == 0 else ""}">{n}</button>' for i, (k, n) in enumerate(
                       [("put_delta", "Put Δ"), ("call_delta", "Call Δ"), ("put_theta", "Put Θ"), ("call_theta", "Call Θ"),
-                       ("gamma", "Γ"), ("vega", "ν")]))
+                       ("gamma", "Γ"), ("vega", "ν (vega)")]))
                   + '</div><div class="pf-controls" style="margin:0 0 8px"><button id="gk-prev">◀ previous</button>'
                   '<select id="gk-pick" aria-label="option traced"></select><button id="gk-next">next ▶</button></div>'
                   '<div id="gk-info" class="pf-eq" style="margin-top:0"></div>'
@@ -1441,8 +1449,11 @@ def vol_tabs(D: dict) -> str:
                   '<div id="plot-gclk-theta" style="height:220px"></div><div id="plot-gclk-vega" style="height:220px"></div></div>'
                   '<div class="cap">Γ and the vol piece of Θ blow up into expiry (1/√T); ν dies (√T). The shaded band is '
                   'where the wheel\'s monthly options live. These are long-option surfaces, as in the lecture; the wheel '
-                  'sold them, so its book carries the opposite signs: Θ &gt; 0, Γ &lt; 0, ν &lt; 0. Buying theta is '
-                  'selling gamma and vega.</div>'),
+                  'sold them, so for every option it sold its book carries the opposite signs: Θ &gt; 0, Γ &lt; 0, ν &lt; 0. '
+                  'The exception is the deep in-the-money corner of the Put Θ surface, where the interest term makes a long '
+                  'put\'s Θ positive, as the lecture\'s put-theta slide shows; none of the wheel\'s puts got there. Buying '
+                  'theta is selling gamma and vega: Θ_vol = −½σ²S²Γ = −(σ/2T)ν per year and per 1.00 of vol, which in this '
+                  'page\'s units is Θ_vol = −½σ²S²Γ/365 = −(σ/2T)·100ν/365.</div>'),
     ]
     return ('<div class="tabs">' + "".join(f'<button data-tab="{i}" class="{"on" if i == 0 else ""}">{escape(n)}</button>'
                                          for i, (n, _) in enumerate(panes)) + "</div>"
