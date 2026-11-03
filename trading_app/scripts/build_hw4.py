@@ -139,6 +139,11 @@ def facts(D: dict) -> dict[str, str]:
     f = D["fills"]["in_band"]
     rv = D["reversal"]
     over, n, iv, rvol = premium_split(D, "test")
+    att = w["attribution"]
+    share = lambda x: pct(100 * x / att["pnl"], 0)
+    cyc = D["periods"]["test"]["cycles"]
+    put_in = next((c for c in cyc if c.get("cp") == "P" and str(c.get("status", "")).startswith("assigned")), None)
+    call_out = next((c for c in cyc if c.get("cp") == "C" and str(c.get("status", "")).startswith("called away")), None)
     sold_over, sold_n, sold_gap = sold_split(D, "test")
     return {
         "test_wheel_return": pct(w["return_pct"], sign=True), "test_hold_return": pct(h["return_pct"], sign=True),
@@ -149,6 +154,9 @@ def facts(D: dict) -> dict[str, str]:
         "test_puts": str(w["puts_written"]), "test_assigned": str(w["assigned"]),
         "test_calls": str(w["calls_written"]), "test_called_away": str(w["called_away"]),
         "test_cycles": str(w["cycles"]),
+        "test_premium_share": share(att["premium"]), "test_interest_share": share(att["interest"]),
+        "test_shares_pnl": usd(att["shares"]), "test_shares_share": share(att["shares"]),
+        "test_assigned_strike": usd(put_in["strike"]) if put_in else "–", "test_called_strike": usd(call_out["strike"]) if call_out else "–",
         "test_iv_over_rv": str(over), "test_premium_cycles": str(n), "test_iv": pct(100 * iv), "test_rv": pct(100 * rvol),
         "sold_over": str(sold_over), "sold_n": str(sold_n), "sold_gap": num(100 * sold_gap, 1),
         "vr_screen": num(rv["screen"]["vr"]), "vr_run": num(rv["run"]["vr"]),
