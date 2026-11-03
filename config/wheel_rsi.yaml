@@ -68,3 +68,29 @@ judging:
   caveat: >
     the test windows have already been seen under the plain wheel, the managed versions and the choice rules,
     though not under RSI, so a test-stage run is a cleaner check than training but not a fresh one
+
+training_result_2026_11_03:   # scripts/run_rsi.py --stage train on commit 01389b9's engine -> cache/wheel_rsi_train.json
+  passed: []
+  rsi_put: >
+    beat v1's Sharpe ratio on 2 of the 9 at mid and 2 of 9 at the stress fill (MA, V), tied on APA (where it never
+    acted) and lost on the other six. Median change against v1: Sharpe -0.05 at mid and at the stress fill, return
+    -2.4 points at mid and -2.5 at the stress fill. Sharpe change at mid: NVDA -0.30, AMD -0.55, DIS -0.05, COST
+    -0.71, MA +0.26 (return -6.5 points; its one assignment skipped), APA 0, V +0.48, FISV -0.05, ADI -0.06. It
+    stopped 29 of the 181 put entries (16.0%; 11.4% of all 255 entries), at both fills
+  rsi_call: >
+    beat v1 on 0 of 9 at mid and 0 of 9 at the stress fill: tied on six where it never acted, and small losses on
+    NVDA, DIS and FISV (Sharpe -0.02, -0.03, -0.01 at mid). Median changes 0.00 in Sharpe and 0.0 points in return.
+    It stopped 3 of the 83 call entries (3.6%; 1.2% of all 255)
+  rsi_both: >
+    2 of 9 at mid and 2 of 9 at the stress fill (MA, V), tied on APA. Median change: Sharpe -0.06 at mid and -0.07
+    at the stress fill, return -4.2 and -4.3 points. It stopped 32 of 255 entries (12.5%): 29 of 181 puts and 3 of
+    74 calls
+  outcome: >
+    none passes the registered bar (7 of 9 at mid and at the stress fill), so the test windows are not run and
+    nothing is adjusted. v1 in this run matches cache/wheel_choices_train.json on every window at both fills
+  after_the_fact: >
+    descriptive only, not part of the bar: on v1's 172 put entries in the training windows, the 29 with RSI above
+    70 were followed by a larger move up to expiry than the other 143 (median +2.7% against +0.3%; up 72% of the
+    time against 52%) and earned more per put (0.99% of the strike against 0.65%); RSI at entry and the move to
+    expiry correlate at +0.16. In these windows a high RSI marked momentum, not a reversal, so the put rule
+    skipped the better puts
