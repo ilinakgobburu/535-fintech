@@ -106,6 +106,13 @@ for _ticker, _ric, _roots in (("MA", "MA.N", None), ("APA", "APA.OQ", None), ("V
 # cost of some never-listed requests above it. No split in the window.
 UNDERLYINGS["INCY_2024"] = {"stock": "INCY.OQ", "root": "INCY", "roots_from": [], "splits": [], "units_after": None,
                             "seed": None, "window": CLASS_RUN, "C": [(math.inf, (2.5,))], "P": [(math.inf, (2.5,))]}
+# Its follow-ups, pulled in order only if the stock before them fails data check (d). A probe on 2026-11-03 found
+# Jack Henry's monthlies in $5 steps (no $152.50, $157.50, $177.50 or $182.50) and Copart's in $2.50 steps (no $49,
+# $49.50, $57 or $58). Neither split in the window.
+UNDERLYINGS["JKHY_2024"] = {"stock": "JKHY.OQ", "root": "JKHY", "roots_from": [], "splits": [], "units_after": None,
+                            "seed": None, "window": CLASS_RUN, "C": [(math.inf, (5.0,))], "P": [(math.inf, (5.0,))]}
+UNDERLYINGS["CPRT_2024"] = {"stock": "CPRT.OQ", "root": "CPRT", "roots_from": [], "splits": [], "units_after": None,
+                            "seed": None, "window": CLASS_RUN, "C": [(math.inf, (2.5,))], "P": [(math.inf, (2.5,))]}
 
 
 def cache_dir(key: str) -> Path:
