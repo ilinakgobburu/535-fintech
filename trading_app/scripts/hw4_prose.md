@@ -69,7 +69,7 @@ Some limits to these findings include: one stock over a short test of {{test_cyc
 // ---------------------------------------------------------------------------
 
 ## part2-motivation
-The biggest losses in this project came from one stock falling while the wheel held it. Fiserv's wheel lost {{p2_fisv_train}} in 2024-2025. Hence, I ran the same wheel on all five stocks the mean-reversion screen picked, side by side, to see if spreading it across stocks reduces that risk. The setup was committed ({{p2_commit}}) before it was run, and nothing in Part I was chosen based on it.
+The biggest losses in this project came from one stock falling while the wheel held it. Fiserv's wheel lost {{p2_fisv_train}} in 2024-2025. Hence, I ran the same wheel on all five stocks the mean-reversion screen picked, side by side, to see if spreading it across stocks reduces that risk.
 
 ## part2-setup
 Each of the five wheels starts with $100,000 at its stock's committed setting and runs exactly as in Part I. Their daily account values are added together into one $500,000 portfolio. The benchmarks are the same five stocks bought and held, $100,000 each, and T-bills. The Cboe PutWrite index was added afterwards, as in Part I.
