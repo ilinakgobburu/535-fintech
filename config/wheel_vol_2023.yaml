@@ -39,3 +39,11 @@ added_2026_11_03_follow_up:   # recorded after INCY's data check and before any 
     two-sided quotes spanning 0.15-0.35 delta, against a limit of 10%. Its out-of-the-money options often had
     no bid at the close (cache/wheel_vol_2023_coverage_INCY.json). As in that rule, the pick gives way to the
     first follow-up, Jack Henry (JKHY); Copart (CPRT) is next if JKHY fails (d) too. No INCY wheel was run
+
+added_2026_11_03_second_follow_up:   # recorded after JKHY's data check and before any check or training run for CPRT
+  CPRT: {ric: CPRT.OQ, cache: cache/wheel_raw_CPRT_2024, rank: 3, score: 0.123}
+  note: >
+    JKHY failed data check (d) as well: 24 of 32 cycles (75.0%) short, against a limit of 10%
+    (cache/wheel_vol_2023_coverage_JKHY.json). So the pick gives way to the second follow-up, Copart (CPRT).
+    To save time, CPRT's options were pulled in parallel with JKHY's, before JKHY's check; no CPRT check,
+    training or test run was made before this record. No JKHY wheel was run
