@@ -1,0 +1,33 @@
+# A curiosity run, not used on the site: the plain wheel on the stock config/vol_screen_2023.yaml picks (the
+# volatility-premium screen of the S&P 500 as of 2023-12-29), on the class run's windows and rules. Asked for by
+# the user on 2026-11-03, after the class run's results were seen, "just curious what the stock would be".
+# Registered before any option pull or training run for the pick.
+registered: 2026-11-03
+
+rules: config/wheel.yaml's rules, fills, grid, baseline, selection, benchmarks, reported and
+  decision, unchanged, as in config/wheel_mr.yaml
+
+windows:
+  train: {start: 2024-01-02, end: 2025-12-31}
+  test: {start: 2026-01-02, end: 2026-10-16}
+  each_window: starts from $100,000 in cash
+
+grid:   # as config/wheel.yaml
+  put_delta: [0.15, 0.25, 0.35]
+  call_delta: [0.15, 0.25, 0.35]
+  floor: [true, false]
+baseline:
+  setting: {put_delta: 0.25, call_delta: 0.25, floor: true}
+selection:
+  score: Sharpe ratio on the training window at mid fills
+  ties: to 4 decimals, the earlier setting in the grid's order
+  record: config/wheel_vol_2023_picks/{TICKER}.json, committed before the test stage is run
+
+underlyings: {}   # filled under a dated key with the screen's pick
+
+added_2026_11_03:   # cache/vol_screen_2023.json's pick, recorded before any option pull, check or training run
+  INCY: {ric: INCY.OQ, cache: cache/wheel_raw_INCY_2024, rank: 1, score: 0.143}
+  note: >
+    Incyte ranked first on the mean of (iv30 - realized)/iv30 over 2014-2023, with nothing above it skipped;
+    Jack Henry (JKHY) and Copart (CPRT) are the follow-ups, run only if asked. Mastercard ranked 240 of 343
+    eligible. Its options for 2024-01-02 to 2026-10-16 are pulled by scripts/fetch_wheel_raw.py --root INCY_2024

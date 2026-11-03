@@ -100,6 +100,13 @@ for _ticker, _ric, _roots in (("MA", "MA.N", None), ("APA", "APA.OQ", None), ("V
         "stock": _ric, "root": "FI" if _ticker == "FISV" else _ticker, "roots_from": _roots or [],
         "splits": [], "units_after": None, "seed": None, "window": CLASS_RUN, "C": GENERIC, "P": GENERIC}
 
+# A curiosity run (config/wheel_vol_2023.yaml): the volatility screen's pick (config/vol_screen_2023.yaml) on the
+# class run's window. A probe of 26 contracts on 2026-11-03 found Incyte's monthlies in $2.50 steps below $100 and
+# $5 above (no $58, $73 or $112.50). $2.50 is asked for throughout, which keeps the precision below $100 at the
+# cost of some never-listed requests above it. No split in the window.
+UNDERLYINGS["INCY_2024"] = {"stock": "INCY.OQ", "root": "INCY", "roots_from": [], "splits": [], "units_after": None,
+                            "seed": None, "window": CLASS_RUN, "C": [(math.inf, (2.5,))], "P": [(math.inf, (2.5,))]}
+
 
 def cache_dir(key: str) -> Path:
     return ROOT.parent / "cache" / f"wheel_raw_{key}"

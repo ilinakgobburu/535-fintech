@@ -1,0 +1,59 @@
+# CURIOSITY RUN, NOT USED ON THE SITE. Registered 2026-11-03, before any of its series is pulled.
+# The question: had the class run's stock been chosen by config/premium_screen.yaml's volatility-premium
+# measure instead of config/mr_screen.yaml's mean-reversion screen (which picked MA), which stock would it
+# have been, as of 2023-12-29? Nothing on the site, in config/wheel_mr.yaml or in config/wheel_mr_picks
+# changes on its result. Script: trading_app/scripts/vol_screen_2023.py.
+registered: 2026-11-03
+status: curiosity run, not used on the site
+
+universe: >
+  the S&P 500 on 2023-12-29, the list config/mr_screen.yaml used (cache/mr_screen_raw.pkl, key
+  constituents: 503 RICs as the index stood that day, including those since removed)
+implied_ric: >
+  {root}ATMIV.U, where root is the constituent RIC up to its first '.' (MA.N -> MAATMIV.U,
+  BRKb.N -> BRKbATMIV.U, QRVO.OQ^J26 -> QRVOATMIV.U): the ticker, as premium_screen.py builds it
+prices: >
+  LSEG default daily closes (TRDPRC_1, split-adjusted), from cache/mr_screen_raw.pkl px. Pulled only
+  where missing: the closes from 2023-12-15 to 2024-02-15, for the 21 returns after December 2023's
+  entry (joined at 2023-12-29; if the pulled close that day differs from the cached one by more than
+  0.1%, the pull is rescaled to the cache and the log says so); and the full series for constituents
+  with no cached closes, trying the constituent RIC, then {root}.OQ, then {root}.O, recording which was used
+
+window: [2014-01-01, 2023-12-31]   # 120 months, ending on the selection date
+
+screen:   # config/premium_screen.yaml's measure, unchanged
+  implied: iv30, the mean of 30D_A_IM_C and 30D_A_IM_P on the implied RIC (percent); a day counts only with both
+  entry: the first trading day of each month with an iv30 value; one observation per month
+  realised: sample standard deviation of the 21 daily log returns after the entry close, times sqrt(252), in percent
+  measure: the mean over months of (iv30 - realised) / iv30
+  also_reported: mean of iv30 - realised in vol points, share of months with iv30 above realised, months scored
+  eligible: iv30 present on at least 95% of the window's trading days and at least 111 of its 120 months scored
+  rank: the measure, highest first
+
+pick:
+  feasibility: >
+    config/mr_screen.yaml's (a) to (c), over 2024-01-02 to 2026-10-16, with its code and its cached
+    pulls where it has them: (a) stopped trading before 2026-10-16; (b) a corporate action that
+    adjusted its option contracts other than a split; (c) closed above $950 unadjusted. (d), the
+    option-data check, needs the option pull and is not applied
+  rule: down the ranking until three stocks pass; the first is the pick, the next two are follow-ups
+  skipped: every stock passed over, with the reason, is reported
+
+after_the_screen:
+  if_cached: >
+    if the pick is MA, APA, V, FISV or ADI, whose options are cached at cache/wheel_raw_{TICKER}_2024,
+    run the plain wheel exactly as config/wheel_mr.yaml does: the setting is the one of config/wheel.yaml's
+    18 with the highest training Sharpe at mid fills over 2024-01-02 to 2025-12-31 (ties, to four
+    decimals, to the earlier setting in grid order); then the test, once, over 2026-01-02 to 2026-10-16.
+    Reported for both windows: return, Sharpe and maximum drawdown of the wheel at mid (and at bid, the
+    registered stress test), of buy and hold, and of T-bills. Written to cache/vol_screen_2023_wheel.json
+    only; nothing is written to config/wheel_mr_picks or to any existing results file
+  otherwise: >
+    no option data is pulled. Reported: the pick, and a rough count of the LSEG requests
+    scripts/fetch_wheel_raw.py would need for it over 2024-01 to 2026-10 (config/wheel_mr.yaml's bands
+    and strike grid, one request per contract, plus the stock and auxiliary pulls)
+
+outputs:
+  raw: cache/vol_screen_2023_raw.pkl   # resumable
+  result: cache/vol_screen_2023.json
+  log: cache/vol_screen_2023.log
