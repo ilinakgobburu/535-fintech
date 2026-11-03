@@ -516,6 +516,16 @@ def reversal(market: dict) -> dict:
     run = S.measures(S.monthly_returns(market["stock"]["close"], "2024-01-01", "2026-09-30"))
     rng = np.random.default_rng(1)
     sims = [S.measures(pd.Series(rng.normal(0, 0.06, run["months"])))["vr"] for _ in range(4000)]
+    # what first place on the screen looks like by chance: 1,000 screens of as many random walks as were
+    # eligible, each ranked as the screen ranks (autocorrelation below 0, then the lowest variance ratio)
+    firsts = []
+    for _ in range(10):
+        x = rng.normal(0, 0.06, (100, scr["eligible"], row["months"]))
+        vr = (x[..., 2:] + x[..., 1:-1] + x[..., :-2]).var(axis=-1, ddof=1) / (3.0 * x.var(axis=-1, ddof=1))
+        a = x[..., 1:] - x[..., 1:].mean(axis=-1, keepdims=True)
+        b = x[..., :-1] - x[..., :-1].mean(axis=-1, keepdims=True)
+        rho = (a * b).sum(axis=-1) / np.sqrt((a * a).sum(axis=-1) * (b * b).sum(axis=-1))
+        firsts += list(np.where(rho < 0, vr, np.inf).min(axis=1))
     top = []
     for i, r in enumerate(scr["ranked"][:10], 1):
         m = scr["table"][r]
@@ -528,6 +538,7 @@ def reversal(market: dict) -> dict:
             "eligible": scr["eligible"], "ranked": len(scr["ranked"]), "rank": scr["ranked"].index(RIC) + 1,
             "screen": {k: row[k] for k in ("months", "vr", "rho", "vol")}, "run": run,
             "random_walk_vr_mean": float(np.mean(sims)), "random_walk_vr_sd": float(np.std(sims)),
+            "random_walk_first": [float(np.percentile(firsts, 5)), float(np.percentile(firsts, 95))],
             "top": top, "median_vr": float(np.median([scr["table"][r]["vr"] for r in scr["table"]
                                                     if scr["table"][r]["months"] >= 114]))}
 

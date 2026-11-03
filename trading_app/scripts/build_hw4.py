@@ -154,6 +154,7 @@ def facts(D: dict) -> dict[str, str]:
         "vr_screen": num(rv["screen"]["vr"]), "vr_run": num(rv["run"]["vr"]),
         "vr_median": num(rv["median_vr"]),
         "rw_vr": f'{num(rv["random_walk_vr_mean"])} ± {num(rv["random_walk_vr_sd"])}',
+        "rw_first": f'{num(rv["random_walk_first"][0])} and {num(rv["random_walk_first"][1])}', "eligible": str(rv["eligible"]),
         "universe": str(rv["universe"]), "rank": str(D["selection"]["rank"]),
         "pick_commit": short_commit(D["commits"]["pick"]), "screen_commit": short_commit(D["commits"]["screen_picks"]),
         **wf_facts(D),
