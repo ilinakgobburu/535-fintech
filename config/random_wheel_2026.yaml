@@ -17,3 +17,9 @@ compare: >
   each random stock's wheel (return, Sharpe ratio, max drawdown) against holding it and against T-bills, and the
   eight together against the screen's five on the same default setting in 2026 (cache/wheel_mr_results_{T}.json,
   baseline at mid); equal-weight averages and the five-or-eight-wheel portfolios
+
+result_2026_11_03: >
+  BNY failed data check (d) (55.6% of cycles short) and GS failed (c), so the eight were BMY, WFC, AVGO, UNH, DE,
+  BA, MMM and SPG (cache/random_wheel_2026.json). Average wheel Sharpe 1.05 against 1.58 for the screen's five on
+  the same default setting; exact permutation p = 0.22 (wheel Sharpe) and 0.42 (wheel minus hold Sharpe). Options
+  sold above realized: 53 of 72 against 34 of 45. No detectable advantage from the screen
