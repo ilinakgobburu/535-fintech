@@ -1408,6 +1408,7 @@ def render(D: dict, prose: dict[str, str], draft: bool, P2: dict | None = None,
                 + f'</{bar}><div class="pb{" flush" if flush else ""}">{body}</div></{el}>')
 
     T, R = D["periods"]["test"], D["periods"]["train"]
+    part1 = "Part I · The assignment" if P2 else "The assignment"
     tips = {k: tip(prose, k) for k in ("Sharpe ratio", "Max drawdown", "Premium collected", "T-bill interest")}
     stats, own = fill_tables(D)
     data = D["data"]
@@ -1448,7 +1449,7 @@ def render(D: dict, prose: dict[str, str], draft: bool, P2: dict | None = None,
 
     def page_top(title: str, active: str) -> str:
         """The head and the site header both pages share: Part I and Part II as two pages of one site."""
-        links = [("1", "The assignment", names[0])] + ([("2", "Part II · Further exploration", names[1])] if P2 else [])
+        links = [("1", part1, names[0])] + ([("2", "Part II · Further exploration", names[1])] if P2 else [])
         nav = "".join(f'<a href="{href}"' + (' class="on" aria-current="page"' if k == active else "") + f'>{escape(label)}</a>'
                       for k, label, href in links)
         return f"""<!doctype html>
@@ -1475,7 +1476,7 @@ def render(D: dict, prose: dict[str, str], draft: bool, P2: dict | None = None,
 
     parts = [
         page_top("Wheel Strategy · MA", "1"),
-        heading("part1", "The assignment", "The wheel on Mastercard (MA)",
+        heading("part1", part1, "The wheel on Mastercard (MA)",
                 "",
                 [("Test period", f'{T["window"][0]} → {T["window"][1]}'),
                  ("Setting chosen on", f'{R["window"][0]} → {R["window"][1]}'),
@@ -1543,7 +1544,7 @@ def render(D: dict, prose: dict[str, str], draft: bool, P2: dict | None = None,
     second = None
     if P2:
         second = "\n".join([page_top("Wheel Strategy · Five Stocks", "2"), *part2_html(P2, say, panel, heading, tips),
-                            f'<a class="next" href="{names[0]}">← Back to the assignment, the wheel on Mastercard</a>',
+                            f'<a class="next" href="{names[0]}">← Back to Part I · The assignment, the wheel on Mastercard</a>',
                             "</div></body></html>"])
     if missing:
         print(f"  prose sections still empty: {', '.join(missing)}", file=sys.stderr)
@@ -1579,7 +1580,7 @@ def part2_html(P2: dict, say, panel, heading, tips: dict[str, str]) -> list[str]
         panel("What it shows", say("part2-findings")),
         '<div style="height:12px"></div>',
         panel("Each stock's wheel", '<div id="each"></div><details><summary>Correlations of the five wheels\' monthly '
-              'returns</summary><div id="corr"></div></details>', '$100,000 each · <span data-window></span>'),
+              'returns</summary><div id="corr"></div></details>', '$100,000 each · <span data-window></span>', fold=True),
         f"<script>{script}</script>",
     ]
 
@@ -1589,12 +1590,12 @@ def main() -> int:
     ap.add_argument("--facts", action="store_true", help="print the placeholders and exit")
     ap.add_argument("--draft", action="store_true", help="mark unwritten prose sections on the page")
     ap.add_argument("--out", type=Path, default=OUT)
-    ap.add_argument("--part2", action="store_true",
-                    help="also build Part II, the five-stock portfolio (taken off the site on 2026-10-30 at the user's choice)")
+    ap.add_argument("--no-part2", action="store_true",
+                    help="build Part I alone, without Part II (the five-stock portfolio) or the links to it")
     args = ap.parse_args()
     D = json.loads(DATA.read_text())
     portfolio = json.loads(PORTFOLIO.read_text()) if PORTFOLIO.exists() else None
-    P2 = portfolio if args.part2 else None
+    P2 = None if args.no_part2 else portfolio
     f = {**facts(D), **(part2_facts(portfolio) if portfolio else {})}
     if args.facts:
         for k, v in f.items():
