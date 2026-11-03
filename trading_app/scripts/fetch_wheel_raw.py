@@ -113,6 +113,10 @@ UNDERLYINGS["JKHY_2024"] = {"stock": "JKHY.OQ", "root": "JKHY", "roots_from": []
                             "seed": None, "window": CLASS_RUN, "C": [(math.inf, (5.0,))], "P": [(math.inf, (5.0,))]}
 UNDERLYINGS["CPRT_2024"] = {"stock": "CPRT.OQ", "root": "CPRT", "roots_from": [], "splits": [], "units_after": None,
                             "seed": None, "window": CLASS_RUN, "C": [(math.inf, (2.5,))], "P": [(math.inf, (2.5,))]}
+# All three failed (d), so the ranking goes on to Yum Brands (4th). A probe on 2026-11-03 found its monthlies in $5
+# steps (no $142.50, $147.50, $157.50 or $172.50). No split in the window.
+UNDERLYINGS["YUM_2024"] = {"stock": "YUM.N", "root": "YUM", "roots_from": [], "splits": [], "units_after": None,
+                           "seed": None, "window": CLASS_RUN, "C": [(math.inf, (5.0,))], "P": [(math.inf, (5.0,))]}
 
 
 def cache_dir(key: str) -> Path:
