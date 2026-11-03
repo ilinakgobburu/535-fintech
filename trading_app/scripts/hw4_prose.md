@@ -9,7 +9,7 @@
 ## thesis
 // The assignment: "State your thesis for why this should make money/beat a
 // benchmark/improve sharpe, then show whether it actually did."
-I expected the wheel to improve the Sharpe ratio compared to holding Mastercard, for two reasons. First, the wheel is short volatility. Selling an option works like selling insurance: the seller is paid a premium up front for taking on the risk of a big move. Per lecture, the wheel collects theta and is short gamma and vega, so it does well when moves are small. Each option is sold at its implied volatility, but what it actually costs the seller depends on the volatility Mastercard realizes afterwards. Implied volatility is usually higher than realized volatility (the volatility risk premium), so the premium collected should be more than the options end up costing. Second, the wheel buys after a fall, when a put is assigned, and sells after a rise, when the shares are called away. Hence, it works like a long-only mean-reversion position and should do best on a stock whose monthly moves tend to reverse. Though the short call caps the upside, I expected a return close to the stock's with much less risk.
+The wheel was expected to improve the Sharpe ratio compared to holding Mastercard, for two reasons. First, the wheel is short volatility. Selling an option works like selling insurance: the seller is paid a premium up front for taking on the risk of a big move. Per lecture, the wheel collects theta and is short gamma and vega, so it does well when moves are small. Each option is sold at its implied volatility, but what it actually costs the seller depends on the volatility Mastercard realizes afterwards. Implied volatility is usually higher than realized volatility (the volatility risk premium), so the premium collected should be more than the options end up costing. Second, the wheel buys after a fall, when a put is assigned, and sells after a rise, when the shares are called away. Hence, it works like a long-only mean-reversion position and should do best on a stock whose monthly moves tend to reverse. Though the short call caps the upside, the return was expected to be close to the stock's with much less risk.
 
 ## verdict
 // Under the table of claims.
@@ -69,7 +69,7 @@ Some limits to these findings include: one stock over a short test of {{test_cyc
 // ---------------------------------------------------------------------------
 
 ## part2-motivation
-The biggest losses in this project came from one stock falling while the wheel held it. Fiserv's wheel lost {{p2_fisv_train}} in 2024-2025. Hence, I ran the same wheel on all five stocks the mean-reversion screen picked, side by side, to see if spreading it across stocks reduces that risk.
+The biggest losses in this project came from one stock falling while the wheel held it. Fiserv's wheel lost {{p2_fisv_train}} in 2024-2025. Hence, the same wheel was run on all five stocks the mean-reversion screen picked, side by side, to see if spreading it across stocks reduces that risk.
 
 ## part2-setup
 Each of the five wheels starts with $100,000 at its stock's committed setting and runs exactly as in Part I. Their daily account values are added together into one $500,000 portfolio. The benchmarks are the same five stocks bought and held, $100,000 each, and T-bills. The Cboe PutWrite index was added afterwards, as in Part I.
