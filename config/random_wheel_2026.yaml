@@ -1,0 +1,19 @@
+# A curiosity run, not on the site: does the plain wheel do as well on randomly chosen liquid stocks as on the five
+# the mean-reversion screen picked? Asked for by the user on 2026-11-03, after the class run's results were seen.
+# Registered before the draw and before any pull.
+registered: 2026-11-03
+
+universe: the S&P 100 (.OEX) constituents as of 2023-12-29 from LSEG, less MA, APA, V, FISV and ADI
+draw: >
+  numpy.random.default_rng(2026).permutation of the universe sorted by RIC; take stocks in that order, skipping
+  any that fails config/mr_screen.yaml's feasibility (a)-(c) over 2026-01-02 to 2026-10-16 or, after its pull,
+  data check (d), until 8 pass. Every skip is reported with its reason
+setting: >
+  config/wheel.yaml's default setting, fixed before any data was seen: put delta 0.25, call delta 0.25, floor on;
+  mid fills; $100,000 each. No training, so only the stock differs between the random stocks and the screen's five
+window: 2026-01-02 to 2026-10-16 (the class run's test window)
+pull: scripts/fetch_wheel_raw.py on the class run's bands and generic strike grid, over the window only
+compare: >
+  each random stock's wheel (return, Sharpe ratio, max drawdown) against holding it and against T-bills, and the
+  eight together against the screen's five on the same default setting in 2026 (cache/wheel_mr_results_{T}.json,
+  baseline at mid); equal-weight averages and the five-or-eight-wheel portfolios
