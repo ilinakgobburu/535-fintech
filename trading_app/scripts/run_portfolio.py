@@ -102,12 +102,15 @@ def main() -> int:
     markets = {}
     for name, sws in windows.items():
         lo, hi = sws[0]["window"]
-        res = {"wheel_mid": {}, "wheel_cross": {}, "hold": {}}
+        res = {"wheel_mid": {}, "wheel_cross": {}, "hold": {}, "covered_call": {}}
         for sw in sws:
             m = markets.setdefault(sw["cache"], W.load_market(REPO / sw["cache"]))
             res["wheel_mid"][sw["stock"]] = W.run(m, start=lo, end=hi, ticker=sw["stock"], **sw["pick"])
             res["wheel_cross"][sw["stock"]] = W.run(m, start=lo, end=hi, fill="cross", ticker=sw["stock"], **sw["pick"])
             res["hold"][sw["stock"]] = W.run(m, start=lo, end=hi, mode="buy_and_hold", ticker=sw["stock"])
+            # config/wheel_covered_call.yaml: the held shares plus a call against each 100, at the wheel's call delta
+            res["covered_call"][sw["stock"]] = W.run(m, start=lo, end=hi, mode="covered_call", ticker=sw["stock"],
+                                                     call_delta=sw["pick"]["call_delta"], floor=False)
         tbill = markets[sws[0]["cache"]]["tbill"]
         cash = W.run(markets[sws[0]["cache"]], start=lo, end=hi, mode="cash")
         w = {"window": [lo, hi]}

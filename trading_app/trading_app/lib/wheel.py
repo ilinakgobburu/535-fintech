@@ -9,6 +9,9 @@ they cannot differ by implementation:
     mode="wheel"          the wheel
     mode="buy_and_hold"   the starting cash in whole shares at the first close
     mode="cash"           the starting cash in T-bills, nothing else
+    mode="covered_call"   buy and hold's whole shares at the first close, and a call against each 100 at every
+                          entry (config/wheel_covered_call.yaml); shares called away are bought back at the close
+                          of the next entry, before its call is sold
 
 WHAT IS KNOWN WHEN. A decision on day d uses day d's closing quotes and fills
 at them. Expiry settles on the expiry day's close. Nothing reads a later row
@@ -503,10 +506,12 @@ def run(market: dict, *, start, end, mode: str = "wheel", put_delta: float = 0.2
                 book(day, "stock", "DIVIDEND", shares, paid / shares, paid, "dividend on shares held")
 
         # ---- the first session: the benchmarks buy -----------------------
-        if prev_day is None and mode == "buy_and_hold":
+        if prev_day is None and mode in ("buy_and_hold", "covered_call"):
             shares = int(cash // close)
             cash -= shares * close
-            book(day, "stock", BUY, shares, close, -shares * close, "buy and hold: whole shares at the close")
+            if mode == "covered_call":
+                basis = close
+            book(day, "stock", BUY, shares, close, -shares * close, f"{mode.replace('_', ' ')}: whole shares at the close")
 
         # ---- expiry: settle on the close --------------------------------
         if option is not None and day == option["expiry"]:
@@ -639,9 +644,17 @@ def run(market: dict, *, start, end, mode: str = "wheel", put_delta: float = 0.2
                                    reason="after_earnings")
 
         # ---- entry: open the cycle --------------------------------------
-        if mode == "wheel" and day in entries and option is None:
+        if mode in ("wheel", "covered_call") and day in entries and option is None:
             expiry = entries[day]
             pending = after_earnings = None
+            if (mode == "covered_call" and cycles and cycles[-1].get("cp") == CALL
+                    and str(cycles[-1].get("status", "")).startswith("called away")):
+                n = int(cash // close)                     # called away: the shares come back before the next call
+                if n:
+                    basis = (basis * shares + close * n) / (shares + n) if shares and np.isfinite(basis) else close
+                    shares += n
+                    cash -= n * close
+                    book(day, "stock", BUY, n, close, -n * close, "covered call: buy the shares back at the close")
             cp, target, lo, pick, contracts, per, skip, info = choose(day, expiry, close)
             rec = new_record(day, expiry, close)
             rec.update(info)

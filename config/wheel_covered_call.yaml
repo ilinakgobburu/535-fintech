@@ -1,0 +1,16 @@
+# A covered-call benchmark beside the wheel, on Part I (Mastercard) and Part II (the five stocks). Asked for by the
+# user on 2026-11-03, after the test results had been seen; like the Cboe PutWrite index, it is a benchmark added
+# after the test and chooses nothing.
+registered: 2026-11-03
+
+book: >
+  the same whole shares as buy and hold, bought with the $100,000 at the window's first close; every monthly entry
+  sells one call against each 100 shares held, at the wheel's call delta for that stock (its committed setting:
+  0.35 for Mastercard), with no cost-basis floor, held to expiry. If shares are called away, the cash buys whole shares back
+  at the close of the next entry session, before that session's call is sold (any shares left over beyond the
+  last 100 stay held). Cash earns the T-bill rate. Fills at
+  mid, as the wheel; the same quotes, expiries and strike rule
+engine: trading_app/trading_app/lib/wheel.py run(mode="covered_call")
+shown: >
+  a line on each account-value chart (buy and hold's colour, dashed: the same shares plus calls) and a row in each
+  Benchmarks table, labelled as added after the test

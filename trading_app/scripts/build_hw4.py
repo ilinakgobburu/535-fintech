@@ -499,6 +499,8 @@ def part2_data(P2: dict) -> dict:
                  "avg": w["wheel_mid"]["average_of_five"], "hold": w["hold"]["portfolio"], "cash": figs(w["cash"])}
         nav = {"date": w["wheel_mid"]["nav"]["date"], "wheel": w["wheel_mid"]["nav"]["value"],
                "hold": w["hold"]["nav"]["value"], "cash": w["cash"]["nav"]["value"]}
+        if "covered_call" in w:
+            books["covered_call"], nav["covered_call"] = w["covered_call"]["portfolio"], w["covered_call"]["nav"]["value"]
         if "putw" in w:
             books["putw"], nav["putw"] = figs(w["putw"]), w["putw"]["nav"]["value"]
         tr = w["wheel_mid"]["trades"]
@@ -540,15 +542,16 @@ function layout(o = {}) {
 PART2_SCRIPT = JS_COMMON + r"""
 const P2 = /*__P2__*/null;
 let period = 'test';
-const LABELS = {wheel: 'Five wheels together', hold: 'Five stocks held', cash: 'T-bills', putw: 'Cboe PutWrite index'};
-const COLORS = {wheel: '--wheel', hold: '--hold', cash: '--cash', putw: '--aqua'};
+const LABELS = {wheel: 'Five wheels together', hold: 'Five stocks held', cash: 'T-bills', putw: 'Cboe PutWrite index',
+                covered_call: 'Five covered calls'};
+const COLORS = {wheel: '--wheel', hold: '--hold', cash: '--cash', putw: '--aqua', covered_call: '--hold-cc'};
 const tbl = (head, rows, left = 1) => '<div class="tbl-wrap"><table class="tbl small"><thead><tr>' +
   head.map((h, i) => `<th class="${i < left ? 'l' : ''}">${h}</th>`).join('') + '</tr></thead><tbody>' + rows.join('') + '</tbody></table></div>';
 
 function bench() {
   const B = P2[period].books;
   const rows = [['wheel', 'Five wheels together'], ['avg', 'One wheel, average of the five'], ['putw', 'Cboe PutWrite'],
-                ['hold', 'Five stocks held'], ['cash', 'T-bills']].filter(([k]) => B[k]);
+                ['covered_call', 'Five covered calls'], ['hold', 'Five stocks held'], ['cash', 'T-bills']].filter(([k]) => B[k]);
   $('bench').innerHTML = tbl(['', 'Return', 'Sharpe', 'Max DD', 'Vol'], rows.map(([k, label]) =>
     `<tr${k === 'wheel' ? ' class="hi"' : ''}><td class="l">${label}</td><td class="${cls(B[k].return_pct)}">${pct(B[k].return_pct, 1, true)}</td>
      <td>${k === 'cash' ? '–' : num(B[k].sharpe)}</td><td>${pct(B[k].max_drawdown_pct)}</td><td>${pct(B[k].vol_pct)}</td></tr>`));
@@ -588,8 +591,9 @@ function stocks() {
 
 function navChart() {
   const N = P2[period].nav;
-  Plotly.react('p2-nav', ['cash', 'hold', 'putw', 'wheel'].filter(k => N[k]).map(k => ({
-    x: N.date, y: N[k], name: LABELS[k], mode: 'lines', line: {color: css(COLORS[k]), width: k === 'wheel' ? 2 : 1.5},
+  Plotly.react('p2-nav', ['cash', 'hold', 'covered_call', 'putw', 'wheel'].filter(k => N[k]).map(k => ({
+    x: N.date, y: N[k], name: LABELS[k], mode: 'lines',
+    line: {color: css(COLORS[k]), width: k === 'wheel' ? 2 : 1.5, dash: k === 'covered_call' ? 'dot' : 'solid'},
     hovertemplate: '%{y:$,.0f}<extra>' + LABELS[k] + '</extra>'})),
     layout({hovermode: 'x unified', yaxis: {tickformat: '$,.0f'}}), {displayModeBar: false, responsive: true});
 }
@@ -618,7 +622,7 @@ STYLE = """
     --line:#1F2630; --line-soft:#19202A; --axis:#2A323D;
     --text:#E6E9EE; --text-2:#9BA3AE; --muted:#7D8590; --faint:#5B636E;
     --accent:#3987e5; --accent-soft:rgba(57,135,229,.12);
-    --wheel:#3987e5; --wheel-bid:#7FB0EE; --hold:#d95926; --cash:#7D8590; --aqua:#199e70;
+    --wheel:#3987e5; --wheel-bid:#7FB0EE; --hold:#d95926; --hold-cc:#F0A07A; --cash:#7D8590; --aqua:#199e70;
     --up:#16C784; --down:#F0616D; --warn:#E8A93B;
     --mk-put:#E8A93B; --mk-call:#d55181;   /* trade markers, checked against the blue wheel line */
     --font:'IBM Plex Sans',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;
@@ -731,6 +735,7 @@ STYLE = """
   table.tbl.verdict td:nth-child(2){color:var(--text-2)}
   table.tbl.verdict td:nth-child(3){font-family:var(--mono);font-size:12px}
   table.tbl.small td,table.tbl.small th{padding:6px 9px}
+  #bench table.tbl td.l{white-space:normal;min-width:7em}       /* long row names wrap, so every column stays in view */
   table.tbl.screen th,table.tbl.screen td{padding:6px 8px} table.tbl.screen td:last-child{text-align:left}
   table.tbl tbody tr.click{cursor:pointer}
   table.tbl tbody tr.sel td{background:var(--accent-soft)}
@@ -814,8 +819,11 @@ const D = /*__DATA__*/null;
 let period = 'test';
 
 const LABELS = {wheel: 'Wheel', wheel_bid: 'Wheel (fills at the bid)', hold: 'Buy and hold MA', cash: 'T-bills',
-                putw: 'Cboe PutWrite index'};
-const COLORS = {wheel: '--wheel', wheel_bid: '--wheel-bid', hold: '--hold', cash: '--cash', putw: '--aqua'};
+                putw: 'Cboe PutWrite index', covered_call: 'Covered call MA'};
+// the covered call is buy and hold's shares plus calls: a lighter step of buy and hold's orange, dotted, as the
+// wheel's bid line is a lighter, dotted blue (no fifth hue clears the checks against the other lines)
+const COLORS = {wheel: '--wheel', wheel_bid: '--wheel-bid', hold: '--hold', cash: '--cash', putw: '--aqua', covered_call: '--hold-cc'};
+const DASH = {wheel_bid: 'dot', covered_call: 'dot'};
 
 function eventName(e) {
   if (e.cp && e.side === 'SELL') return ['Sell to open: ' + (e.cp === 'P' ? 'cash-secured put' : 'covered call'), 'ev-open'];
@@ -829,7 +837,7 @@ function eventName(e) {
 
 function bench() {
   const B = D.periods[period].books;
-  const rows = [['wheel', 'Wheel'], ['putw', 'Cboe PutWrite'],
+  const rows = [['wheel', 'Wheel'], ['putw', 'Cboe PutWrite'], ['covered_call', 'Covered call MA'],
                 ['hold', 'Buy and hold MA'], ['cash', 'T-bills']].filter(([k]) => B[k]);
   $('bench').innerHTML = '<div class="tbl-wrap"><table class="tbl small"><thead><tr>' +
     ['', 'Return', 'Sharpe', 'Max DD', 'Vol'].map((h, i) => `<th class="${i ? '' : 'l'}">${h}</th>`).join('') +
@@ -871,9 +879,9 @@ function tradeMarkers(blotter, dates, values) {
 
 function navChart() {
   const P = D.periods[period], N = P.nav;
-  const traces = ['cash', 'hold', 'putw', 'wheel'].filter(k => N[k]).map(k => ({
+  const traces = ['cash', 'hold', 'covered_call', 'putw', 'wheel'].filter(k => N[k]).map(k => ({
     x: N.date, y: N[k], name: LABELS[k], mode: 'lines',
-    line: {color: css(COLORS[k]), width: k === 'wheel' ? 2 : 1.5, dash: k === 'wheel_bid' ? 'dot' : 'solid'},
+    line: {color: css(COLORS[k]), width: k === 'wheel' ? 2 : 1.5, dash: DASH[k] || 'solid'},
     hovertemplate: '%{y:$,.0f}<extra>' + LABELS[k] + '</extra>'}));
   traces.push(...tradeMarkers(P.blotter, N.date, N.wheel));
   Plotly.react('plot-nav', traces, layout({hovermode: 'x unified', yaxis: {tickformat: '$,.0f'}}),
@@ -1577,7 +1585,10 @@ def render(D: dict, prose: dict[str, str], draft: bool, P2: dict | None = None,
               'from $100,000 · <span data-window></span>', flush=True),
         panel("Benchmarks", '<div id="bench"></div><div class="cap">The Cboe S&amp;P 500 PutWrite index sells a '
               'one-month at-the-money S&amp;P 500 put each month, secured by cash in T-bills: the industry standard for '
-              'systematic put selling. Added as a benchmark after the test.</div>',
+              'systematic put selling. The covered call holds the same Mastercard shares as buy and hold and sells a '
+              'call against each 100 every month at the wheel\'s call delta (0.35), with no floor, held to expiry, at mid; '
+              'if shares are called away, the cash buys them back at the next month\'s entry. Both were added as '
+              'benchmarks after the test.</div>',
               '<span data-window></span>'),
         "</div>",
         panel("Portfolio on any date",
@@ -1659,7 +1670,10 @@ def part2_html(P2: dict, say, panel, heading, tips: dict[str, str]) -> list[str]
         panel("Benchmarks", '<div id="bench"></div><div class="cap">One wheel, average of the five: each figure averaged '
               'over the five single-stock wheels. The Cboe S&amp;P 500 PutWrite index sells a one-month at-the-money '
               'S&amp;P 500 put each month, secured by cash in T-bills: the industry standard for systematic put '
-              'selling. Added as a benchmark after the test, as in Part I.</div>',
+              'selling. The five covered calls hold the same shares as the five stocks held and sell a call against each '
+              '100 every month at each wheel\'s call delta, with no floor, held to expiry, at mid; if shares are called '
+              'away, the cash buys them back at the next month\'s entry. Both were added as benchmarks after the test, '
+              'as in Part I.</div>',
               '<span data-window></span>'),
         "</div>",
         panel("What it shows", say("part2-findings")),

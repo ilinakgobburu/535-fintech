@@ -272,7 +272,10 @@ def run_period(market: dict, window: tuple[str, str], pick: dict, base: dict, be
             "baseline": W.run(market, start=start, end=end, ticker=TICKER, **base),
             "baseline_bid": W.run(market, start=start, end=end, fill="cross", ticker=TICKER, **base),
             "hold": W.run(market, start=start, end=end, mode="buy_and_hold", ticker=TICKER),
-            "cash": W.run(market, start=start, end=end, mode="cash", ticker=TICKER)}
+            "cash": W.run(market, start=start, end=end, mode="cash", ticker=TICKER),
+            # config/wheel_covered_call.yaml: buy and hold's shares, a call sold against each 100 at the wheel's call delta
+            "covered_call": W.run(market, start=start, end=end, mode="covered_call", ticker=TICKER,
+                                  call_delta=pick["call_delta"], floor=False)}
     tb = market["tbill"]
     books = {k: book_summary(v, tb) for k, v in runs.items()}
     nav = {"date": list(runs["wheel"]["ledger"]["date"]),
