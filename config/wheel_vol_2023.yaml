@@ -47,3 +47,11 @@ added_2026_11_03_second_follow_up:   # recorded after JKHY's data check and befo
     (cache/wheel_vol_2023_coverage_JKHY.json). So the pick gives way to the second follow-up, Copart (CPRT).
     To save time, CPRT's options were pulled in parallel with JKHY's, before JKHY's check; no CPRT check,
     training or test run was made before this record. No JKHY wheel was run
+
+added_2026_11_03_down_the_ranking:   # recorded after CPRT's data check and before any pull, check or training run for YUM
+  YUM: {ric: YUM.N, cache: cache/wheel_raw_YUM_2024, rank: 4, score: 0.118}
+  note: >
+    CPRT failed data check (d) too: 7 of 32 cycles (21.9%) short, against 10%. All three named picks failed (d),
+    each for thin out-of-the-money quotes. The screen's rule goes down the ranking until stocks pass; continuing
+    it for (d), the next is YUM (4th). HOLX (5th) was retired in April 2026 and would fail (a). YUM is subject
+    to (a)-(c) before its pull and (d) after it
