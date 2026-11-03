@@ -55,3 +55,8 @@ added_2026_11_03_down_the_ranking:   # recorded after CPRT's data check and befo
     each for thin out-of-the-money quotes. The screen's rule goes down the ranking until stocks pass; continuing
     it for (d), the next is YUM (4th). HOLX (5th) was retired in April 2026 and would fail (a). YUM is subject
     to (a)-(c) before its pull and (d) after it
+
+stopped_2026_11_03: >
+  At the user's request, the YUM option pull was stopped part way (about 700 of 933 contracts) before data check
+  (d), and no YUM check, training or test run was made. The curiosity run ends with no stock passing (d): INCY,
+  JKHY and CPRT, the screen's three named picks, all failed it for thin out-of-the-money quotes
