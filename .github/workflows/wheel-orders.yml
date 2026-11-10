@@ -1,0 +1,62 @@
+name: Wheel orders
+
+# Every weeknight: read the book the course server (Sanji) wrote, ask LSEG for that session's
+# closing quotes, and write the next session's wheel order to mkt/open_orders.json (one order,
+# or []). The rules are config/wheel_live.yaml; the decision is lib/wheel_live.py.
+on:
+  schedule:
+    - cron: "0 2 * * 2-6"   # 02:00 UTC Tue-Sat = 21:00 New York Mon-Fri in winter, 22:00 in summer
+  workflow_dispatch:
+
+concurrency:
+  group: wheel-orders
+  cancel-in-progress: false
+
+# The repository's default token can only read, so the commit step needs write access.
+permissions:
+  contents: write
+
+jobs:
+  orders:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install packages (same versions as requirements.txt)
+        run: pip install lseg-data==2.1.1 pandas==2.2.3 numpy==1.26.4 scipy==1.13.1 pyyaml==6.0.3
+
+      - name: Decide the next session's order
+        id: orders
+        env:
+          LSEG_APP_KEY: ${{ secrets.LSEG_APP_KEY }}
+          LSEG_USERNAME: ${{ secrets.LSEG_USERNAME }}
+          LSEG_PASSWORD: ${{ secrets.LSEG_PASSWORD }}
+        run: python wheel_orders.py
+
+      - name: Commit mkt/open_orders.json
+        env:
+          FOR_DAY: ${{ steps.orders.outputs.for_day }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add mkt/open_orders.json
+          if git diff --cached --quiet; then
+            echo "mkt/open_orders.json is unchanged"
+            exit 0
+          fi
+          git commit -m "Open orders for ${FOR_DAY}"
+          # The price job or Sanji may have pushed since the checkout: replay this commit on top and retry.
+          for attempt in 1 2 3; do
+            if git pull --rebase origin main && git push origin HEAD:main; then
+              exit 0
+            fi
+            sleep 10
+          done
+          exit 1

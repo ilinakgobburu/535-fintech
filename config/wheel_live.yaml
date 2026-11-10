@@ -1,0 +1,42 @@
+# The wheel, live: what wheel_orders.py trades through the course server (Sanji).
+# Chosen by the user on 2026-11-10. The rules are config/wheel.yaml's (the backtest) except
+# where live_rules says otherwise, because the server, not the backtest, now does the filling.
+registered: 2026-11-10
+
+underlying:
+  root: NVDA          # option RIC root
+  ric: NVDA.O         # the stock on LSEG
+  conid: 4815747      # Interactive Brokers' id, copied from price_history.json (order.html asks for it)
+why_nvda: the one stock in price_history.json, so the only one whose conid the server already tracks
+
+setting:              # the HW4 NVDA pick, config/wheel_picks/NVDA.json (training 2019-2021)
+  put_delta: 0.35
+  call_delta: 0.35
+  floor: true         # calls only at or above the cost basis
+
+start_cash: 100000    # the book while mkt/positions.json does not exist yet, as in the backtest
+
+expiry:
+  min_dte: 24         # the backtest's cycles ran 24 to 35 days to expiry
+  max_dte: 35
+  first_entry_any_dte: true   # the first put may be further out (Dec 18 from Nov 11), so the wheel starts now
+
+limit: mid            # the option's closing bid/ask midpoint on LSEG, the backtest's headline fill
+rate_ric: US3MT=RR    # 3-month T-bill (MID_YLD_1), as in the backtest
+dividend_yield: 0.0   # NVDA's trailing yield is about 0.02%, which moves a 0.35 delta by less than 0.001
+
+strikes:              # the candidates asked for on LSEG; only those with a two-sided closing quote count
+  step: 2.5
+  range_pct: 30       # within 30% of the close, the band the server stores options for
+
+live_rules:
+  - The backtest decided and filled at one close. Live, the decision uses session D's closing quotes
+    and the order is for the next session, filled by Sanji against that session's prices; a limit
+    sell fills at the open if the open is at or above the limit, else at the limit if the high reaches it.
+  - An entry is written on every night with nothing open whose target expiry is 24 to 35 days after the
+    order's session, so an order that did not fill is placed again the next night instead of the
+    book idling for a month. The first entry, before anything has filled, may be further out.
+  - Orders are limits at the closing mid, not market orders, because a market order would fill at the
+    option's opening print.
+  - The book is read from mkt/positions.json, whose format the course has not published yet;
+    lib/wheel_live.py reads one stated shape and stops with an error on anything else.

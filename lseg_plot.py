@@ -10,10 +10,9 @@ The cycle, run by .github/workflows/lseg-plot.yml when "Run workflow" is clicked
   4. the workflow commits that file and GitHub Pages republishes the site,
      where docs/lseg.html shows it.
 
-No credentials are written in this file. They are read from the environment
-variables LSEG_APP_KEY, LSEG_USERNAME and LSEG_PASSWORD (GitHub Actions
-secrets). When those are not set and the script runs on a Mac, it reads the
-macOS Keychain items lseg-app-key, lseg-username and lseg-password instead.
+No credentials are written in this file. lseg_login.py reads them from the
+environment variables LSEG_APP_KEY, LSEG_USERNAME and LSEG_PASSWORD (GitHub
+Actions secrets) or, on a Mac, from the macOS Keychain.
 
 Run it locally:
     python3 lseg_plot.py                        # charts NVDA.O
@@ -22,10 +21,9 @@ Run it locally:
 
 import os
 import re
-import shutil
-import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import lseg.data as ld
@@ -33,61 +31,18 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from lseg_login import open_session  # noqa: E402
+
 OUT = "docs/lseg-plot.html"
 DEFAULT_RIC = "NVDA.O"
 DAYS_BACK = 183   # calendar days requested, about six months of sessions
 MA_WINDOW = 20    # sessions in the moving average
 FIELDS = ["OPEN_PRC", "HIGH_1", "LOW_1", "TRDPRC_1", "ACVOL_UNS"]  # open, high, low, close, volume
 
-KEYCHAIN = {
-    "LSEG_APP_KEY": "lseg-app-key",
-    "LSEG_USERNAME": "lseg-username",
-    "LSEG_PASSWORD": "lseg-password",
-}
-
 # Colours from the site's palette (docs/index.html), so the chart sits in the page.
 BG, GRID, TEXT, MUTED = "#141A2E", "#1D2438", "#E8ECF5", "#8792AB"
 UP, DOWN, AVERAGE, VOLUME = "#199e70", "#e5534b", "#9085e9", "#5A6580"
-
-
-def credential(name: str) -> str:
-    """An environment variable first (GitHub), then the macOS Keychain (laptop)."""
-    value = os.environ.get(name, "").strip()
-    if value:
-        return value
-    if shutil.which("security"):
-        out = subprocess.run(
-            ["security", "find-generic-password", "-s", KEYCHAIN[name], "-w"],
-            capture_output=True, text=True,
-        )
-        if out.returncode == 0:
-            return out.stdout.strip()
-    return ""
-
-
-def open_session():
-    """Open an LSEG platform session. Exits with a clear message if login fails."""
-    creds = {name: credential(name) for name in KEYCHAIN}
-    missing = [name for name, value in creds.items() if not value]
-    if missing:
-        sys.exit("Missing " + ", ".join(missing)
-                 + ": set them as GitHub Actions secrets, or save them in the macOS Keychain.")
-
-    session = ld.session.platform.Definition(
-        app_key=creds["LSEG_APP_KEY"],
-        grant=ld.session.platform.GrantPassword(
-            username=creds["LSEG_USERNAME"],
-            password=creds["LSEG_PASSWORD"],
-        ),
-        signon_control=True,   # takes over any other session on this login
-    ).get_session()
-    session.open()
-    # The library prints login errors instead of raising them, so check the state.
-    if session.open_state != ld.OpenState.Opened:
-        sys.exit("LSEG login failed: check the app key, username and password.")
-    ld.session.set_default(session)
-    print("LSEG platform session opened")
-    return session
 
 
 def fetch(ric: str) -> pd.DataFrame:
