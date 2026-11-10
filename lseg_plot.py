@@ -98,10 +98,21 @@ def fetch(ric: str) -> pd.DataFrame:
     start = end - timedelta(days=DAYS_BACK)
     print(f"Requesting {ric} daily bars, {start} to {end}")
 
-    df = ld.get_history(universe=ric, fields=FIELDS, interval="1D",
-                        start=start.isoformat(), end=end.isoformat())
+    try:
+        df = ld.get_history(universe=ric, fields=FIELDS, interval="1D",
+                            start=start.isoformat(), end=end.isoformat())
+    except Exception as exc:   # e.g. an unknown RIC: the library raises instead of returning nothing
+        sys.exit(f"LSEG rejected the request for {ric}: {exc}")
     if df is None or df.empty:
         sys.exit(f"LSEG returned no rows for {ric}. Is the RIC right, and is it licensed?")
+
+    # Only the fields LSEG has for this instrument come back as columns.
+    missing = [f for f in FIELDS[:4] if f not in df.columns]   # open, high, low, close are required
+    if missing:
+        sys.exit(f"{ric} has no {', '.join(missing)} in LSEG's daily history "
+                 f"(it returned {', '.join(map(str, df.columns))}); try a stock RIC such as NVDA.O.")
+    if "ACVOL_UNS" not in df.columns:   # volume is optional (FX and some indices have none)
+        df["ACVOL_UNS"] = float("nan")
 
     df = df.apply(pd.to_numeric, errors="coerce")
     df.index = pd.to_datetime(df.index)
