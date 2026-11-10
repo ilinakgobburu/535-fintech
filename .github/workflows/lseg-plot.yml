@@ -1,0 +1,50 @@
+name: LSEG plot
+
+# One click runs the whole cycle: query LSEG -> save a Plotly chart into docs/ ->
+# commit it -> GitHub Pages republishes the site, where docs/lseg.html shows it.
+# Modelled on oi-plots.yml in JakeVestal/server-logic-533.
+on:
+  workflow_dispatch:
+    inputs:
+      ric:
+        description: "Instrument to chart (an LSEG RIC, e.g. NVDA.O, AMD.O, AAPL.O)"
+        required: true
+        default: "NVDA.O"
+
+concurrency:
+  group: lseg-plot
+  cancel-in-progress: true
+
+# The repository's default token can only read, so the commit step needs write access.
+permissions:
+  contents: write
+
+jobs:
+  plot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install packages (same versions as requirements.txt)
+        run: pip install lseg-data==2.1.1 pandas==2.2.3 numpy==1.26.4 plotly==5.24.1
+
+      - name: Query LSEG and save the chart
+        env:
+          LSEG_APP_KEY: ${{ secrets.LSEG_APP_KEY }}
+          LSEG_USERNAME: ${{ secrets.LSEG_USERNAME }}
+          LSEG_PASSWORD: ${{ secrets.LSEG_PASSWORD }}
+          LSEG_PLOT_RIC: ${{ inputs.ric }}
+        run: python lseg_plot.py
+
+      - name: Commit the chart to the site
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Update LSEG plot (${{ inputs.ric }})"
+          file_pattern: docs/lseg-plot.html
