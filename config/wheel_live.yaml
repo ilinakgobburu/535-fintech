@@ -19,7 +19,8 @@ start_cash: 100000    # the book while mkt/positions.json does not exist yet, as
 expiry:
   min_dte: 24         # the backtest's cycles ran 24 to 35 days to expiry
   max_dte: 35
-  first_entry_any_dte: true   # the first put may be further out (Dec 18 from Nov 11), so the wheel starts now
+  first_entry_until: 2026-11-20   # until then, with nothing filled yet, the first put may sell the next cycle
+                                  # (Dec 18 from Nov 11) so the wheel starts now; from Nov 23 the normal rule applies
 
 limit: mid            # the option's closing bid/ask midpoint on LSEG, the backtest's headline fill
 rate_ric: US3MT=RR    # 3-month T-bill (MID_YLD_1), as in the backtest
@@ -33,10 +34,17 @@ live_rules:
   - The backtest decided and filled at one close. Live, the decision uses session D's closing quotes
     and the order is for the next session, filled by Sanji against that session's prices; a limit
     sell fills at the open if the open is at or above the limit, else at the limit if the high reaches it.
-  - An entry is written on every night with nothing open whose target expiry is 24 to 35 days after the
-    order's session, so an order that did not fill is placed again the next night instead of the
-    book idling for a month. The first entry, before anything has filled, may be further out.
+  - As in the backtest, a cycle opens on the session after each monthly expiry and sells the next
+    monthly. Live, an entry that did not fill is placed again on later nights of the same cycle while
+    the expiry is still 24 to 35 days after the order's session. Before Nov 21, with nothing filled,
+    the first put may sell the cycle after (Dec 18 from Nov 11); that is the one exception.
   - Orders are limits at the closing mid, not market orders, because a market order would fill at the
     option's opening print.
+  - A stale book is never traded on. Once Sanji keeps mkt/fills.json, every order written for a session
+    up to D needs a result there first, and an option still listed after its expiry stops the run.
+    An order for a session not yet resolved is kept in mkt/open_orders.json, and no second entry is added.
   - The book is read from mkt/positions.json, whose format the course has not published yet;
     lib/wheel_live.py reads one stated shape and stops with an error on anything else.
+  - The call floor is the cost_basis in mkt/positions.json. The backtest's basis was the assigned
+    strike less the put premium and every call premium since; if Sanji's cost_basis is the strike
+    alone, the live floor is higher than the backtest's. To be reconciled once the format is known.
