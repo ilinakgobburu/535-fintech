@@ -24,7 +24,10 @@
     font-size:15px; line-height:1.65; -webkit-font-smoothing:antialiased;
   }
   .wrap{max-width:1160px;margin:0 auto;padding:0 28px 80px}
-  header{padding:34px 0 22px;border-bottom:1px solid var(--line);margin-bottom:26px}
+  .top{display:flex;gap:8px;padding:14px 0 0}
+  .top a{font-size:13px;color:var(--muted);text-decoration:none;border:1px solid var(--line);border-radius:7px;padding:5px 10px}
+  .top a:hover{color:var(--text);background:var(--panel-hi)}
+  header{padding:22px 0 22px;border-bottom:1px solid var(--line);margin-bottom:26px}
   .eyebrow{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--faint);font-weight:600;margin-bottom:8px}
   h1{font-size:30px;line-height:1.15;margin:0 0 10px;font-weight:700;letter-spacing:-.02em}
   h1 .accent{color:var(--mark)}
@@ -59,6 +62,7 @@
 </head>
 <body>
 <div class="wrap">
+  <nav class="top"><a href="index.html">← Option Surface Lab</a></nav>
   <header>
     <div class="eyebrow">FINTECH 533 · LSEG + GitHub Actions</div>
     <h1>LSEG data, <span class="accent">refreshed by one click</span></h1>
