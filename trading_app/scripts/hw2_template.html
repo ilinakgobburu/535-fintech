@@ -6,7 +6,7 @@
 <title>Covered Call Backtest</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"
         onerror="window.__plotlyFailed=1"></script>
 <style>
@@ -23,24 +23,25 @@
   table.tbl td.note{text-align:left;color:var(--faint);font-size:var(--fs-xs);
     font-family:var(--font);min-width:230px;white-space:normal;line-height:1.45}
   table.tbl td.side{text-align:left;font-weight:600}
-  .s-BUY{color:var(--up)} .s-SELL{color:var(--mark)}
-  .s-EXPIRE{color:var(--muted)} .s-ASSIGN{color:var(--print)}
+  /* The side is spelled out, so color only helps the eye find the sells. */
+  .s-BUY{color:var(--heading)} .s-SELL{color:var(--accent)}
+  .s-EXPIRE{color:var(--muted)} .s-ASSIGN{color:var(--heading)}
   table.tbl tr.wk-sep td{border-top:2px solid var(--line)}
   /* The two rows of one assignment, tinted as a single event. */
-  table.tbl tr.evt-pair td{background:rgba(201,133,0,.055)}
-  .pos{color:var(--mark)} .neg{color:var(--down)}
-  .rulebox{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  table.tbl tr.evt-pair td{background:rgba(194,107,29,.07)}
+  .pos{color:var(--up)} .neg{color:var(--down)}
+  .rulebox{background:var(--panel);border:0;box-shadow:var(--shadow);border-radius:10px;
     padding:20px 24px;margin:20px 0}
   .rulebox ol{margin:0;padding-left:22px;color:var(--text);line-height:1.75}
   .rulebox ol li{margin-bottom:12px}
-  .rulebox .tag{font-family:var(--mono);font-size:var(--fs-xs);color:var(--both);
+  .rulebox .tag{font-family:var(--font);font-size:var(--fs-xs);color:var(--accent);
     text-transform:uppercase;letter-spacing:.08em;font-weight:600;margin-right:8px}
-  .callout{border-left:3px solid var(--print);background:rgba(201,133,0,.07);
+  .callout{border-left:3px solid var(--accent);background:var(--tint);
     padding:14px 18px;border-radius:0 8px 8px 0;margin:18px 0;color:var(--text);
     font-size:var(--fs-base);line-height:1.65}
-  .callout.good{border-left-color:var(--mark);background:rgba(25,158,112,.07)}
-  .eqn{font-family:var(--mono);font-size:var(--fs-sm);color:var(--muted);
-    background:var(--panel-hi);border:1px solid var(--line);border-radius:8px;
+  .callout.good{border-left-color:var(--up);background:rgba(30,122,70,.06)}
+  .eqn{font-family:var(--mono);font-size:13px;color:var(--muted);
+    background:#FBFBFC;border:1px solid var(--line);border-radius:8px;
     padding:14px 18px;margin:14px 0;white-space:pre;overflow-x:auto;line-height:1.7}
   /* An inline grid-template-columns would outrank the shared stylesheet's
      phone-width media query and keep two cramped columns on a 390px screen,
@@ -51,16 +52,17 @@
   .reading{columns:auto}
   /* Part I holds what the assignment requires; Part II what goes beyond it.
      Each Part II section opens with the reason it was undertaken. */
-  .part{margin:72px 0 0;padding:20px 22px;border:1px solid var(--line);
-    border-left:3px solid var(--both);border-radius:0 10px 10px 0;background:var(--panel)}
+  .part{margin:72px 0 0;padding:20px 22px;border:0;
+    border-radius:10px;background:var(--panel);box-shadow:inset 3px 0 0 var(--accent),var(--shadow)}
   .part.first{margin-top:34px}
-  .part-label{font-size:var(--fs-xs);letter-spacing:.16em;text-transform:uppercase;
-    color:var(--both);font-weight:600;margin-bottom:6px}
-  .part-title{font-size:var(--fs-h2);font-weight:700;letter-spacing:-.018em;margin-bottom:8px}
+  .part-label{font-family:var(--font);font-size:var(--fs-xs);letter-spacing:.14em;text-transform:uppercase;
+    color:var(--accent);font-weight:500;margin-bottom:6px}
+  .part-title{font-family:var(--serif);color:var(--heading);font-size:var(--fs-h2);font-weight:600;
+    letter-spacing:-.01em;margin-bottom:8px}
   .part .lead-in{margin:0}
   .part + h2{margin-top:34px;border-top:none;padding-top:0}
-  .lead-in.motivation{border-left:3px solid var(--both);padding:4px 0 4px 16px;margin-bottom:14px}
-  nav .nav-sep{color:var(--faint);font-size:var(--fs-xs);letter-spacing:.12em;
+  .lead-in.motivation{border-left:3px solid var(--tint-line);padding:4px 0 4px 16px;margin-bottom:14px}
+  nav .nav-sep{color:var(--faint);font-family:var(--font);font-size:var(--fs-xs);letter-spacing:.12em;
     text-transform:uppercase;font-weight:600;margin:0 2px 0 12px}
   .reading.qa-grid,.reading.qa-grid.qa-two{grid-template-columns:1fr;gap:0}
   .reading.qa-grid .qa{margin-bottom:22px}

@@ -575,8 +575,10 @@ def rendered():
               .map(r => [...r.cells].map(c => c.innerText.trim())),
             lineBreaks: [...document.querySelectorAll('.js-plotly-plot')].slice(0, 2)
               .map(p => p.data.map(tr => (tr.y || []).filter(v => v === null).length)),
+            // textContent, not innerText: the header's wording, before the
+            // stylesheet's uppercase labels transform how it renders.
             ledgerHead: [...document.querySelectorAll('#tbl-ledger thead th')]
-              .map(e => e.innerText),
+              .map(e => e.textContent.trim()),
             ledgerRows: [...document.querySelectorAll('#tbl-ledger tbody tr')]
               .map(r => [...r.cells].map(c => c.innerText.trim())),
             scrollW: document.documentElement.scrollWidth,
@@ -1073,7 +1075,8 @@ class TestBlotterReadsUnambiguously:
             pg.goto(f"file://{PAGE.resolve()}", wait_until="load", timeout=90000)
             pg.wait_for_function(
                 "() => document.querySelectorAll('#tbl-blotter tbody tr').length > 4", timeout=90000)
-            hdr = pg.evaluate("() => [...document.querySelectorAll('#tbl-blotter thead th')].map(e => e.innerText)")
+            # textContent: the header's wording, not its uppercase rendering.
+            hdr = pg.evaluate("() => [...document.querySelectorAll('#tbl-blotter thead th')].map(e => e.textContent.trim())")
             cells = pg.evaluate("""() => [...document.querySelectorAll('#tbl-blotter tbody tr')]
                 .map(r => ({cls: r.className, after: r.children[7].innerText}))""")
             br.close()

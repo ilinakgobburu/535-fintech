@@ -4,6 +4,8 @@
    silently became false the moment the cache was rebuilt. */
 (function () {
   const D = DATA, TH = D.theme, M = D.meta, H = D.headline;
+  // On a phone the page scrolls instead of zooming; a desktop keeps drag-to-zoom.
+  const PHONE = window.matchMedia("(max-width: 640px)").matches;
 
   // ---- formatting -------------------------------------------------------
   const money = (v, dp = 0) => v === null || v === undefined || !isFinite(v)
@@ -280,17 +282,18 @@
   // again in the merge below -- and the duplication was invisible until a
   // mutation test changed one copy and the other quietly repaired it, making
   // a real bug (titles clipped off the canvas) look impossible to reach.
-  const TITLE_STYLE = { font: { size: 15, color: TH.text }, x: 0,
+  const TITLE_STYLE = { font: { size: 15, color: TH.heading }, x: 0,
     xanchor: "left", y: 0.985, yanchor: "top" };
 
   const baseLayout = extra => {
     const out = Object.assign({
-    paper_bgcolor: TH.base, plot_bgcolor: TH.panel,
-    font: { color: TH.text, family: TH.font, size: 12.5 },
+    paper_bgcolor: TH.panel, plot_bgcolor: TH.panel,
+    font: { color: TH.muted, family: TH.font, size: 12.5 },
+    dragmode: PHONE ? false : "zoom",
     margin: { l: 72, r: 72, t: 96, b: 46 },
     hovermode: "x unified",
-    hoverlabel: { bgcolor: TH.panel_hi, bordercolor: TH.line,
-      font: { family: TH.mono, size: 11, color: TH.text } },
+    hoverlabel: { bgcolor: TH.panel, bordercolor: TH.line,
+      font: { family: TH.font, size: 12, color: TH.text } },
     // Title and legend both sit above the plot, but Plotly measures them on
     // DIFFERENT scales: layout.title.y is normalized to the whole PAPER, while
     // legend.y is normalized to the PLOT AREA and may exceed 1. Giving both
@@ -298,7 +301,7 @@
     // was clipped away entirely, while the legend sat happily just above the
     // axes. So: title anchored near the top of the paper, legend just above
     // the axes, and a top margin wide enough for both.
-    legend: { bgcolor: "rgba(11,16,32,0.78)", bordercolor: TH.line, borderwidth: 1,
+    legend: { bgcolor: "rgba(255,255,255,0.85)", bordercolor: TH.line, borderwidth: 1,
       font: { size: 11, color: TH.text }, orientation: "h",
       y: 1.02, yanchor: "bottom", x: 0 },
     title: { ...TITLE_STYLE },
@@ -309,7 +312,7 @@
     return out;
   };
   const ax = (title, extra) => Object.assign({
-    gridcolor: TH.line_soft, zeroline: false, linecolor: TH.line,
+    gridcolor: TH.line_soft, zeroline: false, linecolor: TH.line, fixedrange: PHONE,
     tickfont: { size: 11, color: TH.muted },
     title: { text: title, font: { size: 11, color: TH.muted } },
   }, extra || {});
@@ -359,11 +362,11 @@
       xaxis: ax(""),
       yaxis: ax("NAV / account value", { tickformat: "$,.0f" }),
       yaxis2: { overlaying: "y", side: "right", tickformat: "$,.0f", rangemode: "tozero",
-        gridcolor: "rgba(0,0,0,0)", zeroline: false, linecolor: TH.line,
-        tickfont: { size: 11, color: TH.both },
-        title: { text: "margin requirement", font: { size: 11, color: TH.both } } },
+        gridcolor: "rgba(0,0,0,0)", zeroline: false, linecolor: TH.line, fixedrange: PHONE,
+        tickfont: { size: 11, color: TH.muted },
+        title: { text: "margin requirement", font: { size: 11, color: TH.muted } } },
       shapes: shade.map(([a, b]) => ({ type: "rect", xref: "x", yref: "paper",
-        x0: a, x1: b, y0: 0, y1: 1, fillcolor: "rgba(144,133,233,.07)",
+        x0: a, x1: b, y0: 0, y1: 1, fillcolor: "rgba(127,136,152,.10)",
         line: { width: 0 }, layer: "below" })),
     }));
   })();
@@ -404,7 +407,7 @@
     const lo = Math.min(...S.mid), hi = Math.max(...S.mid);
     draw("plot-scatter", [
       { x: S.mid, y: S.trd, type: "scattergl", mode: "markers", name: "hourly bars",
-        marker: { size: 5, opacity: .5, color: S.moneyness, colorscale: "Viridis",
+        marker: { size: 5, opacity: .5, color: S.moneyness, colorscale: [[0, "#A9BEDC"], [0.5, TH.mark], [1, TH.heading]],
           colorbar: { title: { text: "K / S", font: { size: 10, color: TH.muted } },
             tickfont: { size: 10, color: TH.muted }, thickness: 10, len: .7 } },
         customdata: S.moneyness.map((m, i) => [m, S.moves[i], S.spread[i], S.strike[i]]),
@@ -491,7 +494,7 @@
              from ${pct(D.bar_study.hourly.outside_pct)} to
              ${pct(D.bar_study.minute.outside_pct)}, which suggests that roughly two-thirds of
              the effect is due to sampling and the remainder is genuine (see the
-             <a href="#sec-bars" style="color:var(--both)">one-minute validation</a>).`
+             <a href="#sec-bars">one-minute validation</a>).`
           : `This limits the precision of the comparison and would motivate minute bars in a
              repeat study.`}</li>
       <li><strong>Effect of liquidity.</strong> Moving from one trade in the bar to
@@ -515,7 +518,7 @@
         conclusions are unchanged.</li>
       <li><strong>Further checks.</strong> The fit within narrow price bands, by moneyness
         and by liquidity, and a one-minute re-pull of the same contracts, are reported in
-        <a href="#sec-fill-more" style="color:var(--both)">Part II</a>.</li>
+        <a href="#sec-fill-more">Part II</a>.</li>
     </ul>`;
   })();
 
@@ -535,16 +538,16 @@
       xaxis: ax("order bar, UTC, labeled by the hour it ends"),
       yaxis: ax("premium collected", { tickformat: "$,.0f" }),
       yaxis2: { overlaying: "y", side: "right", tickformat: "$,.0f",
-        gridcolor: "rgba(0,0,0,0)", zeroline: false, linecolor: TH.line,
-        tickfont: { size: 11, color: TH.print },
-        title: { text: "final P&L", font: { size: 11, color: TH.print } } },
+        gridcolor: "rgba(0,0,0,0)", zeroline: false, linecolor: TH.line, fixedrange: PHONE,
+        tickfont: { size: 11, color: TH.muted },
+        title: { text: "final P&L", font: { size: 11, color: TH.muted } } },
     }));
 
     let h = `<thead><tr><th>Order bar (UTC, bar end)</th><th>Premium</th><th>Final NAV</th>`
       + `<th>P&L</th><th>Calls written</th><th>Assigned</th><th>Skipped</th></tr></thead><tbody>`;
     S.forEach(s => {
       const on = s.order_hour === M.order_hour;
-      h += `<tr${on ? ' style="background:var(--panel-hi)"' : ""}>`
+      h += `<tr${on ? ' style="background:var(--tint)"' : ""}>`
         + `<td>${String(s.order_hour).padStart(2, "0")}:00${on ? " ← booked" : ""}</td>`
         + `<td>${money(s.premium_collected)}</td><td>${money(s.final_nav)}</td>`
         + `<td class="${cls(s.pnl)}">${signed(s.pnl)}</td>`
@@ -607,7 +610,7 @@
       + `<th>Final NAV</th><th>P&L</th></tr></thead><tbody>`;
     R.forEach(r => {
       const on = r.rule === M.rule;
-      h += `<tr${on ? ' style="background:var(--panel-hi)"' : ""}>`
+      h += `<tr${on ? ' style="background:var(--tint)"' : ""}>`
         + `<td>${esc(nameOf(r))}${on ? " &nbsp;← booked" : ""}</td>`
         + `<td>${pct(r.median_otm_pct, 2)}</td><td>${money(r.median_premium, 2)}</td>`
         + `<td>${money(r.premium_collected)}</td>`

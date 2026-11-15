@@ -323,7 +323,8 @@ def build_payload(cache: Path) -> dict:
         "theme": {
             "base": T.BASE, "panel": T.PANEL, "panel_hi": T.PANEL_HI,
             "line": T.LINE, "line_soft": T.LINE_SOFT,
-            "text": T.TEXT, "muted": T.TEXT_MUTED, "faint": T.TEXT_FAINT,
+            "text": T.TEXT, "heading": T.HEADING, "muted": T.TEXT_MUTED, "faint": T.TEXT_FAINT,
+            "accent": T.ACCENT,
             "mark": T.MARK, "print": T.PRINT, "both": T.BOTH,
             "up": T.UP, "down": T.DOWN, "warn": T.WARN,
             "font": T.FONT, "mono": T.FONT_MONO,
@@ -346,9 +347,9 @@ def render_data_page(css: str, meta: dict) -> str:
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Covered Call \u00b7 Data</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>{css}
-  .callout{{border-left:3px solid var(--print);background:rgba(201,133,0,.07);
+  .callout{{border-left:3px solid var(--accent);background:var(--tint);
     padding:16px 20px;border-radius:0 8px 8px 0;margin:22px 0;line-height:1.65}}
 </style>
 </head>
@@ -367,7 +368,7 @@ def render_data_page(css: str, meta: dict) -> str:
 </header>
 <div class="callout" id="data-state"><strong>Data connection required.</strong> Pages is static
 hosting. LSEG Workspace and the Python desktop session exist only on a local machine, so nothing
-here fetches data at view time. The published book at <a href="hw2.html" style="color:var(--both)">hw2.html</a>
+here fetches data at view time. The published book at <a href="hw2.html">hw2.html</a>
 is unaffected: every figure on it is computed from the cached pull.</div>
 <h2>What is baked into the book</h2>
 <ul class="notes">
@@ -378,11 +379,11 @@ is unaffected: every figure on it is computed from the cached pull.</div>
 </ul>
 <h2>How to re-pull it</h2>
 <p class="notes">With LSEG Workspace running, from a local checkout:</p>
-<pre class="eqn" style="font-family:var(--mono);background:var(--panel-hi);border:1px solid var(--line);border-radius:8px;padding:14px 18px;overflow-x:auto">cd trading_app
+<pre class="eqn" style="font-family:var(--mono);font-size:13px;background:#FBFBFC;border:1px solid var(--line);border-radius:8px;padding:14px 18px;overflow-x:auto">cd trading_app
 python3 scripts/fetch_hw2.py --dry-run    # counts candidates, no session needed
 python3 scripts/fetch_hw2.py              # the real pull, writes the cache
 python3 scripts/build_hw2.py              # bakes it into docs/hw2.html</pre>
-<p class="notes"><a href="hw2.html" style="color:var(--both)">\u2190 Back to the blotter</a></p>
+<p class="notes"><a href="hw2.html">\u2190 Back to the blotter</a></p>
 </div>
 </body>
 </html>
