@@ -40,9 +40,14 @@ DAYS_BACK = 183   # calendar days requested, about six months of sessions
 MA_WINDOW = 20    # sessions in the moving average
 FIELDS = ["OPEN_PRC", "HIGH_1", "LOW_1", "TRDPRC_1", "ACVOL_UNS"]  # open, high, low, close, volume
 
-# Colours from the site's palette (docs/index.html), so the chart sits in the page.
-BG, GRID, TEXT, MUTED = "#141A2E", "#1D2438", "#E8ECF5", "#8792AB"
-UP, DOWN, AVERAGE, VOLUME = "#199e70", "#e5534b", "#9085e9", "#5A6580"
+# Colors from the site's "Modern serif" palette (trading_app/trading_app/theme.py),
+# so the chart sits in the page.
+BG, GRID, AXIS, TEXT, HEADING, MUTED = "#FFFFFF", "#EBEEF2", "#E1E5EB", "#1C2430", "#16263F", "#4E5868"
+FONT = "Inter, ui-sans-serif, system-ui, -apple-system, sans-serif"
+# Candles are context in ink: an up session is hollow and a down session filled,
+# so the fill, not a red/green pair, carries the direction.
+CANDLE_LINE, CANDLE_UP_FILL, CANDLE_DOWN_FILL = MUTED, BG, MUTED
+AVERAGE, VOLUME = "#2A5FA5", "#7F8898"    # the main series, and the gray context
 
 
 def fetch(ric: str) -> pd.DataFrame:
@@ -92,15 +97,15 @@ def chart(df: pd.DataFrame, ric: str) -> go.Figure:
                         row_heights=[0.76, 0.24], vertical_spacing=0.04)
     fig.add_trace(go.Candlestick(
         x=df.index, open=df["OPEN_PRC"], high=df["HIGH_1"], low=df["LOW_1"], close=close,
-        name=ric, increasing_line_color=UP, increasing_fillcolor=UP,
-        decreasing_line_color=DOWN, decreasing_fillcolor=DOWN,
+        name=ric, increasing_line_color=CANDLE_LINE, increasing_fillcolor=CANDLE_UP_FILL,
+        decreasing_line_color=CANDLE_LINE, decreasing_fillcolor=CANDLE_DOWN_FILL,
     ), row=1, col=1)
     fig.add_trace(go.Scatter(
         x=df.index, y=close.rolling(MA_WINDOW).mean(), name=f"{MA_WINDOW}-day average",
-        line=dict(color=AVERAGE, width=1.8), hovertemplate="%{y:.2f}<extra>20-day avg</extra>",
+        line=dict(color=AVERAGE, width=2), hovertemplate="%{y:.2f}<extra>20-day avg</extra>",
     ), row=1, col=1)
     fig.add_trace(go.Bar(
-        x=df.index, y=df["ACVOL_UNS"], name="Volume", marker_color=VOLUME,
+        x=df.index, y=df["ACVOL_UNS"], name="Volume", marker_color=VOLUME, marker_opacity=0.55,
         hovertemplate="%{y:,.0f}<extra>volume</extra>",
     ), row=2, col=1)
 
@@ -110,18 +115,21 @@ def chart(df: pd.DataFrame, ric: str) -> go.Figure:
                   f"<br><span style='font-size:12px;color:{MUTED}'>"
                   f"{span} · {len(df)} sessions<br>pulled {pulled}</span>"),
             x=0.01, xanchor="left", y=0.97, yanchor="top",
+            font=dict(color=HEADING, size=16),
         ),
         paper_bgcolor=BG, plot_bgcolor=BG,
-        font=dict(family="Inter, system-ui, sans-serif", color=TEXT, size=13),
+        font=dict(family=FONT, color=MUTED, size=13),
+        hoverlabel=dict(bgcolor=BG, bordercolor=AXIS, font=dict(family=FONT, color=TEXT, size=12)),
+        dragmode=False,   # on a phone the page scrolls instead of zooming
         # Legend under the chart so it never covers the title on a narrow screen.
         legend=dict(orientation="h", x=0, xanchor="left", y=-0.08, yanchor="top",
                     bgcolor="rgba(0,0,0,0)"),
         hovermode="x unified", showlegend=True,
         margin=dict(l=56, r=20, t=92, b=64), height=580,
     )
-    fig.update_xaxes(gridcolor=GRID, rangeslider_visible=False,
+    fig.update_xaxes(gridcolor=GRID, linecolor=AXIS, fixedrange=True, rangeslider_visible=False,
                      rangebreaks=[dict(bounds=["sat", "mon"])])   # hide weekends
-    fig.update_yaxes(gridcolor=GRID, zeroline=False)
+    fig.update_yaxes(gridcolor=GRID, linecolor=AXIS, fixedrange=True, zeroline=False)
     fig.update_yaxes(title_text="Price", row=1, col=1)
     fig.update_yaxes(title_text="Volume", row=2, col=1)
     return fig
@@ -130,10 +138,12 @@ def chart(df: pd.DataFrame, ric: str) -> go.Figure:
 def save(fig: go.Figure) -> None:
     html = fig.to_html(include_plotlyjs="cdn", full_html=True,
                        config={"displaylogo": False, "responsive": True})
-    # Match the page background inside the frame and keep the element out of search results.
+    # Match the page background inside the frame, load the site's chart font and keep
+    # the element out of search results.
     html = html.replace(
         "<head>",
         f'<head><meta name="robots" content="noindex">'
+        f'<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">'
         f"<style>html,body{{margin:0;background:{BG}}}</style>",
         1,
     )
