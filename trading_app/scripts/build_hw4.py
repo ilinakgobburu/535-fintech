@@ -524,16 +524,26 @@ const money = (x, dp = 0, sign = false) => x == null ? '–' :
 const pct = (x, dp = 1, sign = false) => x == null ? '–' : (x < 0 ? '−' : (sign && x > 0 ? '+' : '')) + Math.abs(x).toFixed(dp) + '%';
 const num = (x, dp = 2) => x == null ? '–' : (Math.abs(x) < 0.5 * 10 ** -dp ? 0 : x).toFixed(dp).replace('-', '−');   // no −0.00
 const cls = x => x == null ? '' : (x < 0 ? 'neg' : 'pos');
+// a token's color at an opacity, for fills: rgba('--series-1', 0.12)
+const rgba = (n, a) => { const v = parseInt(css(n).replace('#', ''), 16);
+  return `rgba(${v >> 16},${(v >> 8) & 255},${v & 255},${a})`; };
+// the heatmap: one hue, from the light panel to the main series; a 3D surface starts at the light tint line
+// instead, so its low end keeps its shape against the white scene
+const seq = (from = '--panel-hi') => [[0, css(from)], [1, css('--series-1')]];
+const PHONE = window.matchMedia('(max-width: 640px)').matches;
 
-// One chart style: the page's surface and type, hairline grid, legend above the plot, a dark tooltip.
+// One chart style: white surface, Inter text, hairline grid, legend above the plot, a white tooltip.
+// On a phone the axes are fixed, so a swipe scrolls the page instead of zooming the chart.
 function layout(o = {}) {
-  const axis = {gridcolor: css('--line-soft'), linecolor: css('--axis'), zeroline: false,
-                tickfont: {family: css('--mono'), color: css('--muted'), size: 10.5},
-                title: {font: {color: css('--muted'), size: 11}}};
+  const axis = {gridcolor: css('--line-soft'), linecolor: css('--line'), zeroline: false, ...(PHONE ? {fixedrange: true} : {}),
+                tickfont: {family: css('--font'), color: css('--muted'), size: 12},
+                title: {font: {family: css('--font'), color: css('--muted'), size: 12}}};
   return {paper_bgcolor: css('--panel'), plot_bgcolor: css('--panel'),
-    font: {family: css('--font'), color: css('--muted'), size: 11}, margin: {l: 70, r: 16, t: 30, b: 40},
-    hoverlabel: {bgcolor: css('--panel-hover'), bordercolor: css('--axis'), font: {family: css('--mono'), color: css('--text'), size: 11.5}},
-    legend: {orientation: 'h', x: 0, xanchor: 'left', y: 1.0, yanchor: 'bottom', font: {color: css('--text-2'), size: 11.5}},
+    font: {family: css('--font'), color: css('--muted'), size: 12}, margin: {l: 70, r: 16, t: 30, b: 40},
+    hoverlabel: {bgcolor: '#FFFFFF', bordercolor: css('--line'), font: {family: css('--font'), color: css('--text'), size: 12}},
+    legend: {orientation: 'h', x: 0, xanchor: 'left', y: 1.0, yanchor: 'bottom', bgcolor: 'rgba(255,255,255,0.85)',
+             font: {color: css('--muted'), size: 12}},
+    ...(PHONE ? {dragmode: false} : {}),
     ...o, xaxis: {...axis, ...(o.xaxis || {})}, yaxis: {...axis, ...(o.yaxis || {})}};
 }
 """
@@ -544,7 +554,8 @@ const P2 = /*__P2__*/null;
 let period = 'test';
 const LABELS = {wheel: 'Five wheels together', hold: 'Five stocks held', cash: 'T-bills', putw: 'Cboe PutWrite index',
                 covered_call: 'Five covered calls'};
-const COLORS = {wheel: '--wheel', hold: '--hold', cash: '--cash', putw: '--aqua', covered_call: '--hold-cc'};
+const COLORS = {wheel: '--wheel', hold: '--hold', cash: '--cash', putw: '--putw', covered_call: '--hold-cc'};
+const DASH = {covered_call: 'dot', putw: 'dash'};
 const tbl = (head, rows, left = 1) => '<div class="tbl-wrap"><table class="tbl small"><thead><tr>' +
   head.map((h, i) => `<th class="${i < left ? 'l' : ''}">${h}</th>`).join('') + '</tr></thead><tbody>' + rows.join('') + '</tbody></table></div>';
 
@@ -593,7 +604,7 @@ function navChart() {
   const N = P2[period].nav;
   Plotly.react('p2-nav', ['cash', 'hold', 'covered_call', 'putw', 'wheel'].filter(k => N[k]).map(k => ({
     x: N.date, y: N[k], name: LABELS[k], mode: 'lines',
-    line: {color: css(COLORS[k]), width: k === 'wheel' ? 2 : 1.5, dash: k === 'covered_call' ? 'dot' : 'solid'},
+    line: {color: css(COLORS[k]), width: k === 'wheel' ? 2 : 1.5, dash: DASH[k] || 'solid'},
     hovertemplate: '%{y:$,.0f}<extra>' + LABELS[k] + '</extra>'})),
     layout({hovermode: 'x unified', yaxis: {tickformat: '$,.0f'}}), {displayModeBar: false, responsive: true});
 }
@@ -613,203 +624,226 @@ show('test');
 
 STYLE = """
   /* ---- design tokens: restyle the page here -------------------------------
-     Terminal-style dark: crisp 1px rules, square corners, IBM Plex Sans for words
-     and IBM Plex Mono for every figure. Series colors validated for this surface
-     with the dataviz palette script (blue, orange, aqua pass every check). */
+     Modern serif, light: white cards on soft shadows, Source Serif 4 for reading
+     text, headings and big figures, Inter for labels, tables and chart text. The
+     first block is the style guide's, verbatim; the second names the roles this
+     page's charts read with getComputedStyle. */
   :root{
-    color-scheme:dark;
-    --base:#0A0D11; --panel:#0F1318; --panel-hi:#151A21; --panel-hover:#1A2029;
-    --line:#1F2630; --line-soft:#19202A; --axis:#2A323D;
-    --text:#E6E9EE; --text-2:#9BA3AE; --muted:#7D8590; --faint:#5B636E;
-    --accent:#3987e5; --accent-soft:rgba(57,135,229,.12);
-    --wheel:#3987e5; --wheel-bid:#7FB0EE; --hold:#d95926; --hold-cc:#F0A07A; --cash:#7D8590; --aqua:#199e70;
-    --up:#16C784; --down:#F0616D; --warn:#E8A93B;
-    --mk-put:#E8A93B; --mk-call:#d55181;   /* trade markers, checked against the blue wheel line */
-    --font:'IBM Plex Sans',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;
-    --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
-    --radius:2px;
+    --base:#F5F6F8; --panel:#FFFFFF; --panel-hi:#F0F2F5; --line:#E1E5EB; --line-soft:#EBEEF2;
+    --text:#1C2430; --heading:#16263F; --muted:#4E5868; --faint:#5F6878;
+    --accent:#2F5D8A; --accent-hover:#244B70; --tint:#E8EEF5; --tint-line:#B9CBDD;
+    --series-1:#2A5FA5; --series-2:#C26B1D; --series-3:#7F8898;
+    --up:#1E7A46; --down:#B42318;
+    --serif:'Source Serif 4',Georgia,serif; --font:'Inter',ui-sans-serif,system-ui,-apple-system,sans-serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --shadow:0 1px 2px rgba(22,38,63,.06),0 4px 14px rgba(22,38,63,.05);
+  }
+  :root{
+    /* the wheel is the main series, holding the stock the comparison, T-bills the context; the
+       covered call (dotted) and the PutWrite index (dashed) share a hue and differ by dash */
+    --wheel:var(--series-1); --wheel-bid:var(--series-1); --hold:var(--series-2); --hold-cc:var(--series-2);
+    --cash:var(--series-3); --putw:var(--series-3);
+    /* the wheel's trades: puts sold orange, calls sold in ink, also told apart by shape (down, up) */
+    --mk-put:var(--series-2); --mk-call:var(--heading);
   }
   *{box-sizing:border-box} html,body{margin:0;padding:0}
-  body{background:var(--base);color:var(--text);font-family:var(--font);font-size:13.5px;line-height:1.6;
+  body{background:var(--base);color:var(--text);font-family:var(--serif);font-size:17px;line-height:1.65;
     -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
-  .wrap{max-width:1440px;margin:0 auto;padding:0 24px 64px}
-  @media (max-width:640px){.wrap{padding:0 16px 48px}}
-  a{color:var(--accent);text-decoration:none} a:hover{text-decoration:underline}
-  ::selection{background:var(--accent-soft)}
-  .num,.code{font-family:var(--mono)}
-  .code{font-size:11.5px;color:var(--text-2)}
+  .wrap{max-width:1440px;margin:0 auto;padding:0 28px 96px}
+  @media (max-width:640px){body{font-size:16px} .wrap{padding:0 16px 64px}}
+  a{color:var(--accent);text-decoration:none} a:hover{color:var(--accent-hover);text-decoration:underline}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  ::selection{background:var(--tint)}
+  .num{font-family:var(--font);font-variant-numeric:tabular-nums}
+  .code{font-family:var(--mono);font-size:.8em;color:var(--text);background:var(--panel-hi);border:1px solid var(--line-soft);
+    border-radius:4px;padding:1px 5px}
 
-  /* ---- site header: a terminal tab bar ------------------------------------- */
-  .site{position:sticky;top:0;z-index:30;display:flex;align-items:stretch;gap:28px;flex-wrap:wrap;
-    margin:0 -24px;padding:0 24px;min-height:50px;background:var(--base);border-bottom:1px solid var(--line)}
-  .site .brand{display:flex;align-items:center;gap:10px;color:var(--text);text-decoration:none}
-  .site .brand:hover{text-decoration:none}
-  .site .brand .sym{font:600 12px/1 var(--mono);color:var(--accent);border:1px solid var(--accent);padding:5px 7px;
-    border-radius:var(--radius);letter-spacing:.04em}
-  .site .brand .co{font-weight:600;font-size:14px}
-  .site .brand .name{color:var(--muted);font-size:12.5px;padding-left:10px;border-left:1px solid var(--line)}
-  .pages{display:flex;align-items:stretch;gap:22px}
-  .pages a{display:flex;align-items:center;color:var(--muted);font-size:12px;font-weight:500;letter-spacing:.06em;
-    text-transform:uppercase;border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
-  .pages a:hover{color:var(--text);text-decoration:none}
-  .pages a.on{color:var(--text);border-bottom-color:var(--accent)}
+  /* ---- site header: the sticky nav ---------------------------------------- */
+  .site{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:28px;flex-wrap:wrap;
+    margin:0 -28px;padding:0 28px;min-height:58px;background:rgba(245,246,248,.92);
+    -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);font-family:var(--font)}
+  .site .brand{display:flex;align-items:center;gap:10px;color:var(--heading);text-decoration:none}
+  .site .brand:hover{text-decoration:none;color:var(--heading)}
+  .site .brand .sym{font:600 12px/1 var(--font);color:var(--accent);background:var(--tint);border:1px solid var(--tint-line);
+    padding:5px 7px;border-radius:6px;letter-spacing:.04em}
+  .site .brand .co{font-family:var(--serif);font-weight:600;font-size:20px;color:var(--heading)}
+  .site .brand .name{color:var(--muted);font-size:13px;padding-left:10px;border-left:1px solid var(--line)}
+  .pages{display:flex;align-items:center;gap:6px}
+  .pages a{display:flex;align-items:center;color:var(--muted);font-size:12px;font-weight:500;letter-spacing:.08em;
+    text-transform:uppercase;padding:6px 10px;border-radius:6px;white-space:nowrap}
+  .pages a:hover{color:var(--accent);background:var(--tint);text-decoration:none}
+  .pages a.on{color:var(--accent);background:var(--tint)}
   .site .right{margin-left:auto;display:flex;gap:8px;align-items:center}
-  .site .right a{font-size:11.5px;font-weight:500;letter-spacing:.05em;text-transform:uppercase;padding:6px 10px;
-    border-radius:var(--radius);white-space:nowrap;border:1px solid var(--line);color:var(--text-2)}
-  .site .right a:hover{text-decoration:none;color:var(--text);border-color:var(--axis);background:var(--panel)}
-  .site .right a.hot{color:var(--accent);border-color:rgba(57,135,229,.55)}
-  .site .right a.hot:hover{background:var(--accent-soft);color:#fff}
-  @media (max-width:900px){.site{position:static;margin:0 -16px;padding:8px 16px;gap:10px 22px}
-    .site .right{margin-left:0} .pages{flex-wrap:wrap;gap:0 18px;max-width:100%} .pages a{padding:8px 0;white-space:normal}}
+  .site .right a{font-size:12px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;padding:6px 10px;
+    border-radius:6px;white-space:nowrap;border:1px solid var(--line);color:var(--muted);background:var(--panel)}
+  .site .right a:hover{text-decoration:none;color:var(--accent);border-color:var(--tint-line);background:var(--tint)}
+  .site .right a.hot{color:var(--accent);background:var(--tint);border-color:var(--tint-line)}
+  .site .right a.hot:hover{color:var(--accent-hover);border-color:var(--accent)}
+  @media (max-width:900px){.site{position:static;padding:10px 28px;gap:10px 22px}
+    .site .right{margin-left:0} .pages{flex-wrap:wrap;gap:2px 4px;max-width:100%} .pages a{padding:7px 10px;white-space:normal}}
+  @media (max-width:640px){.site{margin:0 -16px;padding:10px 16px}}
 
   /* ---- page heading and the facts strip ----------------------------------- */
-  .part{margin:22px 0 12px;scroll-margin-top:66px}
-  .part .no{display:block;font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
-  .part h2{margin:6px 0 4px;font-size:22px;line-height:1.25;font-weight:600;letter-spacing:-.005em}
-  .part .what{display:block;color:var(--text-2);font-size:13.5px;max-width:90ch}
-  .meta{display:flex;flex-wrap:wrap;margin:14px 0 4px;border:1px solid var(--line);border-radius:var(--radius);
-    background:var(--panel)}
-  .meta .chip{display:flex;flex-direction:column;gap:3px;padding:9px 16px;border-right:1px solid var(--line)}
-  .meta .chip i{font-style:normal;font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
-  .meta .chip b{font:500 12.5px/1.3 var(--mono);color:var(--text)}
+  .part{margin:34px 0 14px;scroll-margin-top:74px}
+  .part .no{display:block;font-family:var(--font);font-size:12px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--accent)}
+  .part h2{margin:10px 0 8px;font-family:var(--serif);font-size:38px;line-height:1.15;font-weight:600;letter-spacing:-.01em;
+    color:var(--heading)}
+  .part .what{display:block;color:var(--muted);font-size:19px;line-height:1.55;max-width:75ch}
+  @media (max-width:640px){.part h2{font-size:28px} .part .what{font-size:17px}}
+  .meta{display:flex;flex-wrap:wrap;margin:20px 0 4px;border-radius:10px;background:var(--panel);box-shadow:var(--shadow)}
+  .meta .chip{display:flex;flex-direction:column;gap:3px;padding:12px 18px;border-right:1px solid var(--line-soft)}
+  .meta .chip i{font-style:normal;font-family:var(--font);font-size:12px;font-weight:600;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--faint)}
+  .meta .chip b{font:500 14px/1.35 var(--font);font-variant-numeric:tabular-nums;color:var(--heading)}
 
-  /* ---- layout and panels -------------------------------------------------- */
-  .grid{display:grid;gap:12px;margin:12px 0}
+  /* ---- layout and panels: white cards on soft shadows ---------------------- */
+  .grid{display:grid;gap:16px;margin:16px 0}
   .g-2-1{grid-template-columns:minmax(0,2fr) minmax(0,1fr)}
   .g-1-1{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
   @media (max-width:1300px){.g-2-1,.g-1-1{grid-template-columns:minmax(0,1fr)}}
-  .g-3{display:grid;gap:12px;grid-template-columns:repeat(3,minmax(0,1fr))}
+  .g-3{display:grid;gap:16px;grid-template-columns:repeat(3,minmax(0,1fr))}
   @media (max-width:800px){.g-3{grid-template-columns:minmax(0,1fr)}}
-  .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);min-width:0;
-    display:flex;flex-direction:column;scroll-margin-top:66px}
-  .panel > .ph{display:flex;align-items:center;gap:10px;min-height:36px;padding:0 14px;border-bottom:1px solid var(--line);
-    font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--text-2)}
-  .panel > .ph .tag{margin-left:auto;font:400 11px var(--mono);letter-spacing:0;text-transform:none;color:var(--muted);text-align:right}
-  .panel > .pb{padding:14px;min-width:0}
-  .panel > .pb.flush{padding:4px 6px 6px}
-  .prose{color:var(--text-2);line-height:1.7;max-width:none}
-  .prose strong{color:var(--text);font-weight:600}
-  .prose p{margin:0 0 10px} .prose p:last-child{margin-bottom:0}
-  .prose ul{padding-left:16px;margin:0} .prose li{margin-bottom:8px} .prose li::marker{color:var(--faint)}
-  .prose.lead{font-size:14.5px;color:var(--text);line-height:1.7}
-  .sub{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600;margin:18px 0 8px}
-  .cap{font-size:12.5px;color:var(--muted);margin-top:10px;line-height:1.55}
-  .todo{border:1px dashed var(--warn);color:var(--warn);padding:8px 12px;font-size:12.5px}
+  .panel{background:var(--panel);border:0;border-radius:10px;box-shadow:var(--shadow);min-width:0;
+    display:flex;flex-direction:column;scroll-margin-top:74px}
+  .panel > .ph{display:flex;align-items:center;gap:10px;min-height:46px;padding:0 18px;border-bottom:1px solid var(--line-soft);
+    font-family:var(--font);font-size:12px;font-weight:600;letter-spacing:.11em;text-transform:uppercase;color:var(--faint)}
+  .panel > .ph .tag{margin-left:auto;font:400 13px var(--font);letter-spacing:0;text-transform:none;color:var(--faint);
+    text-align:right;font-variant-numeric:tabular-nums}
+  .panel > .pb{padding:18px;min-width:0}
+  .panel > .pb.flush{padding:6px 8px 8px}
+  .prose{color:var(--text);font-family:var(--serif);line-height:1.65;max-width:none}
+  .prose > p,.prose > ul{max-width:82ch}
+  .prose strong{color:var(--heading);font-weight:600}
+  .prose p{margin:0 0 12px} .prose p:last-child{margin-bottom:0}
+  .prose ul{padding-left:20px;margin:0} .prose li{margin-bottom:8px} .prose li::marker{color:var(--faint)}
+  .prose.lead{font-size:19px;color:var(--text);line-height:1.6}
+  @media (max-width:640px){.prose.lead{font-size:17px}}
+  .sub{font-family:var(--font);font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);font-weight:600;
+    margin:24px 0 8px}
+  .cap{font-family:var(--font);font-size:13.5px;color:var(--muted);margin-top:10px;line-height:1.55}
+  .todo{border-left:3px solid var(--accent);background:var(--tint);border-radius:0 8px 8px 0;color:var(--text);
+    padding:10px 14px;font-family:var(--font);font-size:13.5px}
 
-  /* ---- period switch and the KPI strip ------------------------------------ */
-  .switch{display:inline-flex;margin:18px 0 0;border:1px solid var(--line);border-radius:var(--radius);
-    background:var(--panel);scroll-margin-top:66px;max-width:100%;overflow-x:auto}
-  .switch button{font:inherit;font-size:12px;font-weight:500;letter-spacing:.04em;color:var(--muted);background:none;border:none;
-    border-right:1px solid var(--line);padding:8px 14px;cursor:pointer;white-space:nowrap}
-  .switch button:last-child{border-right:none}
-  .switch button:hover{color:var(--text)}
-  .switch button.on{color:var(--text);background:var(--panel-hover);box-shadow:inset 0 -2px 0 var(--accent)}
-  .kpis{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));margin:12px 0;border:1px solid var(--line);
-    border-radius:var(--radius);background:var(--panel)}
+  /* ---- period switch and the KPI tiles ------------------------------------ */
+  .switch{display:inline-flex;gap:2px;margin:24px 0 0;padding:3px;border:1px solid var(--line);border-radius:8px;
+    background:var(--panel);scroll-margin-top:74px;max-width:100%;overflow-x:auto;font-family:var(--font)}
+  .switch button{font:inherit;font-size:13px;font-weight:500;letter-spacing:.01em;color:var(--muted);background:none;border:none;
+    border-radius:6px;padding:7px 14px;cursor:pointer;white-space:nowrap}
+  .switch button:hover{color:var(--accent);background:var(--tint)}
+  .switch button.on{color:#fff;background:var(--accent)}
+  .kpis{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:12px;margin:14px 0 16px}
   @media (max-width:1280px){.kpis{grid-template-columns:repeat(4,minmax(0,1fr))}}
-  @media (max-width:640px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
-  .kpi{padding:11px 14px 12px;min-width:0;position:relative;border-right:1px solid var(--line);border-bottom:1px solid var(--line);
-    margin:0 -1px -1px 0}
-  .kpi .k{font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);
+  @media (max-width:640px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}}
+  .kpi{padding:14px 16px 15px;min-width:0;position:relative;background:var(--panel);border-radius:10px;box-shadow:var(--shadow)}
+  .kpi .k{font-family:var(--font);font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);
     padding-right:20px;line-height:1.35}
-  .kpi .v{font:500 20px/1.2 var(--mono);letter-spacing:-.02em;margin-top:7px}
-  .kpi .d{font:400 11.5px/1.4 var(--mono);color:var(--muted);margin-top:5px}
-  .kpi .tip{position:absolute;top:10px;right:10px;margin:0}
-  .pos{color:var(--up)} .neg{color:var(--down)}
+  .kpi .v{font:600 30px/1.15 var(--serif);font-variant-numeric:tabular-nums;color:var(--heading);letter-spacing:-.01em;margin-top:8px}
+  .kpi .d{font:400 13px/1.45 var(--font);font-variant-numeric:tabular-nums;color:var(--muted);margin-top:6px}
+  .kpi .tip{position:absolute;top:12px;right:12px;margin:0}
+  @media (max-width:640px){.kpi{padding:12px 13px 13px} .kpi .v{font-size:24px}}
+  .pos,.kpi .v.pos{color:var(--up)} .neg,.kpi .v.neg{color:var(--down)}
 
-  /* ---- tables ------------------------------------------------------------- */
+  /* ---- tables: Inter, tabular figures, hairline rows ------------------------ */
   .tbl-wrap{overflow-x:auto;max-width:100%}
-  table.tbl{border-collapse:collapse;width:100%;font-size:12.5px}
-  table.tbl th,table.tbl td{padding:7px 10px;border-bottom:1px solid var(--line-soft);text-align:right;white-space:nowrap}
-  table.tbl th{color:var(--muted);font-weight:600;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;
-    background:var(--panel-hi);border-bottom:1px solid var(--line)}
-  table.tbl td{color:var(--text);font-family:var(--mono);font-size:12px}
-  table.tbl td.l{font-family:var(--font);font-size:12.5px}
-  table.tbl td.l.num{font-family:var(--mono);font-size:12px}
+  table.tbl{border-collapse:collapse;width:100%;font-family:var(--font);font-size:14px;font-variant-numeric:tabular-nums}
+  table.tbl th,table.tbl td{padding:9px 12px;border-bottom:1px solid var(--line-soft);text-align:right;white-space:nowrap}
+  table.tbl th{color:var(--faint);font-weight:600;font-size:12px;letter-spacing:.06em;text-transform:uppercase;
+    background:var(--panel-hi);border-bottom:1px solid var(--line-soft)}
+  table.tbl td{color:var(--text);font-family:var(--font);font-size:14px}
+  table.tbl td.l{font-family:var(--font);font-size:14px}
+  table.tbl td.l.num{font-family:var(--font);font-size:14px}
   table.tbl .l{text-align:left}
-  table.tbl tbody tr:hover td{background:var(--panel-hi)}
+  table.tbl tbody tr:hover td{background:var(--base)}
   table.tbl tbody tr:last-child td{border-bottom:none}
-  table.tbl tr.hi td{background:var(--accent-soft)} table.tbl tr.hi td:first-child{box-shadow:inset 2px 0 0 var(--accent)}
-  table.tbl.verdict td{white-space:normal;vertical-align:middle;padding-top:9px;padding-bottom:9px}
-  table.tbl.verdict td:first-child{color:var(--text);font-weight:500;width:24%}
-  table.tbl.verdict td:nth-child(2){color:var(--text-2)}
-  table.tbl.verdict td:nth-child(3){font-family:var(--mono);font-size:12px}
-  table.tbl.small td,table.tbl.small th{padding:6px 9px}
+  table.tbl tr.hi td{background:var(--tint)} table.tbl tr.hi td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
+  table.tbl.verdict td{white-space:normal;vertical-align:middle;padding-top:12px;padding-bottom:12px}
+  table.tbl.verdict td:first-child{color:var(--heading);font-weight:600;width:24%}
+  table.tbl.verdict td:nth-child(2){color:var(--muted)}
+  table.tbl.verdict td:nth-child(3){font-family:var(--font);font-size:14px}
+  table.tbl.small td,table.tbl.small th{padding:7px 10px}
+  @media (max-width:640px){table.tbl th,table.tbl td{padding:8px 9px}
+    table.tbl td,table.tbl td.l,table.tbl td.l.num,table.tbl.verdict td:nth-child(3){font-size:13px}}
   #bench table.tbl td.l{white-space:normal;min-width:7em}       /* long row names wrap, so every column stays in view */
-  table.tbl.screen th,table.tbl.screen td{padding:6px 8px} table.tbl.screen td:last-child{text-align:left}
+  table.tbl.screen th,table.tbl.screen td{padding:7px 9px} table.tbl.screen td:last-child{text-align:left}
   table.tbl tbody tr.click{cursor:pointer}
-  table.tbl tbody tr.sel td{background:var(--accent-soft)}
-  .note{display:block;min-width:280px;white-space:normal;color:var(--muted);font:400 12px/1.45 var(--font)}
-  .st{display:inline-flex;align-items:center;gap:5px;padding:2px 7px;border-radius:var(--radius);font:600 10.5px/1.5 var(--font);
+  table.tbl tbody tr.sel td{background:var(--tint)}
+  .note{display:block;min-width:280px;white-space:normal;color:var(--muted);font:400 13px/1.45 var(--font)}
+  .st{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:999px;font:600 11px/1.5 var(--font);
     letter-spacing:.07em;text-transform:uppercase;white-space:nowrap;border:1px solid transparent}
-  .st-good{color:var(--up);background:rgba(22,199,132,.08);border-color:rgba(22,199,132,.35)}
-  .st-bad{color:var(--down);background:rgba(240,97,109,.08);border-color:rgba(240,97,109,.35)}
-  .st-neutral{color:var(--warn);background:rgba(232,169,59,.08);border-color:rgba(232,169,59,.35)}
-  .faint{color:var(--muted)}
-  .ev-open{color:var(--accent)} .ev-close{color:var(--muted)} .ev-assign{color:var(--warn)} .ev-stock{color:var(--up)}
-  .ev-div{color:var(--text-2)}
+  .st-good{color:var(--up);background:rgba(30,122,70,.08);border-color:rgba(30,122,70,.32)}
+  .st-bad{color:var(--down);background:rgba(180,35,24,.07);border-color:rgba(180,35,24,.32)}
+  .st-neutral{color:var(--accent);background:var(--tint);border-color:var(--tint-line)}
+  .faint{color:var(--faint)}
+  .ev-open{color:var(--accent)} .ev-close{color:var(--muted)} .ev-assign{color:var(--heading);font-weight:600}
+  .ev-stock{color:var(--text)} .ev-div{color:var(--muted)}
 
   /* ---- rules, tabs, details ----------------------------------------------- */
-  dl.rules{margin:0;display:grid;grid-template-columns:150px minmax(0,1fr);font-size:12.5px}
-  dl.rules dt,dl.rules dd{padding:8px 0;border-bottom:1px solid var(--line-soft)}
-  dl.rules dt{color:var(--muted);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;padding-top:10px;padding-right:14px}
-  dl.rules dd{margin:0;color:var(--text-2);line-height:1.55}
+  dl.rules{margin:0;display:grid;grid-template-columns:160px minmax(0,1fr)}
+  dl.rules dt,dl.rules dd{padding:9px 0;border-bottom:1px solid var(--line-soft)}
+  dl.rules dt{font-family:var(--font);color:var(--faint);font-size:12px;font-weight:600;letter-spacing:.08em;
+    text-transform:uppercase;padding-top:12px;padding-right:14px}
+  dl.rules dd{margin:0;color:var(--text);font-family:var(--serif);font-size:16px;line-height:1.6}
   @media (max-width:640px){dl.rules{grid-template-columns:minmax(0,1fr)} dl.rules dt{border-bottom:none;padding-bottom:0}}
-  .tabs{display:flex;gap:22px;flex-wrap:wrap;padding:0 14px;border-bottom:1px solid var(--line)}
-  .tabs button{font:inherit;font-size:11.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);
-    background:none;border:none;border-bottom:2px solid transparent;padding:11px 0 10px;cursor:pointer;margin-bottom:-1px}
-  .tabs button:hover{color:var(--text)}
-  .tabs button.on{color:var(--text);border-bottom-color:var(--accent)}
-  .pane{display:none;padding:12px 14px 14px} .pane.on{display:block}
-  .pane .tbl-wrap{max-height:560px;overflow-y:auto;border:1px solid var(--line)}
+  .tabs{display:flex;gap:24px;flex-wrap:wrap;padding:0 18px;border-bottom:1px solid var(--line-soft);font-family:var(--font)}
+  .tabs button{font:inherit;font-size:12px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);
+    background:none;border:none;border-bottom:2px solid transparent;padding:15px 0 12px;cursor:pointer;margin-bottom:-1px}
+  .tabs button:hover{color:var(--heading)}
+  .tabs button.on{color:var(--heading);border-bottom-color:var(--accent)}
+  .pane{display:none;padding:16px 18px 18px} .pane.on{display:block}
+  .pane .tbl-wrap{max-height:560px;overflow-y:auto;border:1px solid var(--line-soft);border-radius:8px}
   .pane table.tbl thead th{position:sticky;top:0;z-index:1}
-  details{margin-top:12px}
-  details summary{cursor:pointer;color:var(--text-2);font-size:12.5px;font-weight:500;padding:6px 0;list-style:none}
-  details summary::before{content:"+";display:inline-block;width:16px;font-family:var(--mono);color:var(--accent)}
+  details{margin-top:14px}
+  details summary{cursor:pointer;color:var(--accent);font-family:var(--font);font-size:14px;font-weight:500;padding:6px 0;
+    list-style:none}
+  details summary:hover{color:var(--accent-hover)}
+  details summary::before{content:"+";display:inline-block;width:16px;font-family:var(--font);color:var(--accent)}
   details[open] > summary::before{content:"−"}
   details.panel{display:block;margin-top:0;align-self:start}
   details.panel > summary.ph{cursor:pointer;list-style:none}
-  details.panel > summary.ph:hover{color:var(--text)}
+  details.panel > summary.ph:hover{color:var(--heading)}
   details.panel:not([open]) > summary.ph{border-bottom:none}
   details summary::-webkit-details-marker{display:none}
 
   /* ---- the portfolio on any date ----------------------------------------- */
-  .pf-controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .pf-controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-family:var(--font)}
   .pf-controls input[type=range]{flex:1 1 260px;accent-color:var(--accent)}
-  .pf-controls input[type=date],.pf-controls button{font:500 12px var(--font);background:var(--panel-hi);color:var(--text);
-    border:1px solid var(--line);border-radius:var(--radius);padding:6px 10px;cursor:pointer;color-scheme:dark}
-  .pf-controls input[type=date]{font-family:var(--mono)}
-  .pf-controls select{font:500 12px var(--mono);background:var(--panel-hi);color:var(--text);border:1px solid var(--line);
-    border-radius:var(--radius);padding:6px 10px;cursor:pointer;color-scheme:dark;max-width:100%}
-  .pf-controls button:hover{border-color:var(--axis);background:var(--panel-hover)}
-  .pf{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));margin-top:12px;border:1px solid var(--line);border-radius:var(--radius)}
+  .pf-controls input[type=date],.pf-controls button{font:500 13px var(--font);background:var(--panel);color:var(--text);
+    border:1px solid var(--line);border-radius:6px;padding:6px 10px;cursor:pointer}
+  .pf-controls input[type=date]{font-variant-numeric:tabular-nums}
+  .pf-controls select{font:500 13px var(--font);background:var(--panel);color:var(--text);border:1px solid var(--line);
+    border-radius:6px;padding:6px 10px;cursor:pointer;max-width:100%}
+  .pf-controls button:hover{color:var(--accent);border-color:var(--tint-line);background:var(--tint)}
+  .pf{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));margin-top:14px;border:1px solid var(--line-soft);
+    border-radius:8px;overflow:hidden}
   @media (max-width:1000px){.pf{grid-template-columns:repeat(2,minmax(0,1fr))}}
   @media (max-width:520px){.pf{grid-template-columns:minmax(0,1fr)}}
-  .pf .cell{padding:11px 14px;min-width:0;border-right:1px solid var(--line);border-bottom:1px solid var(--line);margin:0 -1px -1px 0}
-  .pf .cell .k{font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
-  .pf .cell .v{font:500 18px/1.25 var(--mono);letter-spacing:-.02em;margin-top:6px}
-  .pf .cell .d{font:400 11.5px/1.6 var(--mono);color:var(--muted);margin-top:4px}
-  .pf-eq{font:400 12px/1.6 var(--mono);color:var(--muted);margin-top:12px;overflow-wrap:anywhere}
-  .pf-eq b{color:var(--text);font-weight:500}
-  .pf-events{margin-top:10px;font:400 12px/1.6 var(--mono);color:var(--text-2)}
-  .pf-events div{padding:5px 0;border-top:1px solid var(--line-soft)}
+  .pf .cell{padding:12px 16px;min-width:0;border-right:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft);
+    margin:0 -1px -1px 0}
+  .pf .cell .k{font-family:var(--font);font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+  .pf .cell .v{font:600 22px/1.25 var(--serif);font-variant-numeric:tabular-nums;color:var(--heading);margin-top:6px}
+  .pf .cell .d{font:400 13px/1.55 var(--font);font-variant-numeric:tabular-nums;color:var(--muted);margin-top:4px}
+  .pf-eq{font:400 14px/1.6 var(--font);font-variant-numeric:tabular-nums;color:var(--muted);margin-top:12px;overflow-wrap:anywhere}
+  .pf-eq b{color:var(--heading);font-weight:600}
+  .pf-events{margin-top:10px;font:400 13.5px/1.6 var(--font);font-variant-numeric:tabular-nums;color:var(--muted)}
+  .pf-events div{padding:6px 0;border-top:1px solid var(--line-soft)}
   .pf-events .sub{border-top:none;font-family:var(--font)}
 
   /* ---- next / previous page ----------------------------------------------- */
-  a.next{display:flex;align-items:center;margin:16px 0 0;padding:13px 16px;border:1px solid var(--line);
-    border-radius:var(--radius);background:var(--panel);color:var(--text-2);font-size:12px;font-weight:600;
-    letter-spacing:.07em;text-transform:uppercase}
-  a.next:hover{text-decoration:none;color:var(--text);border-color:var(--accent)}
+  a.next{display:flex;align-items:center;margin:20px 0 0;padding:15px 18px;border:0;border-radius:10px;
+    background:var(--panel);box-shadow:var(--shadow);color:var(--accent);font-family:var(--font);font-size:12px;font-weight:600;
+    letter-spacing:.08em;text-transform:uppercase}
+  a.next:hover{text-decoration:none;color:var(--accent-hover);box-shadow:inset 0 0 0 1px var(--tint-line),var(--shadow)}
 
   /* ---- hover notes -------------------------------------------------------- */
   .fv{display:none} .fv.on{display:block}
-  .tip{position:relative;display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;
-    margin-left:6px;border:1px solid var(--axis);border-radius:50%;font:600 9.5px/1 var(--mono);color:var(--muted);
-    cursor:help;text-transform:none;letter-spacing:0;flex:none}
-  .tip:hover,.tip:focus{color:var(--text);border-color:var(--accent);outline:none}
-  .tip .bubble{display:none;position:absolute;top:calc(100% + 8px);right:-10px;z-index:40;width:290px;max-width:74vw;
-    padding:10px 12px;background:var(--panel-hover);border:1px solid var(--axis);border-radius:var(--radius);
-    box-shadow:0 12px 32px rgba(0,0,0,.6);color:var(--text-2);font:400 12.5px/1.55 var(--font);text-align:left;
+  .tip{position:relative;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;
+    margin-left:6px;border:1px solid var(--tint-line);border-radius:50%;background:var(--panel);font:600 10px/1 var(--font);
+    color:var(--accent);cursor:help;text-transform:none;letter-spacing:0;flex:none}
+  .tip:hover,.tip:focus{color:#fff;background:var(--accent);border-color:var(--accent);outline:none}
+  .tip .bubble{display:none;position:absolute;top:calc(100% + 8px);right:-10px;z-index:40;width:300px;max-width:74vw;
+    padding:12px 14px;background:var(--panel);border:1px solid var(--line);border-radius:8px;
+    box-shadow:0 12px 32px rgba(22,38,63,.16);color:var(--text);font:400 13.5px/1.55 var(--font);text-align:left;
     white-space:normal;letter-spacing:0;text-transform:none}
   .tip:hover .bubble,.tip:focus .bubble{display:block}
 """
@@ -820,10 +854,10 @@ let period = 'test';
 
 const LABELS = {wheel: 'Wheel', wheel_bid: 'Wheel (fills at the bid)', hold: 'Buy and hold MA', cash: 'T-bills',
                 putw: 'Cboe PutWrite index', covered_call: 'Covered call MA'};
-// the covered call is buy and hold's shares plus calls: a lighter step of buy and hold's orange, dotted, as the
-// wheel's bid line is a lighter, dotted blue (no fifth hue clears the checks against the other lines)
-const COLORS = {wheel: '--wheel', wheel_bid: '--wheel-bid', hold: '--hold', cash: '--cash', putw: '--aqua', covered_call: '--hold-cc'};
-const DASH = {wheel_bid: 'dot', covered_call: 'dot'};
+// three hues only: the covered call is buy and hold's shares plus calls, so buy and hold's orange, dotted; the
+// PutWrite index shares the T-bills' gray, dashed; the wheel's bid line would be the wheel's blue, dotted
+const COLORS = {wheel: '--wheel', wheel_bid: '--wheel-bid', hold: '--hold', cash: '--cash', putw: '--putw', covered_call: '--hold-cc'};
+const DASH = {wheel_bid: 'dot', covered_call: 'dot', putw: 'dash'};
 
 function eventName(e) {
   if (e.cp && e.side === 'SELL') return ['Sell to open: ' + (e.cp === 'P' ? 'cash-secured put' : 'covered call'), 'ev-open'];
@@ -868,10 +902,10 @@ function tradeMarkers(blotter, dates, values) {
   const idx = new Map(dates.map((d, i) => [d, i]));
   return [['Put sold', e => e.cp === 'P' && e.side === 'SELL', 'triangle-down', '--mk-put', 12],
           ['Call sold', e => e.cp === 'C' && e.side === 'SELL', 'triangle-up', '--mk-call', 12],
-          ['Assigned or called away', e => e.side === 'ASSIGN', 'x', '--text', 9]].map(([name, f, sym, color, size]) => {
+          ['Assigned or called away', e => e.side === 'ASSIGN', 'x', '--heading', 9]].map(([name, f, sym, color, size]) => {
     const ev = blotter.filter(f);
     return {x: ev.map(e => e.date), y: ev.map(e => values[idx.get(e.date)]), name, mode: 'markers',
-      marker: {symbol: sym, size, color: css(color), line: {color: css(sym === 'x' ? '--panel' : '--base'), width: sym === 'x' ? 2 : 1.5}},
+      marker: {symbol: sym, size, color: css(color), line: {color: css('--panel'), width: sym === 'x' ? 2 : 1.5}},
       text: ev.map(e => esc((e.kind === 'put' ? 'put ' : 'call ') + (e.occ || '') + ' at ' + num(e.price))),
       hovertemplate: '%{text}<extra>' + name + '</extra>'};
   });
@@ -1016,14 +1050,14 @@ function drawTabCharts() {
     const total = L.map(r => r[2] + r[3] * r[1]);
     Plotly.react('plot-hold', [
       {x, y: L.map((r, i) => 100 * r[2] / total[i]), name: 'Cash (incl. put collateral)', stackgroup: 'held', mode: 'none',
-       fillcolor: 'rgba(125,133,144,0.45)', hovertemplate: '%{y:.0f}%<extra>cash</extra>'},
+       fillcolor: rgba('--cash', 0.4), hovertemplate: '%{y:.0f}%<extra>cash</extra>'},
       {x, y: L.map((r, i) => 100 * r[3] * r[1] / total[i]), name: 'Mastercard shares', stackgroup: 'held', mode: 'none',
-       fillcolor: 'rgba(25,158,112,0.65)', hovertemplate: '%{y:.0f}%<extra>shares</extra>'}],
+       fillcolor: rgba('--hold', 0.7), hovertemplate: '%{y:.0f}%<extra>shares</extra>'}],
       layout({hovermode: 'x unified', margin: {l: 70, r: 16, t: 30, b: 36}, yaxis: {ticksuffix: '%', range: [0, 100]}}), cfg);
   }
   if ($('plot-dd').offsetParent) {
     Plotly.react('plot-dd', [{x: P.drawdown.date, y: P.drawdown.dd.map(v => 100 * v), mode: 'lines', name: 'Drawdown',
-      fill: 'tozeroy', line: {color: css('--wheel'), width: 1.5}, fillcolor: 'rgba(57,135,229,0.15)',
+      fill: 'tozeroy', line: {color: css('--wheel'), width: 2}, fillcolor: rgba('--wheel', 0.12),
       hovertemplate: '%{y:.2f}%<extra>drawdown</extra>'}],
       layout({showlegend: false, hovermode: 'x unified', margin: {l: 56, r: 16, t: 10, b: 36}, yaxis: {ticksuffix: '%'}}), cfg);
   }
@@ -1037,8 +1071,8 @@ function drawTabCharts() {
       hovertemplate: '%{y:$,.0f}<extra>' + what + '</extra>'});
     Plotly.react('plot-regt', [
       seg('Set aside for the put', bars.map(r => r[2]), css('--wheel'), 'set aside for the put'),
-      seg('Shares held (value)', bars.map(r => r[5]), css('--aqua'), 'shares'),
-      seg('Free cash', bars.map(r => r[3]), 'rgba(125,133,144,0.45)', 'free cash')],
+      seg('Shares held (value)', bars.map(r => r[5]), css('--hold'), 'shares'),
+      seg('Free cash', bars.map(r => r[3]), rgba('--cash', 0.45), 'free cash')],
       layout({barmode: 'stack', bargap: 0.35, hovermode: 'x unified', yaxis: {tickformat: '$,.0f'}}), cfg);
   }
 }
@@ -1063,26 +1097,26 @@ function smileAt(i) {
   if (typeof Plotly === 'undefined' || !$('plot-smile').offsetParent) return;
   const isPut = sm.m.map(m => m < 1);
   const traces = [
-    {x: sm.m.map(m => 100 * m), y: sm.iv.map(v => 100 * v), name: 'Smile', mode: 'lines', line: {color: css('--text-2'), width: 1.5},
+    {x: sm.m.map(m => 100 * m), y: sm.iv.map(v => 100 * v), name: 'Smile', mode: 'lines', line: {color: rgba('--series-3', 0.5), width: 1.5},
      hoverinfo: 'skip', showlegend: false},
     {x: sm.m.filter((_, i) => isPut[i]).map(m => 100 * m), y: sm.iv.filter((_, i) => isPut[i]).map(v => 100 * v),
-     name: 'Puts (below the close)', mode: 'markers', marker: {size: 8, color: css('--wheel')},
+     name: 'Puts (below the close)', mode: 'markers', marker: {size: 8, color: css('--series-1'), line: {color: css('--panel'), width: 1.5}},
      hovertemplate: 'strike %{x:.1f}% of close<br>implied vol %{y:.1f}%<extra>put</extra>'},
     {x: sm.m.filter((_, i) => !isPut[i]).map(m => 100 * m), y: sm.iv.filter((_, i) => !isPut[i]).map(v => 100 * v),
-     name: 'Calls (above the close)', mode: 'markers', marker: {size: 8, color: css('--aqua')},
+     name: 'Calls (above the close)', mode: 'markers', marker: {size: 8, color: css('--series-3'), line: {color: css('--panel'), width: 1.5}},
      hovertemplate: 'strike %{x:.1f}% of close<br>implied vol %{y:.1f}%<extra>call</extra>'}];
   const row = D.periods[period].ledger.find(r => r[0] === day);
   if (row && row[5] && row[8] === sm.expiry) {
     const m = row[7] / sm.spot, iv = smileInterp(sm, m);
     if (iv != null) traces.push({x: [100 * m], y: [100 * iv], name: row[5] === 'P' ? "The wheel's short put" : "The wheel's covered call",
       mode: 'markers', marker: {symbol: row[5] === 'P' ? 'triangle-down' : 'triangle-up', size: 15,
-      color: css(row[5] === 'P' ? '--mk-put' : '--mk-call'), line: {color: css('--base'), width: 1.5}},
+      color: css(row[5] === 'P' ? '--mk-put' : '--mk-call'), line: {color: css('--panel'), width: 2}},
       hovertemplate: 'strike ' + money(row[7], 0) + ' (%{x:.1f}% of close)<br>implied vol %{y:.1f}%<extra>the wheel</extra>'});
   }
   Plotly.react('plot-smile', traces, layout({hovermode: 'closest',
-    shapes: [{type: 'line', x0: 100, x1: 100, y0: 0, y1: 1, yref: 'paper', line: {color: css('--axis'), width: 1}}],
+    shapes: [{type: 'line', x0: 100, x1: 100, y0: 0, y1: 1, yref: 'paper', line: {color: css('--series-3'), width: 1}}],
     annotations: [{x: 100, y: 1, yref: 'paper', text: 'close', showarrow: false, yanchor: 'bottom',
-                   font: {family: css('--mono'), size: 10.5, color: css('--muted')}}],
+                   font: {family: css('--font'), size: 12, color: css('--muted')}}],
     xaxis: {title: {text: 'strike, % of the close'}, ticksuffix: '%'}, yaxis: {title: {text: 'implied vol'}, ticksuffix: '%'}}),
     {displayModeBar: false, responsive: true});
 }
@@ -1121,24 +1155,24 @@ function volCharts() {
          line: {color: css(color), width: 6}},
         {type: 'scatter3d', mode: 'markers', name, legendgroup: cp, showlegend: false,
          x: o.map(x => 100 * x.e.strike / close.get(x.e.date)), y: o.map(x => x.e.date), z: o.map(x => x.z),
-         marker: {size: 6, color: css(color), line: {color: css('--base'), width: 1}}, text: o.map(x => x.e.occ),
+         marker: {size: 6, color: css(color), line: {color: css('--panel'), width: 1}}, text: o.map(x => x.e.occ),
          hovertemplate: '%{text}<br>strike %{x:.1f}% of close<br>implied vol %{z:.1f}%<extra></extra>'}];
     };
-    const ax = (title, extra = {}) => ({title: {text: title, font: {color: css('--muted'), size: 11}}, color: css('--muted'),
-      gridcolor: css('--line'), zerolinecolor: css('--axis'), backgroundcolor: css('--panel'), showbackground: true,
-      tickfont: {family: css('--mono'), size: 10, color: css('--muted')}, ...extra});
+    const ax = (title, extra = {}) => ({title: {text: title, font: {family: css('--font'), color: css('--muted'), size: 12}},
+      color: css('--muted'), gridcolor: css('--line'), zerolinecolor: css('--line'), backgroundcolor: css('--panel'), showbackground: true,
+      tickfont: {family: css('--font'), size: 11, color: css('--muted')}, ...extra});
     Plotly.react('plot-surface', [
       {type: 'surface', x: S.grid.map(g => 100 * g), y: S.date, z: S.iv.map(row => row.map(v => v == null ? null : 100 * v)),
        cmin: q(0.03), cmax: q(0.97), connectgaps: false,
-       colorscale: [[0, '#0d366b'], [0.35, '#256abf'], [0.7, '#6da7ec'], [1, '#cde2fb']], showscale: true,
+       colorscale: seq('--tint-line'), showscale: true,
        colorbar: {title: {text: 'implied vol', side: 'right'}, ticksuffix: '%', thickness: 10, outlinewidth: 0, len: 0.7,
-                  tickfont: {family: css('--mono'), color: css('--muted'), size: 10}},
+                  tickfont: {family: css('--font'), color: css('--muted'), size: 11}},
        contours: {z: {show: false}}, lighting: {ambient: 0.85, diffuse: 0.4, specular: 0.05},
        hovertemplate: '%{y}<br>strike %{x:.1f}% of close<br>implied vol %{z:.1f}%<extra></extra>'},
       ...pins('P', 'Puts sold', '--mk-put'), ...pins('C', 'Calls sold', '--mk-call')],
       {paper_bgcolor: css('--panel'), font: {family: css('--font'), color: css('--muted'), size: 11},
-       margin: {l: 0, r: 0, t: 10, b: 0}, legend: {orientation: 'h', x: 0, y: 1.02, font: {color: css('--text-2')}},
-       hoverlabel: {bgcolor: css('--panel-hover'), bordercolor: css('--axis'), font: {family: css('--mono'), color: css('--text'), size: 11.5}},
+       margin: {l: 0, r: 0, t: 10, b: 0}, legend: {orientation: 'h', x: 0, y: 1.02, bgcolor: 'rgba(255,255,255,0.85)', font: {color: css('--muted'), size: 12}},
+       hoverlabel: {bgcolor: '#FFFFFF', bordercolor: css('--line'), font: {family: css('--font'), color: css('--text'), size: 12}},
        scene: {xaxis: ax('strike, % of close', {ticksuffix: '%', autorange: 'reversed'}), yaxis: ax('date'),
                zaxis: ax('implied vol', {ticksuffix: '%', range: [zLo, zHi]}),
                aspectmode: 'manual', aspectratio: {x: 1.25, y: 1.9, z: 0.75},
@@ -1154,14 +1188,14 @@ function volCharts() {
     const mk = (cp, name, sym, color) => {
       const ev = sold.filter(e => e.cp === cp);
       return {x: ev.map(e => e.date), y: ev.map(e => 100 * e.strike / close.get(e.date)), name, mode: 'markers', type: 'scatter',
-        marker: {symbol: sym, size: 10, color: css(color), line: {color: css('--base'), width: 1.5}},
+        marker: {symbol: sym, size: 10, color: css(color), line: {color: css('--panel'), width: 1.5}},
         text: ev.map(e => e.occ), hovertemplate: '%{text}<br>strike %{y:.1f}% of close<extra>' + name.toLowerCase() + '</extra>'};
     };
     Plotly.react('plot-surface', [
       {type: 'heatmap', x: S.date, y: S.grid.map(g => 100 * g), z, zmin: q(0.03), zmax: q(0.97),
-       colorscale: [[0, '#0d366b'], [0.35, '#256abf'], [0.7, '#6da7ec'], [1, '#cde2fb']],
+       colorscale: seq(),
        colorbar: {title: {text: 'implied vol', side: 'right'}, ticksuffix: '%', thickness: 10, outlinewidth: 0,
-                  tickfont: {family: css('--mono'), color: css('--muted'), size: 10}},
+                  tickfont: {family: css('--font'), color: css('--muted'), size: 11}},
        hovertemplate: '%{x}<br>strike %{y:.1f}% of close<br>implied vol %{z:.1f}%<extra></extra>'},
       mk('P', 'Puts sold', 'triangle-down', '--mk-put'), mk('C', 'Calls sold', 'triangle-up', '--mk-call')],
       layout({hovermode: 'closest', margin: {l: 58, r: 16, t: 34, b: 40},
@@ -1176,12 +1210,12 @@ function volCharts() {
     const seg = {x: [], y: []};
     c.forEach(x => { seg.x.push(x.entry, x.entry, null); seg.y.push(100 * x.iv, 100 * x.realised_vol, null); });
     Plotly.react('plot-vrp', [
-      {x: seg.x, y: seg.y, mode: 'lines', line: {color: css('--axis'), width: 2}, hoverinfo: 'skip', showlegend: false},
+      {x: seg.x, y: seg.y, mode: 'lines', line: {color: rgba('--series-3', 0.5), width: 2}, hoverinfo: 'skip', showlegend: false},
       {x: c.map(x => x.entry), y: c.map(x => 100 * x.iv), name: 'Implied vol, when sold', mode: 'markers',
-       marker: {size: 9, color: css('--wheel')}, text: c.map(x => x.occ || ''),
+       marker: {size: 9, color: css('--series-1'), line: {color: css('--panel'), width: 1.5}}, text: c.map(x => x.occ || ''),
        hovertemplate: '%{text}<br>implied %{y:.1f}%<extra></extra>'},
       {x: c.map(x => x.entry), y: c.map(x => 100 * x.realised_vol), name: 'Realized vol, to expiry', mode: 'markers',
-       marker: {size: 9, color: css('--text-2')}, hovertemplate: 'realized %{y:.1f}%<extra></extra>'}],
+       marker: {size: 9, color: css('--series-2'), line: {color: css('--panel'), width: 1.5}}, hovertemplate: 'realized %{y:.1f}%<extra></extra>'}],
       layout({hovermode: 'closest', yaxis: {ticksuffix: '%', rangemode: 'tozero'}}), cfg);
   }
   if ($('plot-gsurf').offsetParent) greekCharts(V.greeks, cfg);
@@ -1242,35 +1276,35 @@ function greekCharts(G, cfg) {
     return [{type: 'scatter3d', mode: 'lines', name, legendgroup: cp, x: X, y: Y, z: H, hoverinfo: 'skip',
              line: {color: css(color), width: one ? 7 : 4}},
             {type: 'scatter3d', mode: 'markers', name, legendgroup: cp, showlegend: false, x: hx, y: hy, z: hz, text: T,
-             customdata: hc, marker: {size: one ? 3.5 : 2, color: css(one ? '--text' : color), opacity: one ? 1 : 0},
+             customdata: hc, marker: {size: one ? 3.5 : 2, color: css(one ? '--panel' : color), opacity: one ? 1 : 0},
              hovertemplate: hov},
             {type: 'scatter3d', mode: 'markers', name, legendgroup: cp, showlegend: false,
              x: o.map(s => s.m[0]), y: o.map(s => s.dte[0]), z: o.map(s => s[k.key][0] + lift), text: o.map(s => s.occ + ' sold ' + s.date[0]),
              customdata: o.map(s => s[k.key][0]),
-             marker: {size: one ? 8 : 5, color: css(color), line: {color: css('--base'), width: 1}}, hovertemplate: hov},
+             marker: {size: one ? 8 : 5, color: css(color), line: {color: css('--panel'), width: 1}}, hovertemplate: hov},
             ...(one ? [{type: 'scatter3d', mode: 'markers', name, legendgroup: cp, showlegend: false,
               x: o.map(s => s.m[s.m.length - 1]), y: o.map(s => s.dte[s.dte.length - 1]),
               z: o.map(s => s[k.key][s.m.length - 1] + lift), text: o.map(s => s.occ + ' last session ' + s.date[s.date.length - 1]),
               customdata: o.map(s => s[k.key][s.m.length - 1]),
-              marker: {size: 8, symbol: 'diamond', color: css(color), line: {color: css('--base'), width: 1}},
+              marker: {size: 8, symbol: 'diamond', color: css(color), line: {color: css('--panel'), width: 1}},
               hovertemplate: hov}] : [])];
   };
-  const ax = (title, extra = {}) => ({title: {text: title, font: {color: css('--muted'), size: 11}}, color: css('--muted'),
-    gridcolor: css('--line'), zerolinecolor: css('--axis'), backgroundcolor: css('--panel'), showbackground: true,
-    tickfont: {family: css('--mono'), size: 10, color: css('--muted')}, ...extra});
+  const ax = (title, extra = {}) => ({title: {text: title, font: {family: css('--font'), color: css('--muted'), size: 12}},
+    color: css('--muted'), gridcolor: css('--line'), zerolinecolor: css('--line'), backgroundcolor: css('--panel'), showbackground: true,
+    tickfont: {family: css('--font'), size: 11, color: css('--muted')}, ...extra});
   Plotly.react('plot-gsurf', [
     {type: 'surface', x: G.m, y: G.dte, z: Z, showscale: false,
-     colorscale: [[0, '#0d366b'], [0.35, '#256abf'], [0.7, '#6da7ec'], [1, '#cde2fb']],
+     colorscale: seq('--tint-line'),
      contours: {z: {show: false}}, lighting: {ambient: 0.85, diffuse: 0.4, specular: 0.05},
      hovertemplate: 'K/S %{x:.4f}<br>%{y} days to expiry<br>' + k.fmt + '<extra></extra>'},
     {type: 'scatter3d', mode: 'lines', x: [x0, x1, x1, x0, x0], y: [y0, y0, y1, y1, y0], z: [0, 0, 0, 0, 0],
-     line: {color: css('--text'), width: 4}, hoverinfo: 'skip', showlegend: false},
+     line: {color: css('--series-3'), width: 4}, hoverinfo: 'skip', showlegend: false},
     ...(k.cp !== 'C' ? traced('P', one ? 'Put sold' : 'Puts sold', '--mk-put') : []),
     ...(k.cp !== 'P' ? traced('C', one ? 'Call sold' : 'Calls sold', '--mk-call') : [])],
     {paper_bgcolor: css('--panel'), font: {family: css('--font'), color: css('--muted'), size: 11},
-     title: {text: k.title, x: 0.5, y: 0.97, font: {family: css('--font'), color: css('--text'), size: 14}},
-     margin: {l: 0, r: 0, t: 34, b: 0}, legend: {orientation: 'h', x: 0, y: 1.0, font: {color: css('--text-2')}},
-     hoverlabel: {bgcolor: css('--panel-hover'), bordercolor: css('--axis'), font: {family: css('--mono'), color: css('--text'), size: 11.5}},
+     title: {text: k.title, x: 0.5, y: 0.97, font: {family: css('--font'), color: css('--heading'), size: 14}},
+     margin: {l: 0, r: 0, t: 34, b: 0}, legend: {orientation: 'h', x: 0, y: 1.0, bgcolor: 'rgba(255,255,255,0.85)', font: {color: css('--muted'), size: 12}},
+     hoverlabel: {bgcolor: '#FFFFFF', bordercolor: css('--line'), font: {family: css('--font'), color: css('--text'), size: 12}},
      scene: {xaxis: ax('moneyness  K / S', {range: [x0, x1], tickvals: [0.8, 0.9, 1.0, 1.1, 1.2, 1.3]}),
              yaxis: ax('expiry (DTE)', {range: [0, y1]}),
              zaxis: ax(k.z, {range: [Math.min(lo, 0) - 4 * lift, Math.max(hi, 0) + 4 * lift]}),
@@ -1282,12 +1316,12 @@ function greekCharts(G, cfg) {
   const clock = (id, y, title, fmt) => Plotly.react(id, [{x: C.dte, y, mode: 'lines', line: {color: css('--wheel'), width: 2},
       hovertemplate: '%{x} days<br>' + fmt + '<extra></extra>'}],
     layout({showlegend: false, hovermode: 'closest', margin: {l: 58, r: 12, t: 30, b: 38},
-      title: {text: title, x: 0.03, y: 0.96, font: {family: css('--font'), color: css('--text'), size: 12.5}},
+      title: {text: title, x: 0.03, y: 0.96, font: {family: css('--font'), color: css('--heading'), size: 13}},
       xaxis: {title: {text: 'days to expiry'}, range: [0, 360]}, yaxis: {rangemode: 'tozero'},
       shapes: [{type: 'rect', x0: 0, x1: band, xref: 'x', y0: 0, y1: 1, yref: 'paper', layer: 'below',
-                fillcolor: css('--accent-soft'), line: {width: 0}}],
+                fillcolor: css('--tint'), line: {width: 0}}],
       annotations: [{x: band, xref: 'x', y: 1, yref: 'paper', xanchor: 'left', yanchor: 'top', showarrow: false,
-                     text: ' the wheel', font: {family: css('--mono'), size: 10, color: css('--text-2')}}]}), cfg);
+                     text: ' the wheel', font: {family: css('--font'), size: 11, color: css('--muted')}}]}), cfg);
   clock('plot-gclk-gamma', C.gamma, 'Γ   ATM   (Δ per $1)', '%{y:.4f} per $1');
   clock('plot-gclk-theta', C.theta_vol.map(v => -v), '|Θ_vol|   ATM   ($ / day)', '%{y:$.3f} per day');
   clock('plot-gclk-vega', C.vega, 'ν (vega)   ATM   ($ / vol point)', '%{y:$.3f} per vol point');
@@ -1299,12 +1333,12 @@ function fillHist() {
     y: H.pct.filter((_, i) => keep[i]), marker: {color, line: {color: css('--panel'), width: 1}},
     hovertemplate: '%{y:.1f}% of trades<extra>%{x}</extra>'});
   const at = (pos, text) => ({x: pos, xref: 'x', y: 1.02, yref: 'paper', text, showarrow: false, yanchor: 'bottom',
-    font: {family: css('--mono'), size: 11, color: css('--text-2')}});
+    font: {family: css('--font'), size: 12, color: css('--muted')}});
   const rule = pos => ({type: 'line', x0: pos, x1: pos, xref: 'x', y0: 0, y1: 1, yref: 'paper', layer: 'above',
     line: {color: css('--muted'), width: 1}});
   Plotly.newPlot('plot-fill', [
     bar(inside, 'Inside the quote', css('--wheel')),
-    bar(inside.map(v => !v), 'Outside the quote', 'rgba(125,133,144,0.55)')],
+    bar(inside.map(v => !v), 'Outside the quote', css('--series-3'))],
     layout({bargap: 0.18, hovermode: 'closest', margin: {l: 52, r: 16, t: 54, b: 70},
             legend: {orientation: 'h', x: 0, xanchor: 'left', y: 1.14, yanchor: 'bottom'},
             xaxis: {type: 'category', categoryorder: 'array', categoryarray: H.labels, tickangle: -35},
@@ -1317,21 +1351,21 @@ function fillScatter() {
   const S = D.scatter, put = S.cp.map(c => c === 'P');
   const pick = (arr, want) => arr.filter((_, i) => put[i] === want);
   const z = S.zoom, h = S.half_spread;
-  const guideColor = k => css(k > 0 ? '--mk-call' : '--mk-put');        // ask pink, bid amber
+  const guideColor = k => css('--series-2');        // both guides orange: the bid dashed, the ask dotted
   const guide = (k, name) => ({x: [0, z * 1.05], y: [0, z * 1.05 * (1 + k * h)], name, mode: 'lines', hoverinfo: 'skip',
-    line: {color: guideColor(k), width: 1.5}});
+    line: {color: guideColor(k), width: 1.5, dash: k > 0 ? 'dot' : 'dash'}});
   const pts = (want, name, color) => ({x: pick(S.mid, want), y: pick(S.trade, want), name, mode: 'markers',
     marker: {size: 5, color, opacity: 0.55}, text: pick(S.date, want),
     hovertemplate: 'mid %{x:$.2f} → trade %{y:$.2f}<br>%{text}<extra>' + name.toLowerCase() + '</extra>'});
   Plotly.newPlot('plot-scatter', [
-    pts(true, 'Puts', css('--wheel')), pts(false, 'Calls', css('--aqua')),
-    {x: [0, z * 1.05], y: [0, z * 1.05], name: 'Trade = mid', mode: 'lines', line: {color: css('--text-2'), width: 1}, hoverinfo: 'skip'},
+    pts(true, 'Puts', css('--series-1')), pts(false, 'Calls', css('--series-3')),
+    {x: [0, z * 1.05], y: [0, z * 1.05], name: 'Trade = mid', mode: 'lines', line: {color: css('--heading'), width: 1}, hoverinfo: 'skip'},
     guide(-1, 'Typical bid'), guide(1, 'Typical ask')],
     layout({hovermode: 'closest', margin: {l: 58, r: 16, t: 34, b: 46},
             annotations: [[1, 'typical ask'], [-1, 'typical bid']].map(([k, text]) => ({x: z * 0.8, y: z * 0.8 * (1 + k * h),
               text, showarrow: true, arrowhead: 0, arrowcolor: guideColor(k), ax: k > 0 ? -46 : 46, ay: k > 0 ? -30 : 30,
-              bgcolor: css('--panel'), bordercolor: guideColor(k), borderpad: 3,
-              font: {family: css('--mono'), size: 10.5, color: guideColor(k)}})),
+              bgcolor: css('--panel'), bordercolor: css('--line'), borderpad: 3,
+              font: {family: css('--font'), size: 11, color: css('--muted')}})),
             xaxis: {title: {text: 'closing mid'}, tickformat: '$,.0f', range: [0, z]},
             yaxis: {title: {text: 'last trade of the day'}, tickformat: '$,.0f', range: [0, z]}}),
     {displayModeBar: false, responsive: true});
@@ -1441,7 +1475,7 @@ def vol_tabs(D: dict) -> str:
                   '<div id="vrp-info" class="pf-eq" style="margin-top:0"></div><div id="plot-vrp" style="height:320px"></div>'),
         ("Greeks", '<div class="cap" style="margin:0 0 10px">The four greeks the course uses, drawn as the lecture '
                   'draws them: each over strike as a share of the close (K/S, 0.70 to 1.30, as in the lecture) and days to '
-                  'expiry, for one option held long, per share, with the white frame at zero. Θ is in dollars per day and ν '
+                  'expiry, for one option held long, per share, with the gray frame at zero. Θ is in dollars per day and ν '
                   'in dollars per vol point. The lecture\'s surfaces run to 180 days; these stop at 45, since the wheel sells '
                   '24 to 32 days out, and the three clocks below carry the long end. '
                   'Pick an option the wheel sold to trace it across the surface: the dot is the day it was sold, each '
@@ -1551,7 +1585,7 @@ def render(D: dict, prose: dict[str, str], draft: bool, P2: dict | None = None,
 <title>{escape(title)}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
 <style>{STYLE}</style></head><body><div class="wrap">
 <header class="site"><a class="brand" href="{names[0]}"><span class="sym">MA</span><span class="co">{escape(D["company"])}</span>
