@@ -54,8 +54,8 @@ def underlying_figure(df_stock: pd.DataFrame, ticker: str) -> go.Figure:
             high=df_stock["HIGH_1"],
             low=df_stock["LOW_1"],
             close=df_stock["TRDPRC_1"],
-            increasing=dict(line=dict(color=T.UP, width=1), fillcolor=T.UP),
-            decreasing=dict(line=dict(color=T.DOWN, width=1), fillcolor=T.DOWN),
+            increasing=dict(line=dict(color=T.CANDLE_LINE, width=1), fillcolor=T.CANDLE_UP_FILL),
+            decreasing=dict(line=dict(color=T.CANDLE_LINE, width=1), fillcolor=T.CANDLE_DOWN_FILL),
             name=ticker,
             showlegend=False,
         )
@@ -150,7 +150,7 @@ def surface_figure(
                 marker=dict(
                     size=6, color=T.PRINT, opacity=1.0,
                     symbol=T.PRINT_SYMBOL_3D,
-                    line=dict(width=0.5, color=T.BASE),
+                    line=dict(width=0.5, color=T.PANEL),
                 ),
                 customdata=p[["ric", "cp"]].to_numpy(),
                 hovertemplate=(
@@ -191,7 +191,7 @@ def surface_figure(
                 # near-dated toward the viewer
                 yaxis=T.scene_axis("Days to expiry", autorange="reversed"),
                 zaxis=T.scene_axis("Option price ($)"),
-                bgcolor=T.BASE,
+                bgcolor=T.PANEL,
                 aspectmode="manual",
                 aspectratio=dict(x=1.2, y=1.0, z=0.68),
                 camera=dict(
@@ -202,13 +202,13 @@ def surface_figure(
             legend=dict(
                 orientation="h", yanchor="bottom", y=1.0,
                 x=1.0, xanchor="right",
-                bgcolor="rgba(11,16,32,0.78)", bordercolor=T.LINE, borderwidth=1,
+                bgcolor="rgba(255,255,255,0.85)", bordercolor=T.LINE, borderwidth=1,
                 font=dict(size=11, color=T.TEXT), itemsizing="constant",
             ),
             annotations=[
                 T.caption(
                     "Circles are the mark. Diamonds are actual trades. "
-                    "The violet sheet is interpolated — it is an assumption, not a market."
+                    "The gray sheet is interpolated — it is an assumption, not a market."
                 )
             ],
         )

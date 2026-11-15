@@ -170,16 +170,19 @@ class SurfaceState(rx.State):
 
 
 def _tile(label: str, value, accent: str = T.MARK, sub: str = "") -> rx.Component:
+    # The number wears heading ink; the series color is a bar down the left edge.
     body = [
-        rx.text(label, size="1", color=T.TEXT_MUTED),
-        rx.text(value, size="7", color=accent, weight="bold",
-                font_family=T.FONT_MONO),
+        rx.text(label, size="1", color=T.TEXT_FAINT, font_family=T.FONT,
+                text_transform="uppercase", letter_spacing="0.08em"),
+        rx.text(value, size="7", color=T.HEADING, weight="bold",
+                font_family=T.SERIF),
     ]
     if sub:
-        body.append(rx.text(sub, size="1", color=T.TEXT_FAINT))
+        body.append(rx.text(sub, size="1", color=T.TEXT_FAINT, font_family=T.FONT))
     return rx.box(
         *body,
-        bg=T.PANEL, border=f"1px solid {T.LINE}", border_radius="10px",
+        bg=T.PANEL, border="0", border_radius="10px",
+        box_shadow=f"inset 3px 0 0 {accent}, {T.SHADOW}",
         padding="16px 18px", flex="1", min_width="190px",
     )
 
@@ -187,7 +190,7 @@ def _tile(label: str, value, accent: str = T.MARK, sub: str = "") -> rx.Componen
 def _plot(fig, height: str) -> rx.Component:
     return rx.box(
         rx.plotly(data=fig, style={"width": "100%", "height": height}),
-        width="100%", bg=T.PANEL, border=f"1px solid {T.LINE}",
+        width="100%", bg=T.PANEL, border="0", box_shadow=T.SHADOW,
         border_radius="10px", padding="8px",
     )
 
@@ -195,7 +198,8 @@ def _plot(fig, height: str) -> rx.Component:
 def _toggle(label: str, checked, handler, color: str) -> rx.Component:
     return rx.hstack(
         rx.switch(checked=checked, on_change=handler),
-        rx.text(label, size="2", color=color),
+        rx.box(width="9px", height="9px", border_radius="50%", bg=color),   # the series swatch
+        rx.text(label, size="2", color=T.TEXT, font_family=T.FONT),
         spacing="2", align="center",
     )
 
@@ -205,10 +209,11 @@ def surface_page() -> rx.Component:
         rx.vstack(
             rx.vstack(
                 rx.text("MEng FinTech · Algorithmic Trading II · Assignment 1.1",
-                        size="1", color=T.TEXT_FAINT, letter_spacing="0.16em"),
+                        size="1", color=T.ACCENT, letter_spacing="0.14em",
+                        font_family=T.FONT, text_transform="uppercase"),
                 rx.heading(
-                    f"Option Surface Lab", size="8", color=T.TEXT,
-                    letter_spacing="-0.02em",
+                    f"Option Surface Lab", size="8", color=T.HEADING,
+                    letter_spacing="-0.01em", font_family=T.SERIF, weight="medium",
                 ),
                 rx.text(
                     "Listed options are a sparse cloud, not a filled sheet. "
@@ -247,7 +252,7 @@ def surface_page() -> rx.Component:
                 _toggle("Interpolated sheet", SurfaceState.show_sheet,
                         SurfaceState.toggle_sheet, T.BOTH),
                 width="100%", align="center", wrap="wrap", spacing="3",
-                bg=T.PANEL, border=f"1px solid {T.LINE}", border_radius="10px",
+                bg=T.PANEL, border="0", box_shadow=T.SHADOW, border_radius="10px",
                 padding="14px 18px",
             ),
 

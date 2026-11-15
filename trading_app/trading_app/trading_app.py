@@ -16,7 +16,7 @@ app = rx.App(
     style={
         "background_color": T.BASE,
         "color": T.TEXT,
-        "font_family": T.FONT,
+        "font_family": T.SERIF,
     },
 )
 app.add_page(surface_page, route="/", title="Option Surface Lab")

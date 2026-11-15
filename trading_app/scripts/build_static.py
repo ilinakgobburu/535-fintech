@@ -361,8 +361,11 @@ def build_payload(cache: Path) -> dict:
         "theme": {
             "base": T.BASE, "panel": T.PANEL, "panelHi": T.PANEL_HI,
             "line": T.LINE, "lineSoft": T.LINE_SOFT,
-            "text": T.TEXT, "muted": T.TEXT_MUTED, "faint": T.TEXT_FAINT,
+            "text": T.TEXT, "heading": T.HEADING, "muted": T.TEXT_MUTED, "faint": T.TEXT_FAINT,
+            "accent": T.ACCENT,
             "mark": T.MARK, "print": T.PRINT, "both": T.BOTH,
+            "candleLine": T.CANDLE_LINE, "candleUpFill": T.CANDLE_UP_FILL,
+            "candleDownFill": T.CANDLE_DOWN_FILL,
             "interp": T.INTERP, "interpScale": T.INTERP_SCALE,
             "interpOpacity": T.INTERP_OPACITY,
             "markScale": T.MARK_SCALE, "printScale": T.PRINT_SCALE,
