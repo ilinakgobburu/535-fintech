@@ -9,6 +9,9 @@ underlying:
   ric: NVDA.O         # the stock on LSEG
   conid: 4815747      # Interactive Brokers' id, as in config/wheel_live.yaml (order.html asks for it)
 
+owns_open_orders: true  # this strategy writes mkt/open_orders.json every night; wheel_orders.py refuses to run while
+                        # this is true, unless given --overwrite-vol-arb (wheel-orders.yml's Run button with its box)
+
 # The rung the development run sends to the test (its choice_for_test). rule_1 is a placeholder until that
 # run records its choice; the script refuses to enter unless the panel below records the same rung.
 rung: rule_1          # one of rule_1, logistic, forest
@@ -121,6 +124,9 @@ live_rules:
   - >-
     After an expiry, the leftover shares are closed at the next open (the backtest closes them at the
     expiry's close). Shares Sanji delivers on an assignment or at expiry are hedged or closed the same way.
+  - >-
+    The wheel's Action keeps only its Run button, which does nothing unless its overwrite box is ticked, and
+    wheel_orders.py refuses while owns_open_orders is true; the two workflows share one concurrency group.
   - >-
     Every NVDA option in the book must be exactly what this strategy's filled orders add up to (its nvda-va ids in
     mkt/fills.json, looked up in data/vol_arb_ledger.json, where the script records every order it writes; the

@@ -4,12 +4,20 @@ name: Wheel orders
 # closing quotes, and write the next session's wheel order to mkt/open_orders.json (one order,
 # or []). The rules are config/wheel_live.yaml; the decision is lib/wheel_live.py.
 # Its nightly schedule is retired: .github/workflows/vol-arb-orders.yml now writes mkt/open_orders.json every
-# weeknight. Only the Run workflow button is left, and a run overwrites the vol-arb orders in that file.
+# weeknight. Only the Run workflow button is left, and it does nothing unless its box is ticked, since a run
+# replaces the vol-arb's legs or hedge in that file (wheel_orders.py also refuses while config/vol_arb_live.yaml
+# says owns_open_orders: true, unless given --overwrite-vol-arb). Both workflows share one concurrency group, so
+# they never write the file at the same time.
 on:
   workflow_dispatch:
+    inputs:
+      overwrite_vol_arb:
+        description: "Replace the vol-arb strategy's orders in mkt/open_orders.json with a wheel order"
+        type: boolean
+        default: false
 
 concurrency:
-  group: wheel-orders
+  group: mkt-open-orders
   cancel-in-progress: false
 
 # The repository's default token can only read, so the commit step needs write access.
@@ -19,7 +27,7 @@ permissions:
 jobs:
   orders:
     # Only main: a run started from another branch would rebase that branch onto main and push it.
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && inputs.overwrite_vol_arb
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -41,7 +49,7 @@ jobs:
           LSEG_APP_KEY: ${{ secrets.LSEG_APP_KEY }}
           LSEG_USERNAME: ${{ secrets.LSEG_USERNAME }}
           LSEG_PASSWORD: ${{ secrets.LSEG_PASSWORD }}
-        run: python wheel_orders.py
+        run: python wheel_orders.py --overwrite-vol-arb
 
       - name: Commit mkt/open_orders.json
         env:

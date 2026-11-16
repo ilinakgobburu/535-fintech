@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: vol-arb-orders
+  group: mkt-open-orders      # shared with wheel-orders.yml: one writer of mkt/open_orders.json at a time
   cancel-in-progress: false
 
 # The repository's default token can only read, so the commit step needs write access.

@@ -48,3 +48,17 @@ def test_the_wheel_action_keeps_only_its_run_button():
     assert "schedule" not in on and "workflow_dispatch" in on
     scheduled = [n for n in ("vol-arb-orders.yml", "wheel-orders.yml") if "schedule" in workflow(n)[1]]
     assert scheduled == ["vol-arb-orders.yml"]          # one nightly writer of mkt/open_orders.json
+
+
+def test_the_wheels_run_button_does_nothing_unless_its_box_is_ticked():
+    w, on = workflow("wheel-orders.yml")
+    box = on["workflow_dispatch"]["inputs"]["overwrite_vol_arb"]
+    assert box["type"] == "boolean" and box["default"] is False
+    job = w["jobs"]["orders"]
+    assert job["if"] == "github.ref == 'refs/heads/main' && inputs.overwrite_vol_arb"
+    run = next(s for s in job["steps"] if s.get("id") == "orders")
+    assert run["run"] == "python wheel_orders.py --overwrite-vol-arb"
+    # one concurrency group for both writers of mkt/open_orders.json, never cancelled mid-run
+    groups = {n: workflow(n)[0]["concurrency"] for n in ("vol-arb-orders.yml", "wheel-orders.yml")}
+    assert groups["vol-arb-orders.yml"] == groups["wheel-orders.yml"] == {"group": "mkt-open-orders",
+                                                                         "cancel-in-progress": False}

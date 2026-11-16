@@ -20,8 +20,13 @@ trading_app/tests/wheel/test_wheel_live.py.
 
 Run it locally (LSEG login from the macOS Keychain):
     python3 wheel_orders.py
+
+While config/vol_arb_live.yaml says owns_open_orders: true, the two-sided variance trade writes
+mkt/open_orders.json every night, and this script refuses to run unless given --overwrite-vol-arb (the
+workflow's Run button passes it only when its overwrite_vol_arb box is ticked).
 """
 
+import argparse
 import datetime as dt
 import json
 import os
@@ -43,6 +48,7 @@ from trading_app.lib.ric import build_option_ric  # noqa: E402
 from trading_app.lib.wheel import CALL, PUT, option_greeks, select  # noqa: E402
 
 CONFIG = ROOT / "config" / "wheel_live.yaml"
+VOL_ARB_CONFIG = ROOT / "config" / "vol_arb_live.yaml"
 MKT = ROOT / "mkt"
 NY = ZoneInfo("America/New_York")
 PAUSE = 0.4         # seconds between LSEG requests: the course guideline is at most 3 a second
@@ -111,7 +117,22 @@ def write_orders(written: list[dict], new: list[dict], day: dt.date, for_day: dt
             f.write(f"for_day={for_day.isoformat()}\n")
 
 
-def main() -> None:
+def vol_arb_owns_orders() -> bool:
+    """config/vol_arb_live.yaml's owns_open_orders: the vol-arb Action writes mkt/open_orders.json every night."""
+    if not VOL_ARB_CONFIG.exists():
+        return False
+    return (yaml.safe_load(VOL_ARB_CONFIG.read_text()) or {}).get("owns_open_orders") is True
+
+
+def main(argv=None) -> None:
+    ap = argparse.ArgumentParser(description="tonight's wheel order for the course server")
+    ap.add_argument("--overwrite-vol-arb", action="store_true",
+                    help="write the wheel's order even though the vol-arb strategy owns mkt/open_orders.json")
+    args = ap.parse_args(argv)
+    if vol_arb_owns_orders() and not args.overwrite_vol_arb:
+        sys.exit("The two-sided variance trade owns mkt/open_orders.json (config/vol_arb_live.yaml owns_open_orders: "
+                 "true): a wheel run would replace its legs or its hedge. Nothing written. Pass --overwrite-vol-arb "
+                 "(the Run button's box) only to retire the vol-arb.")
     cfg = yaml.safe_load(CONFIG.read_text())
     u, s, x = cfg["underlying"], cfg["setting"], cfg["expiry"]
     now = dt.datetime.now(NY).replace(tzinfo=None)
