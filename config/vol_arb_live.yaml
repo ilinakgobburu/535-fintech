@@ -55,6 +55,8 @@ data:
   rate_ric: US3MT=RR          # 3-month T-bill, MID_YLD_1, as in the backtest
   leg_history_days: 45        # a held leg's daily BID/ASK, for its last usable mid
   vix_csv: https://cdn.cboe.com/api/global/us_indices/daily_prices/VIX_History.csv
+  vix_fallback_ric: .VIX      # its TRDPRC_1 close on D, only when Cboe's file lacks D or cannot be read (the
+                              # backtest read Cboe's file; null turns the fallback off)
   min_days_between_reports: 80  # when TR.ExpectedReportDate has not rolled past D: a report inside the cycle is
                                 # ruled out only if the last actual report was within this many days of the expiry
 

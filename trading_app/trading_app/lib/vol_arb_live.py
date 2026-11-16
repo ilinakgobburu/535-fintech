@@ -549,6 +549,14 @@ def record_night(ledger: dict, new: list[dict], day, for_day) -> dict:
     return out
 
 
+def decided(ledger: dict, day, for_day) -> str | None:
+    """Whether the ledger records a run that wrote the orders for `for_day` from D's close: its ids, or None."""
+    night = ledger["nights"].get(_d(day).isoformat())
+    if night is None or night.get("for") != _d(for_day).isoformat():
+        return None
+    return ", ".join(night.get("ids") or []) or "no order"
+
+
 def strategy_options(ledger: dict, fills: list | None, root: str, day) -> tuple[dict, bool]:
     """
     ({(cp, expiry, strike): contracts}, any fill): what this strategy's filled option orders (its ids in

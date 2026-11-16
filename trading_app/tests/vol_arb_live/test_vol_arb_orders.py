@@ -38,7 +38,7 @@ class FakeLSEG:
     """lseg.data's get_history and get_data, from made-up frames. Records every request."""
 
     def __init__(self, day, b=-0.06, chain=True, errors=None, last_close=None, expected=("2027-02-25",),
-                 actual=("2026-08-26", "2026-11-19"), legs=(), chain_day=None):
+                 actual=("2026-08-26", "2026-11-19"), legs=(), chain_day=None, vix=None):
         self.day = pd.Timestamp(day)
         self.closes = S.closes(end=day)
         if last_close is not None:                     # LSEG has not posted D's bar yet
@@ -56,6 +56,7 @@ class FakeLSEG:
                                                       index=pd.DatetimeIndex([prev, cday]))
         for ric, frame in legs:
             self.options[ric] = frame
+        self.vix = vix                                  # {date: close} LSEG serves for .VIX, or None (unknown RIC)
 
     def dividends_series(self):
         return pd.Series([0.01, 0.01], index=pd.DatetimeIndex(["2026-06-11", "2026-09-04"]))
@@ -74,6 +75,9 @@ class FakeLSEG:
             return self._window(pd.DataFrame({"MID_YLD_1": S.RATE_PCT}, index=self.closes.index), start, end)
         if universe in self.options:
             return self._window(self.options[universe], start, end)
+        if universe == ".VIX" and self.vix is not None:
+            v = pd.Series(self.vix, dtype=float)
+            return self._window(pd.DataFrame({"TRDPRC_1": v.to_numpy()}, index=pd.DatetimeIndex(v.index)), start, end)
         raise Exception(f"Error code -1 | The universe is not found: {universe}")
 
     def get_data(self, universe, fields, parameters=None):
@@ -275,12 +279,137 @@ def test_stale_stock_data_stops(env):
     assert orders_file(env) == OLD_ORDERS and env["sessions"][0].closed
 
 
-def test_no_vix_close_for_d_stops_before_lseg(env):
+def test_no_vix_close_for_d_anywhere_stops(env):
     env["vix"] = "DATE,OPEN,HIGH,LOW,CLOSE\n11/20/2026,19,20,18,18.4\n"
-    env["use"](FakeLSEG(ENTRY))
-    with pytest.raises(SystemExit, match="VIX"):
+    env["use"](FakeLSEG(ENTRY))                                  # LSEG does not know .VIX either
+    with pytest.raises(SystemExit, match="Cboe's VIX file ends 2026-11-20, without 2026-11-23, and LSEG's .VIX has "
+                                         "no 2026-11-23 close either"):
+        O.main([])
+    assert orders_file(env) == OLD_ORDERS and env["sessions"][0].closed
+    env["use"](FakeLSEG(ENTRY, vix={"2026-11-20": 18.4}))           # LSEG knows .VIX, but not D's close
+    with pytest.raises(SystemExit, match="has no 2026-11-23 close either"):
+        O.main([])
+    assert orders_file(env) == OLD_ORDERS
+
+
+@pytest.mark.parametrize("cboe", ["without D", "a block page", "unreachable"])
+def test_lseg_vix_stands_in_when_cboe_lacks_d(env, capsys, monkeypatch, cboe):
+    if cboe == "without D":
+        env["vix"] = "DATE,OPEN,HIGH,LOW,CLOSE\n11/20/2026,19,20,18,18.4\n"
+    elif cboe == "a block page":
+        env["vix"] = "<!DOCTYPE html><html><body>Access denied</body></html>\n"
+    else:
+        def down(req, timeout=None):
+            raise OSError("timed out")
+        monkeypatch.setattr(urllib.request, "urlopen", down)
+    fake = env["use"](FakeLSEG(ENTRY, vix={"2026-11-20": 18.4, "2026-11-23": 18.0}))
+    assert O.main([]) == 0
+    out = capsys.readouterr().out
+    assert "LSEG's .VIX close will be used" in out and "VIX closed at 18.00 on 2026-11-23 (LSEG .VIX" in out
+    assert {"without D": "ends 2026-11-20", "a block page": "it starts '<!DOCTYPE html>",
+            "unreachable": "could not be read (timed out)"}[cboe] in out
+    # the same orders as with Cboe's 18.0
+    assert orders_file(env) == VL.plan_night(S.config(), ENTRY, FOR, VL.Book(), entry_expiry=S.EXPIRY,
+                                             mkt=S.entry_market(-0.06), vix_close=18.0,
+                                             panel=VL.load_panel(S.panel_obj(), S.config()))["orders"]
+    vix_req = [r for r in fake.requests if r[1] == ".VIX"]
+    assert vix_req == [("history", ".VIX", ("TRDPRC_1",), None)]
+
+
+def test_cboes_close_is_used_when_it_has_d(env, capsys):
+    fake = env["use"](FakeLSEG(ENTRY, vix={"2026-11-23": 99.0}))
+    assert O.main([]) == 0
+    assert "VIX closed at 18.00 on 2026-11-23 (Cboe)" in capsys.readouterr().out
+    assert not any(r[1] == ".VIX" for r in fake.requests)
+
+
+def test_no_fallback_configured_stops_before_lseg(env):
+    cfg = json.loads(env["config"].read_text())
+    cfg["data"]["vix_fallback_ric"] = None
+    S.write_json(env["config"], cfg)
+    env["vix"] = "DATE,OPEN,HIGH,LOW,CLOSE\n11/20/2026,19,20,18,18.4\n"
+    env["use"](FakeLSEG(ENTRY, vix={"2026-11-23": 18.0}))
+    with pytest.raises(SystemExit, match="without 2026-11-23: the VIX feature can't be set"):
         O.main([])
     assert env["sessions"] == [] and orders_file(env) == OLD_ORDERS
+
+
+def test_an_entry_night_failure_says_the_hedge_was_not_written_either(env):
+    # the expiry's leftover -350 shares were not closed (say Sanji had not filled the close); the panel is missing
+    write_mkt(env, "fills.json", [{"id": "nvda-va-hedge-2026-11-19", "status": "filled"},
+                                  {"id": "nvda-csp-2026-11-16", "status": "filled"}])
+    write_mkt(env, "positions.json", {"cash": 0, "positions": [
+        {"underlying": S.NVDA, "contract": "underlying", "qty": -350}]})
+    S.write_json(env["root"] / "data" / "vol_arb_ledger.json", {"format": "vol_arb_ledger/1", "orders": {
+        "nvda-va-hedge-2026-11-19": {"id": "nvda-va-hedge-2026-11-19", "for": "2026-11-20", "order_type": "mkt",
+                                     "action": "SHT", "qty": 350, "underlying": S.NVDA, "contract": "underlying",
+                                     "ref": "open"}}, "nights": {}})
+    (env["root"] / "data" / "vol_arb_dev_panel.json").unlink()
+    env["use"](FakeLSEG(ENTRY))
+    with pytest.raises(SystemExit, match="export the development panel.*Tonight's hedge was not written either: the "
+                                         "book's -350 NVDA shares stay"):
+        O.main([])
+    env["vix"] = "<html>blocked</html>"
+    S.write_json(env["root"] / "data" / "vol_arb_dev_panel.json", S.panel_obj())
+    with pytest.raises(SystemExit, match="the VIX feature can't be set.*Tonight's hedge was not written either"):
+        O.main([])
+    assert orders_file(env) == OLD_ORDERS
+
+
+def test_a_failure_with_no_shares_says_nothing_of_a_hedge(env):
+    (env["root"] / "data" / "vol_arb_dev_panel.json").unlink()
+    env["use"](FakeLSEG(ENTRY))
+    with pytest.raises(SystemExit) as exc:
+        O.main([])
+    assert "hedge" not in str(exc.value.code)
+
+
+# --------------------------------------------------------------------------- the retry
+def test_the_retry_does_nothing_once_tonights_orders_are_written(env, capsys):
+    env["use"](FakeLSEG(ENTRY))
+    assert O.main([]) == 0
+    before = (env["root"] / "mkt" / "open_orders.json").read_bytes()
+    ledger = (env["root"] / "data" / "vol_arb_ledger.json").read_bytes()
+    fake = env["use"](FakeLSEG(ENTRY), now=dt.datetime(2026, 11, 24, 1, 0))       # 01:00: the same D and for
+    env["vix_reads"], env["sessions"] = 0, []
+    assert O.main(["--retry"]) == 0
+    assert "already written (nvda-va-put-2026-11-23, nvda-va-call-2026-11-23); nothing to do" in capsys.readouterr().out
+    assert (env["root"] / "mkt" / "open_orders.json").read_bytes() == before
+    assert (env["root"] / "data" / "vol_arb_ledger.json").read_bytes() == ledger
+    assert fake.requests == [] and env["sessions"] == [] and env["vix_reads"] == 0
+
+
+def test_the_retry_decides_when_the_first_run_failed(env, capsys):
+    env["vix"] = "DATE,OPEN,HIGH,LOW,CLOSE\n11/20/2026,19,20,18,18.4\n"      # 22:00: Cboe not updated yet
+    env["use"](FakeLSEG(ENTRY))
+    with pytest.raises(SystemExit):
+        O.main([])
+    env["vix"] = VIX_CSV                                                          # 01:00: it is
+    env["use"](FakeLSEG(ENTRY), now=dt.datetime(2026, 11, 24, 1, 0))
+    assert O.main(["--retry"]) == 0
+    assert "nothing was written for 2026-11-24 from 2026-11-23's close yet, so this run decides" in \
+        capsys.readouterr().out
+    assert [o["id"] for o in orders_file(env)] == ["nvda-va-put-2026-11-23", "nvda-va-call-2026-11-23"]
+    assert env["output"].read_text() == "for_day=2026-11-24\n"
+
+
+def test_a_night_with_no_order_counts_as_decided(env, capsys):
+    env["use"](FakeLSEG(FOR), now=dt.datetime(2026, 11, 24, 22, 0))
+    assert O.main([]) == 0 and orders_file(env) == []
+    env["use"](FakeLSEG(FOR), now=dt.datetime(2026, 11, 25, 1, 0))
+    assert O.main(["--retry"]) == 0
+    assert "already written (no order); nothing to do" in capsys.readouterr().out
+    # a different night is not decided by it
+    env["use"](FakeLSEG(dt.date(2026, 11, 25)), now=dt.datetime(2026, 11, 26, 1, 0))
+    assert O.main(["--retry"]) == 0
+    assert "so this run decides" in capsys.readouterr().out
+
+
+def test_decided():
+    led = VL.record_night(VL.read_ledger(None), [], dt.date(2026, 11, 24), dt.date(2026, 11, 25))
+    assert VL.decided(led, dt.date(2026, 11, 24), dt.date(2026, 11, 25)) == "no order"
+    assert VL.decided(led, dt.date(2026, 11, 24), dt.date(2026, 11, 26)) is None      # a run for another session
+    assert VL.decided(led, dt.date(2026, 11, 23), dt.date(2026, 11, 24)) is None
 
 
 def test_a_next_report_date_not_yet_rolled_forward(env):

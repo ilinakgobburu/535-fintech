@@ -7,6 +7,8 @@ name: Vol-arb orders
 on:
   schedule:
     - cron: "0 3 * * 2-6"   # 03:00 UTC Tue-Sat = 22:00 New York Mon-Fri in winter (the instructor's 10pm), 23:00 in summer
+    - cron: "0 6 * * 2-6"   # the retry, 01:00 New York in winter (02:00 in summer), before the open: it does nothing if
+                            # the first run wrote tonight's orders, and decides if it failed (the entry is one night only)
   workflow_dispatch:
 
 concurrency:
@@ -42,7 +44,7 @@ jobs:
           LSEG_APP_KEY: ${{ secrets.LSEG_APP_KEY }}
           LSEG_USERNAME: ${{ secrets.LSEG_USERNAME }}
           LSEG_PASSWORD: ${{ secrets.LSEG_PASSWORD }}
-        run: python vol_arb_orders.py
+        run: python vol_arb_orders.py ${{ github.event.schedule == '0 6 * * 2-6' && '--retry' || '' }}
 
       - name: Commit mkt/open_orders.json and the ledger
         env:

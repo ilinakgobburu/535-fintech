@@ -2,14 +2,15 @@
 """
 Tonight's two-sided variance trade orders for the course server (Sanji), from LSEG and Cboe.
 
-Run by .github/workflows/vol-arb-orders.yml every weeknight at 22:00 New York time (03:00 UTC) and from its
-Run workflow button:
+Run by .github/workflows/vol-arb-orders.yml every weeknight at 22:00 New York time (03:00 UTC), again with
+--retry at 01:00 (06:00 UTC; it does nothing if the first run wrote tonight's orders, so a failed first run is
+retried before the open), and from its Run workflow button:
   1. read config/vol_arb_live.yaml, check lib/vol_arb.py and lib/vol_arb_wf.py, and each lib/wheel.py, lib/vol.py
      and lib/pmcc_daily.py function they use, against its hashes, and read
      the book (mkt/positions.json and mkt/fills.json, which Sanji writes). Stop if the book is not up to date
      with the orders already written;
   2. on an entry night (the first session after a monthly expiry), read the development panel (it must be the
-     file the config's panel_pin records) and Cboe's VIX close, then log in to LSEG (lseg_login.py) for NVDA's closes and opens, dividends, the 3-month T-bill,
+     file the config's panel_pin records) and Cboe's VIX close (LSEG's .VIX close when Cboe's file lacks D), then log in to LSEG (lseg_login.py) for NVDA's closes and opens, dividends, the 3-month T-bill,
      the report dates and the closing bid/ask of the next monthly expiry's chain, one RIC per request;
      on any night with options in the book, the closes, dividends, T-bill and each held leg's quotes;
   3. decide with trading_app/trading_app/lib/vol_arb_live.py (no I/O; tested in
@@ -28,6 +29,7 @@ without it. Another strategy's orders (the wheel's last put) are only noted.
 
     python3 vol_arb_orders.py                       # tonight, as the Action runs it (LSEG from the Keychain)
     python3 vol_arb_orders.py --dry-run             # print tonight's orders, write nothing
+    python3 vol_arb_orders.py --retry               # the 01:00 run: only if tonight's orders were not written
     python3 vol_arb_orders.py --dry-run --as-of 2026-11-16 --force-entry
                                                     # a one-off check: treat the latest close as an entry night
 """
@@ -222,19 +224,37 @@ def chain(root: str, expiry: dt.date, plan: dict, day: dt.date, days: int) -> pd
     return frame
 
 
-def vix_close(url: str, day: dt.date) -> float:
-    """Cboe's VIX close on D, from its public history file."""
+def cboe_vix(url: str, day: dt.date) -> tuple[float | None, str]:
+    """Cboe's VIX close on D from its public history file (the backtest's source), or None and why not."""
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
     try:
         with urllib.request.urlopen(req, timeout=60) as resp:
-            text = resp.read().decode("utf-8")
+            text = resp.read().decode("utf-8", errors="replace")
     except Exception as exc:
-        sys.exit(f"Cboe's VIX file could not be read ({exc}): no order written.")
-    s = VL.parse_vix(text)
+        return None, f"Cboe's VIX file could not be read ({exc})"
+    try:
+        s = VL.parse_vix(text)
+    except Exception as exc:                   # a block page or an error page instead of the CSV
+        first = text.strip().splitlines()[0][:80] if text.strip() else "empty"
+        return None, f"Cboe's VIX file is not the DATE,...,CLOSE CSV ({type(exc).__name__}; it starts {first!r})"
     if pd.Timestamp(day) not in s.index:
         last = s.index[-1].date() if len(s) else None
-        sys.exit(f"Cboe's VIX file ends {last}, without {day}: the VIX feature can't be set, no order written.")
-    return float(s.loc[pd.Timestamp(day)])
+        return None, f"Cboe's VIX file ends {last}, without {day}"
+    return float(s.loc[pd.Timestamp(day)]), "Cboe"
+
+
+def lseg_vix(ric: str, day: dt.date) -> float | None:
+    """The VIX close on D from LSEG (config data.vix_fallback_ric), for when Cboe's file lacks D; None if none."""
+    try:
+        df = _frame(_paced(ld.get_history, universe=ric, fields=["TRDPRC_1"], interval="daily",
+                           start=str(day - dt.timedelta(days=10)), end=str(day)))
+    except Exception as exc:
+        if "the universe is not found" in str(exc).lower():
+            return None
+        sys.exit(f"LSEG error on {ric}, so no order was written: {str(exc).splitlines()[0][:200]}")
+    s = pd.to_numeric(df["TRDPRC_1"], errors="coerce").dropna() if "TRDPRC_1" in df else pd.Series(dtype=float)
+    at = s[s.index.date == day]
+    return float(at.iloc[0]) if len(at) and at.iloc[0] > 0 else None
 
 
 # --------------------------------------------------------------------------- the panel and the file
@@ -335,6 +355,8 @@ def main(argv=None) -> int:
     ap.add_argument("--force-entry", action="store_true",
                     help="treat the night as an entry night (dry run only), measuring the next entry's expiry")
     ap.add_argument("--panel", type=Path, help="another development panel file (default: the config's)")
+    ap.add_argument("--retry", action="store_true",
+                    help="the second nightly run: do nothing if tonight's orders were already written")
     args = ap.parse_args(argv)
     if (args.as_of or args.force_entry) and not args.dry_run:
         sys.exit("--as-of and --force-entry are for a one-off check: add --dry-run.")
@@ -353,6 +375,15 @@ def main(argv=None) -> int:
         day, for_day = args.as_of, VL.next_session(args.as_of)
     else:
         day, for_day = L.decision_dates(now_ny())
+    if args.retry:
+        try:
+            done = VL.decided(VL.read_ledger(read_json(ROOT / LEDGER)), day, for_day)
+        except VL.LedgerError as exc:
+            sys.exit(f"{exc}: no order written.")
+        if done:
+            print(f"Retry: the orders for {for_day} from {day}'s close were already written ({done}); nothing to do.")
+            return 0
+        print(f"Retry: nothing was written for {for_day} from {day}'s close yet, so this run decides.")
     tonight = VL.night(day, args.force_entry)
     print(f"Quotes from the close of {day}, orders for {for_day}: "
           + (f"entry night, expiry {tonight['expiry']}{' (forced)' if tonight['forced'] else ''}"
@@ -388,7 +419,19 @@ def main(argv=None) -> int:
                  "by hand (a BTC or SEL order of your own in mkt/open_orders.json) and run again once Sanji has filled it.")
     held = VL.held_contracts(book)
     print(f"Book: {book.shares} shares, {len(held)} option contract(s) held")
+    try:
+        return _tonight(args, cfg, day, for_day, tonight, written, book, held, ledger)
+    except SystemExit as exc:
+        # an entry night's input failing also leaves the hedge unwritten: say so, so the shares are not forgotten
+        if tonight["entry"] and book.shares and isinstance(exc.code, str):
+            raise SystemExit(f"{exc.code} Tonight's hedge was not written either: the book's {book.shares:+d} NVDA "
+                             f"shares stay as they are until a run succeeds (the retry, or the Run button).") from None
+        raise
 
+
+def _tonight(args, cfg, day, for_day, tonight, written, book, held, ledger) -> int:
+    """The night's decision once the book has passed its checks: the inputs, the plan, the file."""
+    u, data = cfg["underlying"], cfg["data"]
     panel = None
     if tonight["entry"]:
         panel = load_panel(cfg, args.panel or (ROOT / cfg["panel"]), args.dry_run)
@@ -398,12 +441,23 @@ def main(argv=None) -> int:
         write_orders(written, plan["orders"], day, for_day, args.dry_run, ledger, u["root"])
         return 0
 
-    vix = np.nan
+    vix, vix_why = np.nan, None
     if tonight["entry"]:
-        vix = vix_close(data["vix_csv"], day)
-        print(f"VIX closed at {vix:.2f} on {day} (Cboe)")
+        vix, vix_why = cboe_vix(data["vix_csv"], day)
+        if vix is not None:
+            print(f"VIX closed at {vix:.2f} on {day} (Cboe)")
+        elif not data.get("vix_fallback_ric"):
+            sys.exit(f"{vix_why}: the VIX feature can't be set, no order written.")
+        else:
+            print(f"{vix_why}: LSEG's {data['vix_fallback_ric']} close will be used")
     session = open_lseg()
     try:
+        if vix is None:
+            vix = lseg_vix(data["vix_fallback_ric"], day)
+            if vix is None:
+                sys.exit(f"{vix_why}, and LSEG's {data['vix_fallback_ric']} has no {day} close either: the VIX feature "
+                         f"can't be set, no order written.")
+            print(f"VIX closed at {vix:.2f} on {day} (LSEG {data['vix_fallback_ric']}, Cboe's file lacking it)")
         closes, opens = stock_bars(u["ric"], day, int(data["closes_days"]))
         rate = tbill(data["rate_ric"], day)
         divs = dividends(u["ric"], day, int(data["dividends_days"]))
