@@ -260,6 +260,74 @@ def test_a_chain_with_no_row_for_d_stops(env):
     assert orders_file(env) == OLD_ORDERS
 
 
+def test_a_chain_missing_d_for_two_listed_contracts_stops(env):
+    # LSEG part-way through publishing D: the 165 put and 195 call have their earlier row but not D's (this traded
+    # 167.5 / 192.5 at 13 contracts before)
+    fake = FakeLSEG(ENTRY)
+    for cp, k in (("P", 165.0), ("C", 195.0)):
+        ric = build_option_ric("NVDA", S.EXPIRY, k, cp, expired=False)
+        fake.options[ric] = fake.options[ric].iloc[:1]
+    env["use"](fake)
+    with pytest.raises(SystemExit, match="2 listed 2026-12-18 option\\(s\\) have earlier rows but none for "
+                                         "2026-11-23 \\(NVDA.*\\): LSEG's 2026-11-23 data is not final"):
+        O.main([])
+    assert orders_file(env) == OLD_ORDERS and not env["output"].exists() and env["sessions"][0].closed
+
+
+def test_a_chain_with_too_few_d_rows_stops(env):
+    # every other listed contract with no row at all in the window: under 90% of the chain has D
+    fake = FakeLSEG(ENTRY)
+    for i, ric in enumerate(sorted(fake.options)):
+        if i % 2:
+            fake.options[ric] = fake.options[ric].iloc[:0]
+    env["use"](fake)
+    with pytest.raises(SystemExit, match="Only \\d+ of the \\d+ listed 2026-12-18 options have a 2026-11-23 row "
+                                         "\\(under 90%\\): the chain looks partial"):
+        O.main([])
+    assert orders_file(env) == OLD_ORDERS
+
+
+def test_a_few_contracts_never_quoted_are_no_problem(env):
+    # two far strikes LSEG lists but never quoted in the window: 90% or more of the chain still has D
+    fake = FakeLSEG(ENTRY)
+    for cp, k in (("P", 122.5), ("C", 252.5)):
+        ric = build_option_ric("NVDA", S.EXPIRY, k, cp, expired=False)
+        if ric in fake.options:
+            fake.options[ric] = fake.options[ric].iloc[:0]
+    env["use"](fake)
+    assert O.main([]) == 0
+    assert [o["id"] for o in orders_file(env)] == ["nvda-va-put-2026-11-23", "nvda-va-call-2026-11-23"]
+
+
+def test_a_transient_not_found_is_an_error_not_an_unlisted_strike(env):
+    fake = FakeLSEG(ENTRY)
+    for cp, k in (("P", 165.0), ("C", 195.0)):
+        fake.errors[build_option_ric("NVDA", S.EXPIRY, k, cp, expired=False)] = Exception("Error code 404 | Not Found")
+    env["use"](fake)
+    with pytest.raises(SystemExit, match="LSEG error on NVDA.*404 \\| Not Found"):
+        O.main([])
+    assert orders_file(env) == OLD_ORDERS
+
+
+def test_chain_problem():
+    E, D = S.EXPIRY, ENTRY
+    assert VL.chain_problem(E, D, 50, 50, [], 0.9) is None
+    assert VL.chain_problem(E, D, 50, 45, [], 0.9) is None                       # 90% exactly
+    assert VL.chain_problem(E, D, 50, 44, [], 0.9).startswith("Only 44 of the 50 listed 2026-12-18 options")
+    assert VL.chain_problem(E, D, 50, 0, [], 0.9).startswith("No 2026-12-18 option has a 2026-11-23 row")
+    assert "1 listed 2026-12-18 option(s) have earlier rows" in VL.chain_problem(E, D, 50, 49, ["X"], 0.9)
+    many = VL.chain_problem(E, D, 50, 44, list("ABCDEF"), 0.9)
+    assert "(A, B, C, D, ...)" in many
+
+
+@pytest.mark.parametrize("share", [0, 1.2, "0.9", None])
+def test_the_config_needs_a_share(share):
+    cfg = S.config()
+    cfg["chain"]["min_dated_share"] = share
+    with pytest.raises(ValueError, match="min_dated_share"):
+        VL.check_config(cfg)
+
+
 def test_the_chain_uses_only_ds_quotes(env):
     # the fake's earlier row is three times D's quotes; the orders are those of D's chain
     env["use"](FakeLSEG(ENTRY))

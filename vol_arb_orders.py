@@ -70,6 +70,7 @@ LEDGER = Path("data") / "vol_arb_ledger.json"       # under ROOT: every order th
 NY = ZoneInfo("America/New_York")
 PAUSE = 0.4         # seconds after every LSEG request (_paced): the course guideline is at most 3 a second
 LIBS = {"trading_app/trading_app/lib/vol_arb.py": VA, "trading_app/trading_app/lib/vol_arb_wf.py": WF}
+UNLISTED = "the universe is not found"              # LSEG's answer for a RIC it does not know (lower case)
 LIB = Path(VA.__file__).resolve().parent     # trading_app/trading_app/lib, where wheel.py, vol.py and pmcc_daily.py are
 
 
@@ -180,28 +181,33 @@ def report_dates(ric: str, day: dt.date) -> tuple[list, list]:
 
 def option_quotes(ric: str, start: dt.date, end: dt.date) -> pd.DataFrame | None:
     """
-    One option's daily closing BID and ASK, one RIC per request, paced. None when LSEG does not know the RIC
-    (not listed); any other error stops the run, so a partial chain or book is never used.
+    One option's daily closing BID and ASK, one RIC per request, paced. None when LSEG does not know the RIC (its
+    own "The universe is not found": not listed); any other error, a transient "404 Not Found" included, stops the
+    run, so a partial chain or book is never used.
     """
     try:
         df = _paced(ld.get_history, universe=ric, fields=["BID", "ASK"], interval="daily", start=str(start),
                     end=str(end))
     except Exception as exc:
         msg = str(exc)
-        if "not found" in msg.lower():
+        if UNLISTED in msg.lower():
             return None
         first = msg.splitlines()[0][:200] if msg else repr(exc)
         sys.exit(f"LSEG error on {ric}, so no order was written: {first}")
     df = _frame(df)
-    if df.empty or not {"BID", "ASK"} <= set(df.columns):
-        return pd.DataFrame(columns=["bid", "ask"])
+    if df.empty or not {"BID", "ASK"} <= set(df.columns):     # listed, but no quote in the window
+        return pd.DataFrame(columns=["bid", "ask"], index=pd.DatetimeIndex([]), dtype=float)
     return pd.DataFrame({"bid": pd.to_numeric(df["BID"], errors="coerce"),
                          "ask": pd.to_numeric(df["ASK"], errors="coerce")}, index=df.index)
 
 
-def chain(root: str, expiry: dt.date, plan: dict, day: dt.date, days: int) -> pd.DataFrame:
-    """The expiry's puts and calls on D's close, in load_market's frame. Stops if no contract has a D row."""
-    rows, unlisted, dated = [], 0, 0
+def chain(root: str, expiry: dt.date, plan: dict, day: dt.date, days: int, min_share: float) -> pd.DataFrame:
+    """
+    The expiry's puts and calls on D's close, in load_market's frame. Stops when LSEG looks part-way through
+    publishing D (VL.chain_problem): no contract with a D row, a listed contract with earlier rows but none for
+    D, or fewer than `min_share` of the listed contracts with a D row.
+    """
+    rows, unlisted, dated, stale = [], 0, 0, []
     for cp in (VL.PUT, VL.CALL):
         for k in plan[cp]:
             ric = build_option_ric(root, expiry, k, cp, expired=False)
@@ -211,6 +217,8 @@ def chain(root: str, expiry: dt.date, plan: dict, day: dt.date, days: int) -> pd
                 continue
             at = q[q.index.date == day]
             if at.empty:
+                if (q.index.date < day).any():
+                    stale.append(ric)
                 continue
             dated += 1
             rows.append({"date": pd.Timestamp(day), "ric": ric, "cp": cp, "strike": float(k),
@@ -218,9 +226,11 @@ def chain(root: str, expiry: dt.date, plan: dict, day: dt.date, days: int) -> pd
     asked = len(plan[VL.PUT]) + len(plan[VL.CALL])
     frame = VL.quote_frame(rows)
     two = int((frame["mid"] > 0).sum())
-    print(f"  {asked} asked: {dated} with a {day} row ({two} two-sided), {unlisted} not listed")
-    if dated == 0:
-        sys.exit(f"No {expiry} option has a {day} row on LSEG yet: data not final, no order written.")
+    print(f"  {asked} asked: {dated} with a {day} row ({two} two-sided), {unlisted} not listed"
+          + (f", {len(stale)} with earlier rows but none for {day}" if stale else ""))
+    problem = VL.chain_problem(expiry, day, asked - unlisted, dated, stale, min_share)
+    if problem:
+        sys.exit(f"{problem}: no order written.")
     return frame
 
 
@@ -249,7 +259,7 @@ def lseg_vix(ric: str, day: dt.date) -> float | None:
         df = _frame(_paced(ld.get_history, universe=ric, fields=["TRDPRC_1"], interval="daily",
                            start=str(day - dt.timedelta(days=10)), end=str(day)))
     except Exception as exc:
-        if "the universe is not found" in str(exc).lower():
+        if UNLISTED in str(exc).lower():
             return None
         sys.exit(f"LSEG error on {ric}, so no order was written: {str(exc).splitlines()[0][:200]}")
     s = pd.to_numeric(df["TRDPRC_1"], errors="coerce").dropna() if "TRDPRC_1" in df else pd.Series(dtype=float)
@@ -479,7 +489,8 @@ def _tonight(args, cfg, day, for_day, tonight, written, book, held, ledger) -> i
             print(f"{u['ric']} closed at {closes.iloc[-1]:.2f} on {day}; asking LSEG for {len(strikes['P'])} puts "
                   f"{strikes['P'][0]:g}-{strikes['P'][-1]:g} and {len(strikes['C'])} calls "
                   f"{strikes['C'][0]:g}-{strikes['C'][-1]:g} of {tonight['expiry']}")
-            quotes = chain(u["root"], tonight["expiry"], strikes, day, int(cfg["chain"]["history_days"]))
+            quotes = chain(u["root"], tonight["expiry"], strikes, day, int(cfg["chain"]["history_days"]),
+                           float(cfg["chain"]["min_dated_share"]))
         history = {}
         for (cp, expiry, strike) in held:
             ric = build_option_ric(u["root"], expiry, strike, cp, expired=False)

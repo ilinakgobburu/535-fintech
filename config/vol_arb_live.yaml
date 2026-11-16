@@ -47,6 +47,9 @@ chain:                # the strikes asked for on an entry night, as scripts/fetc
     - [300, 2.5]
     - [null, 10.0]
   history_days: 14    # each option's daily BID/ASK asked for over the 14 days up to D; only D's row is used
+  min_dated_share: 0.9  # stop (data not final) unless this share of the listed contracts has a D row; any listed
+                        # contract with earlier rows but none for D stops the run too (LSEG part-way through D).
+                        # Only LSEG's "The universe is not found" counts as not listed
 
 data:
   closes_days: 200            # NVDA.O TRDPRC_1 and OPEN_PRC, unadjusted (exchangeCorrection), 200 calendar days

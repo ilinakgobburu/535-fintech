@@ -236,6 +236,23 @@ def strike_plan(closes: pd.Series, prev_expiry, day, bands: dict, grid: list) ->
     return out
 
 
+def chain_problem(expiry, day, listed: int, dated: int, stale: list, min_share: float) -> str | None:
+    """
+    Why D's chain is not final yet (None when it is): no listed contract has a D row; a listed contract has earlier
+    rows in the window but none for D (LSEG part-way through publishing D); or fewer than `min_share` of the
+    listed contracts have a D row. A chain with holes would move the corridor, the features and the legs.
+    """
+    if dated == 0:
+        return f"No {_d(expiry)} option has a {_d(day)} row on LSEG yet: data not final"
+    if stale:
+        return (f"{len(stale)} listed {_d(expiry)} option(s) have earlier rows but none for {_d(day)} "
+                f"({', '.join(stale[:4])}{', ...' if len(stale) > 4 else ''}): LSEG's {_d(day)} data is not final")
+    if dated < min_share * listed:
+        return (f"Only {dated} of the {listed} listed {_d(expiry)} options have a {_d(day)} row (under "
+                f"{min_share:.0%}): the chain looks partial, data not final")
+    return None
+
+
 def parse_vix(text: str) -> pd.Series:
     """Cboe's VIX_History.csv (DATE as MM/DD/YYYY, CLOSE), read as the backtest's runner reads it."""
     df = pd.read_csv(io.StringIO(text))
@@ -844,6 +861,9 @@ def check_config(cfg: dict) -> None:
     if not isinstance(ack, dict) or not all(isinstance(k, str) and isinstance(v, str) and v.strip()
                                             for k, v in ack.items()):
         raise ValueError("acknowledged must map order ids to the reason each no longer stops the run")
+    share = (cfg.get("chain") or {}).get("min_dated_share")
+    if not _finite_number(share) or not 0 < share <= 1:
+        raise ValueError(f"chain.min_dated_share must be a share in (0, 1], not {share!r}")
     x = (cfg.get("limits") or {}).get("max_hedge_x_capital")
     if not _finite_number(x) or x <= 0:
         raise ValueError(f"limits.max_hedge_x_capital must be a positive number, not {x!r}")
