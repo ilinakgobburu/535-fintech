@@ -103,6 +103,7 @@ live_rules:
     Entry nights are the backtest's: the first session after each monthly expiry, trading the next monthly
     expiry. The measurement uses that session's closing quotes, as the backtest did; the orders are for the
     next session, which Sanji fills at its prices (a limit against the bar's high and low), not at the close.
+    A run after that next session's open (the Run button on Tuesday morning) places no entry, only the hedge.
   - >-
     The model is fit on the development panel only (2019-23, five stocks). The registered test refits each
     month on development and finished test rows; live, neither the 2024-26 test rows nor the live cycles

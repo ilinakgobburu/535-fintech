@@ -364,6 +364,34 @@ def test_a_failure_with_no_shares_says_nothing_of_a_hedge(env):
     assert "hedge" not in str(exc.value.code)
 
 
+# --------------------------------------------------------------------------- a run after the open
+def test_a_run_after_the_next_open_places_no_entry_only_the_hedge(env, capsys):
+    # the 22:00 and 01:00 runs failed; the Run button on Tuesday 10:00 must not enter from Monday's quotes for Wednesday
+    write_mkt(env, "open_orders.json", [])
+    env["use"](FakeLSEG(ENTRY), now=dt.datetime(2026, 11, 24, 10, 0))
+    assert O.main([]) == 0
+    out = capsys.readouterr().out
+    assert "2026-11-23 was an entry night, but 2026-11-24 has opened since" in out and "only the hedge" in out
+    assert orders_file(env) == [] and env["sessions"] == [] and env["vix_reads"] == 0
+    # with leftover shares the hedge is still written, for Wednesday
+    write_mkt(env, "fills.json", [{"id": "nvda-va-hedge-2026-11-19", "status": "filled"}])
+    write_mkt(env, "positions.json", {"cash": 0, "positions": [
+        {"underlying": S.NVDA, "contract": "underlying", "qty": -350}]})
+    S.write_json(env["root"] / "data" / "vol_arb_ledger.json", {"format": "vol_arb_ledger/1", "orders": {
+        "nvda-va-hedge-2026-11-19": {"id": "nvda-va-hedge-2026-11-19", "for": "2026-11-20", "order_type": "mkt",
+                                     "action": "SHT", "qty": 350, "underlying": S.NVDA, "contract": "underlying",
+                                     "ref": "open"}}, "nights": {}})
+    assert O.main([]) == 0
+    assert [(o["id"], o["action"], o["qty"], o["for"]) for o in orders_file(env)] == [
+        ("nvda-va-hedge-2026-11-23", "BTC", 350, "2026-11-25")]
+
+
+def test_a_dry_run_as_of_the_entry_still_enters(env, capsys):
+    env["use"](FakeLSEG(ENTRY), now=dt.datetime(2026, 11, 24, 10, 0))
+    assert O.main(["--dry-run", "--as-of", "2026-11-23"]) == 0
+    assert '"id": "nvda-va-put-2026-11-23"' in capsys.readouterr().out
+
+
 # --------------------------------------------------------------------------- the retry
 def test_the_retry_does_nothing_once_tonights_orders_are_written(env, capsys):
     env["use"](FakeLSEG(ENTRY))

@@ -81,14 +81,30 @@ def test_sessions():
 def test_tonights_run_after_the_entry_close_is_an_entry_night():
     day, for_day = L.decision_dates(dt.datetime(2026, 11, 23, 22, 0))     # the 03:00 UTC run
     assert (day, for_day) == (D(2026, 11, 23), D(2026, 11, 24))
-    assert VL.night(day) == {"entry": True, "expiry": D(2026, 12, 18), "forced": False}
+    assert VL.night(day) == {"entry": True, "expiry": D(2026, 12, 18), "forced": False, "late": False}
+    assert VL.night(day, for_day=for_day) == VL.night(day)
     late = L.decision_dates(dt.datetime(2026, 11, 24, 3, 30))             # a delayed cron, still Nov 23's close
     assert late == (D(2026, 11, 23), D(2026, 11, 24))
+    retry = L.decision_dates(dt.datetime(2026, 11, 24, 1, 0))             # the 06:00 UTC retry
+    assert retry == (D(2026, 11, 23), D(2026, 11, 24)) and VL.night(*retry[:1], for_day=retry[1])["entry"]
+
+
+def test_a_run_after_the_next_open_places_no_entry():
+    # the Run button on Tuesday 10:00: D is still Monday the 23rd, but the orders would be for Wednesday
+    day, for_day = L.decision_dates(dt.datetime(2026, 11, 24, 10, 0))
+    assert (day, for_day) == (D(2026, 11, 23), D(2026, 11, 25))
+    assert VL.night(day, for_day=for_day) == {"entry": False, "expiry": D(2026, 12, 18), "forced": False, "late": True}
+    # just before the open it is still the entry; a holiday weekend's next session counts as next
+    assert VL.night(*L.decision_dates(dt.datetime(2026, 11, 24, 9, 29)))["entry"]
+    assert VL.night(D(2026, 11, 23), for_day=D(2026, 11, 24))["entry"]
+    # a night that is not an entry is never late
+    assert VL.night(D(2026, 11, 24), for_day=D(2026, 11, 27))["late"] is False
 
 
 def test_force_entry_measures_the_next_entrys_expiry():
-    assert VL.night(D(2026, 11, 16)) == {"entry": False, "expiry": None, "forced": False}
-    assert VL.night(D(2026, 11, 16), force_entry=True) == {"entry": True, "expiry": D(2026, 12, 18), "forced": True}
+    assert VL.night(D(2026, 11, 16)) == {"entry": False, "expiry": None, "forced": False, "late": False}
+    assert VL.night(D(2026, 11, 16), force_entry=True) == {"entry": True, "expiry": D(2026, 12, 18), "forced": True,
+                                                           "late": False}
     assert VL.night(D(2026, 11, 23), force_entry=True)["forced"] is False     # already an entry night
 
 

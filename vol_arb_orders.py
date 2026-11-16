@@ -384,10 +384,14 @@ def main(argv=None) -> int:
             print(f"Retry: the orders for {for_day} from {day}'s close were already written ({done}); nothing to do.")
             return 0
         print(f"Retry: nothing was written for {for_day} from {day}'s close yet, so this run decides.")
-    tonight = VL.night(day, args.force_entry)
+    tonight = VL.night(day, args.force_entry, for_day)
     print(f"Quotes from the close of {day}, orders for {for_day}: "
           + (f"entry night, expiry {tonight['expiry']}{' (forced)' if tonight['forced'] else ''}"
              if tonight["entry"] else "not an entry night"))
+    if tonight["late"]:
+        print(f"Note: {day} was an entry night, but {VL.next_session(day)} has opened since, so its legs are not "
+              f"placed from {day}'s quotes for {for_day} (the backtest enters on the entry close, filled the next "
+              f"session): no entry this cycle, only the hedge.")
 
     # The book, and whether it is up to date with what this script already wrote.
     written = read_json(MKT / "open_orders.json") or []

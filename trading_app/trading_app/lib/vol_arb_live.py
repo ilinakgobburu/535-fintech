@@ -145,18 +145,22 @@ def is_session(day) -> bool:
     return day in {_d(s) for s in L.sessions(day, day)}
 
 
-def night(day, force_entry: bool = False) -> dict:
+def night(day, force_entry: bool = False, for_day=None) -> dict:
     """
     What night `day` is: an entry night (its cycle's expiry) or not. `force_entry` treats a night that is not
     an entry as one, for a one-off dry run on the latest close: it measures the chain the next registered entry
-    will trade (that entry's expiry).
+    will trade (that entry's expiry). An entry night whose orders would be for a later session than the one after
+    D (`for_day`: a run after the next open, such as a Run button pressed Tuesday morning) is no entry, `late`:
+    the backtest enters on the entry session's close, filled the next session, and two-day-old quotes are not that.
     """
     exp = entry_expiry(day)
+    if exp is not None and for_day is not None and _d(for_day) != next_session(day):
+        return {"entry": False, "expiry": exp, "forced": False, "late": True}
     if exp is not None:
-        return {"entry": True, "expiry": exp, "forced": False}
+        return {"entry": True, "expiry": exp, "forced": False, "late": False}
     if force_entry:
-        return {"entry": True, "expiry": next_entry(day)[1], "forced": True}
-    return {"entry": False, "expiry": None, "forced": False}
+        return {"entry": True, "expiry": next_entry(day)[1], "forced": True, "late": False}
+    return {"entry": False, "expiry": None, "forced": False, "late": False}
 
 
 # --------------------------------------------------------------------------- the market, from what was pulled
