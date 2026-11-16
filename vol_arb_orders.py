@@ -4,7 +4,8 @@ Tonight's two-sided variance trade orders for the course server (Sanji), from LS
 
 Run by .github/workflows/vol-arb-orders.yml every weeknight at 22:00 New York time (03:00 UTC) and from its
 Run workflow button:
-  1. read config/vol_arb_live.yaml, check lib/vol_arb.py and lib/vol_arb_wf.py against its hashes, and read
+  1. read config/vol_arb_live.yaml, check lib/vol_arb.py and lib/vol_arb_wf.py, and each lib/wheel.py, lib/vol.py
+     and lib/pmcc_daily.py function they use, against its hashes, and read
      the book (mkt/positions.json and mkt/fills.json, which Sanji writes). Stop if the book is not up to date
      with the orders already written;
   2. on an entry night (the first session after a monthly expiry), read the development panel and Cboe's VIX
@@ -59,6 +60,7 @@ MKT = ROOT / "mkt"
 NY = ZoneInfo("America/New_York")
 PAUSE = 0.4         # seconds between LSEG requests: the course guideline is at most 3 a second
 LIBS = {"trading_app/trading_app/lib/vol_arb.py": VA, "trading_app/trading_app/lib/vol_arb_wf.py": WF}
+LIB = Path(VA.__file__).resolve().parent     # trading_app/trading_app/lib, where wheel.py, vol.py and pmcc_daily.py are
 
 
 def open_lseg():
@@ -76,13 +78,23 @@ def read_json(path: Path):
 
 
 def check_libs(cfg: dict) -> None:
-    """The copies of the backtest code this process imported must hash to what the config records."""
-    want = (cfg.get("lib") or {}).get("sha256") or {}
+    """
+    The copies of the backtest code this process imported must hash to what the config records, and so must every
+    function and constant they use from the public lib/wheel.py, lib/vol.py and lib/pmcc_daily.py (and what those
+    use in turn), so an edit there cannot change tonight's legs, IVs or hedge unnoticed.
+    """
+    lib = cfg.get("lib") or {}
+    want = lib.get("sha256") or {}
     for name, mod in LIBS.items():
         got = VL.sha256_hex(Path(mod.__file__).read_bytes())
         if want.get(name) != got:
             sys.exit(f"{name} is not the frozen backtest code (sha256 {got}, config/vol_arb_live.yaml records "
                      f"{want.get(name)}): no order written.")
+    got = VL.dependency_hashes(lambda module: (LIB / f"{module}.py").read_text())
+    bad = VL.hash_differences(lib.get("functions") or {}, got)
+    if bad:
+        sys.exit("The backtest code's lib functions are not the recorded ones (config/vol_arb_live.yaml lib.functions): "
+                 + "; ".join(bad) + ". No order written.")
 
 
 # --------------------------------------------------------------------------- LSEG

@@ -1,11 +1,14 @@
 """
 The live config and the frozen code: lib/vol_arb.py and lib/vol_arb_wf.py hash to what config/vol_arb_live.yaml
-records (copied byte for byte from the backtest's commit), and the config's registered numbers are the library's.
+records (copied byte for byte from the backtest's commit), so does every lib/wheel.py, lib/vol.py and
+lib/pmcc_daily.py function they use, and the config's registered numbers are the library's.
 """
 
 from __future__ import annotations
 
+import ast
 import hashlib
+import textwrap
 
 import pytest
 import yaml
@@ -26,6 +29,107 @@ def test_the_backtest_code_is_the_recorded_copy():
     assert recorded["trading_app/trading_app/lib/vol_arb_wf.py"] == \
         "c288253f52cb0186373a1b7a42dc50ae6869fb88b2c95ac7b761d98f5b020355"
     assert "51cab41d41df3208074ec78aec8cecdf2a08ddc8" in cfg["lib"]["source"]
+
+
+LIB = S.REPO / "trading_app" / "trading_app" / "lib"
+
+
+def lib_source(module):
+    return (LIB / f"{module}.py").read_text()
+
+
+def test_the_lib_functions_the_frozen_code_uses_are_the_recorded_ones():
+    pinned = S.config()["lib"]["functions"]
+    assert VL.dependency_hashes(lib_source) == pinned
+    assert set(pinned) == {
+        "pmcc_daily.carry", "pmcc_daily.monthly_expiries", "pmcc_daily.third_friday",
+        "vol.DAYS_PER_YEAR", "vol.GREEKS", "vol.MIN_T", "vol.VOL_HI", "vol.VOL_LO", "vol.bs_greeks", "vol.bs_price",
+        "vol.implied_vol", "wheel.CALL", "wheel.CONTRACT", "wheel.DAYS_PER_YEAR", "wheel.PUT", "wheel._num",
+        "wheel.option_greeks", "wheel.select"}
+    # each is the sha256 of the lines that define it, as they are on disk
+    text = VL._module_index(lib_source("pmcc_daily"))[0]["carry"][1]
+    assert text.startswith("def carry(market: dict, day: pd.Timestamp)") and "pd.Timedelta(days=365)" in text
+    assert pinned["pmcc_daily.carry"] == hashlib.sha256(text.encode()).hexdigest()
+
+
+def _external_uses(path):
+    """(module, name) for each W.<name> and each `from .vol / .pmcc_daily / .wheel import name` in one file."""
+    tree = ast.parse(path.read_text())
+    aliases, out = {}, set()
+    for node in tree.body:
+        if isinstance(node, ast.ImportFrom) and node.level == 1:
+            for a in node.names:
+                if node.module is None:
+                    aliases[a.asname or a.name] = a.name
+                elif node.module in ("wheel", "vol", "pmcc_daily"):
+                    out.add((node.module, a.name))
+    for sub in ast.walk(tree):
+        if isinstance(sub, ast.Attribute) and isinstance(sub.value, ast.Name) and aliases.get(sub.value.id) == "wheel":
+            out.add(("wheel", sub.attr))
+    return out
+
+
+def test_the_roots_are_everything_the_live_path_takes_from_the_public_lib():
+    used = _external_uses(LIB / "vol_arb.py") | _external_uses(LIB / "vol_arb_wf.py") | _external_uses(LIB / "vol_arb_live.py")
+    # entry_sessions is called only by vol_arb.stock_cycles, the backtest loop, which the live script never runs
+    assert used - {("wheel", "entry_sessions")} == set(VL.BACKTEST_ROOTS)
+    assert ("wheel", "entry_sessions") in used
+
+
+FAKE = {
+    "a": textwrap.dedent('''\
+        from .b import helper as aid, LIMIT
+        from . import c as C
+        from .unused import nothing
+        import numpy as np
+        SCALE = 2.0
+        OTHER = 9.0
+
+
+        def top(x):
+            return aid(x) * SCALE + C.leaf(x) + np.sqrt(LIMIT)
+
+
+        def lonely(x):
+            return OTHER
+        '''),
+    "b": textwrap.dedent('''\
+        LIMIT = 4.0
+
+
+        def helper(x):
+            return deeper(x) + LIMIT
+
+
+        def deeper(x):
+            return -x
+        '''),
+    "c": "def leaf(x):\n    return x\n",
+}
+
+
+def test_dependency_hashes_follows_calls_imports_aliases_and_constants():
+    got = VL.dependency_hashes(FAKE.__getitem__, roots=(("a", "top"),))
+    assert set(got) == {"a.top", "a.SCALE", "b.helper", "b.deeper", "b.LIMIT", "c.leaf"}   # not a.lonely, a.OTHER
+    assert got["c.leaf"] == hashlib.sha256(FAKE["c"].rstrip("\n").encode()).hexdigest()
+    # a change two calls down, a changed constant, a new callee and a comment inside each change the result
+    for module, old, new in [("b", "return -x", "return -2 * x"), ("b", "LIMIT = 4.0", "LIMIT = 5.0"),
+                             ("b", "return deeper(x) + LIMIT", "return deeper(x) + LIMIT + top2(x)\n\n\ndef top2(x):\n    return 0"),
+                             ("c", "    return x", "    # note\n    return x")]:
+        edited = {**FAKE, module: FAKE[module].replace(old, new)}
+        assert edited[module] != FAKE[module]
+        assert VL.dependency_hashes(edited.__getitem__, roots=(("a", "top"),)) != got, (module, old)
+    # an edit to a function the roots do not reach changes nothing
+    edited = {**FAKE, "a": FAKE["a"].replace("return OTHER", "return OTHER + 1")}
+    assert VL.dependency_hashes(edited.__getitem__, roots=(("a", "top"),)) == got
+    with pytest.raises(KeyError, match="defines no missing"):
+        VL.dependency_hashes(FAKE.__getitem__, roots=(("a", "missing"),))
+
+
+def test_hash_differences_names_each_kind():
+    assert VL.hash_differences({"a": "1", "b": "2"}, {"a": "1", "b": "2"}) == []
+    assert VL.hash_differences({"a": "1", "b": "2"}, {"a": "9", "c": "3"}) == [
+        "a changed", "c is used but not recorded", "b is recorded but no longer used"]
 
 
 def test_the_imported_modules_are_those_files():

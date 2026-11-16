@@ -3,7 +3,8 @@ The two-sided variance trade, live: tonight's NVDA orders for the course server 
 
 The strategy is config/vol_arb_ml.yaml's (part_2 and its amendments), computed by lib/vol_arb.py and
 lib/vol_arb_wf.py, which are byte-identical copies of the frozen backtest code (their sha256 is in
-config/vol_arb_live.yaml and checked before anything runs). This module does no I/O: vol_arb_orders.py at the
+config/vol_arb_live.yaml and checked before anything runs, as is each lib/wheel.py, lib/vol.py and lib/pmcc_daily.py
+function they use: dependency_hashes). This module does no I/O: vol_arb_orders.py at the
 repo root pulls LSEG and Cboe, calls these functions and writes mkt/open_orders.json.
 
 WHAT IS KNOWN WHEN. The script runs after the close of session D (wheel_live.decision_dates) and writes orders
@@ -47,6 +48,7 @@ yet once mkt/fills.json exists, a rejected order, or an option still listed on o
 
 from __future__ import annotations
 
+import ast
 import datetime as dt
 import hashlib
 import io
@@ -645,3 +647,77 @@ def check_config(cfg: dict) -> None:
 
 def sha256_hex(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+# --------------------------------------------------------------------------- what the frozen code calls outside itself
+# The lib functions and constants that lib/vol_arb.py and this module take from the public lib/wheel.py, lib/vol.py
+# and lib/pmcc_daily.py (wheel.entry_sessions is left out: only vol_arb.stock_cycles, the backtest loop, calls it).
+# dependency_hashes() follows each through everything it calls inside trading_app/lib.
+BACKTEST_ROOTS = (("wheel", "PUT"), ("wheel", "CALL"), ("wheel", "CONTRACT"), ("wheel", "_num"), ("wheel", "carry"),
+                  ("wheel", "option_greeks"), ("wheel", "select"), ("vol", "bs_greeks"), ("vol", "bs_price"),
+                  ("pmcc_daily", "monthly_expiries"))
+
+
+def _module_index(src: str) -> tuple[dict, dict, dict]:
+    """
+    One lib module's top level: {name: its statement's source lines}, {name: (module, name)} for names it imports
+    from another lib module (`from .vol import bs_greeks`), and {alias: module} for `from . import wheel as W`.
+    """
+    lines, tree = src.splitlines(), ast.parse(src)
+    defs, imports, aliases = {}, {}, {}
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            first = min([node.lineno] + [d.lineno for d in node.decorator_list])
+            defs[node.name] = (node, "\n".join(lines[first - 1:node.end_lineno]))
+        elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+            text = "\n".join(lines[node.lineno - 1:node.end_lineno])
+            for target in (node.targets if isinstance(node, ast.Assign) else [node.target]):
+                for t in ast.walk(target):
+                    if isinstance(t, ast.Name):
+                        defs[t.id] = (node, text)
+        elif isinstance(node, ast.ImportFrom) and node.level == 1:
+            for a in node.names:
+                if node.module is None:
+                    aliases[a.asname or a.name] = a.name
+                else:
+                    imports[a.asname or a.name] = (node.module, a.name)
+    return defs, imports, aliases
+
+
+def dependency_hashes(read_source, roots=BACKTEST_ROOTS) -> dict:
+    """
+    {"module.name": sha256 of its source}, for each of `roots` and everything it uses in turn inside trading_app/lib
+    (a name its body mentions that the module defines or imports from another lib module), keyed by the module that
+    defines it: wheel.carry is pmcc_daily.carry. read_source(module) returns lib/<module>.py's text. A change to any
+    of these lines, or a new lib function one of them starts calling, changes the result.
+    """
+    index, out, todo = {}, {}, list(roots)
+    while todo:
+        module, name = todo.pop()
+        if module not in index:
+            index[module] = _module_index(read_source(module))
+        defs, imports, aliases = index[module]
+        if name in imports and name not in defs:
+            todo.append(imports[name])
+            continue
+        if name not in defs:
+            raise KeyError(f"lib/{module}.py defines no {name}")
+        key = f"{module}.{name}"
+        if key in out:
+            continue
+        node, text = defs[name]
+        out[key] = sha256_hex(text.encode())
+        for sub in ast.walk(node):
+            if isinstance(sub, ast.Name) and (sub.id in defs or sub.id in imports):
+                todo.append((module, sub.id))
+            elif isinstance(sub, ast.Attribute) and isinstance(sub.value, ast.Name) and sub.value.id in aliases:
+                todo.append((aliases[sub.value.id], sub.attr))
+    return dict(sorted(out.items()))
+
+
+def hash_differences(pinned: dict, got: dict) -> list[str]:
+    """What differs between the recorded dependency hashes and tonight's: changed, new, or no longer used."""
+    out = [f"{k} changed" for k in sorted(set(pinned) & set(got)) if pinned[k] != got[k]]
+    out += [f"{k} is used but not recorded" for k in sorted(set(got) - set(pinned))]
+    out += [f"{k} is recorded but no longer used" for k in sorted(set(pinned) - set(got))]
+    return out

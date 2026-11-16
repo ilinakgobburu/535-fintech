@@ -289,6 +289,30 @@ def test_changed_backtest_code_stops(env, tmp_path, monkeypatch):
     assert orders_file(env) == OLD_ORDERS
 
 
+@pytest.mark.parametrize("module, old, new", [
+    # select gaining vol-arb-ml's cap (default none), the dividend window, an IV solve's bracket, a new helper
+    ("wheel", "target: float, floor: float | None = None) -> pd.Series | None:",
+     "target: float, floor: float | None = None, cap: float | None = None) -> pd.Series | None:"),
+    ("pmcc_daily", "pd.Timedelta(days=365)) & (d.index <= day)].sum())", "pd.Timedelta(days=360)) & (d.index <= day)].sum())"),
+    ("vol", "VOL_LO, VOL_HI = ", "VOL_LO, VOL_HI =  "),
+    ("wheel", "    F, D = spot * np.exp((r - q) * T), np.exp(-r * T)\n    iv = implied_vol(",
+     "    F, D = spot * np.exp((r - q) * T), np.exp(-r * T)\n    _ = read_splits\n    iv = implied_vol("),
+])
+def test_a_changed_lib_function_stops(env, tmp_path, monkeypatch, module, old, new):
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    for f in ("wheel", "vol", "pmcc_daily"):
+        (lib / f"{f}.py").write_text((O.LIB / f"{f}.py").read_text())
+    text = (lib / f"{module}.py").read_text()
+    assert text.count(old) == 1
+    (lib / f"{module}.py").write_text(text.replace(old, new))
+    monkeypatch.setattr(O, "LIB", lib)
+    env["use"](FakeLSEG(ENTRY))
+    with pytest.raises(SystemExit, match="lib functions are not the recorded ones"):
+        O.main([])
+    assert orders_file(env) == OLD_ORDERS and env["sessions"] == []
+
+
 def test_the_lseg_frames_are_read_as_the_backtests_cache(env):
     fake = env["use"](FakeLSEG(ENTRY))
     div = O.dividends("NVDA.O", ENTRY, 400)

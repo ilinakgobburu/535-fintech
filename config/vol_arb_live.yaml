@@ -55,6 +55,31 @@ lib:                  # the frozen backtest code, copied unchanged; tests/vol_ar
   sha256:
     trading_app/trading_app/lib/vol_arb.py: 5b6363607c7edf418d55bef10c266fb764d711da00475ebeb0084f5923676c8e
     trading_app/trading_app/lib/vol_arb_wf.py: c288253f52cb0186373a1b7a42dc50ae6869fb88b2c95ac7b761d98f5b020355
+  functions:          # what the two files and lib/vol_arb_live.py use from the public lib/wheel.py, lib/vol.py and
+                      # lib/pmcc_daily.py, and everything those use in turn inside trading_app/lib
+                      # (vol_arb_live.dependency_hashes): the sha256 of each one's source lines, as on main at 5de30d1.
+                      # vol_arb_orders.py stops if any changes or a new one joins. All are identical to vol-arb-ml's at
+                      # 51cab41 except wheel.select, whose vol-arb-ml copy has an optional `cap` (a strike ceiling,
+                      # default none) that vol_arb never passes; wheel.entry_sessions is not here, since only the
+                      # backtest loop calls it (vol_arb_live.entry_sessions is its copy).
+    pmcc_daily.carry: 8ca3aed48c598e373a280aac6f3740aafdcf8effb0659796b76b093bab5bc7c4
+    pmcc_daily.monthly_expiries: 0dd52ab32a68d1262c002502d38b27e200d938a65df1dd85011f7ec6eba10667
+    pmcc_daily.third_friday: 14f39e6c74c3b3ce15429982476cd1cc5d65b09ea32a08840bb5df9c8aef09df
+    vol.DAYS_PER_YEAR: cea20a3cf9fe5686981e1ef5ef5f1548cb932760f330734817bba1e7347130a6
+    vol.GREEKS: 0b690f0028ae89ac60e863aed13fa3bfa745a485db130b4e96ddc0fbb5820402
+    vol.MIN_T: 7cd326255e9fd56eea4b5285a77be982483169bd6d0be066a4f95d716c4aebf7
+    vol.VOL_HI: 1e4f06fea651e45cb41e306d516dd6a01ee2713260753969a8895579bceb8fad
+    vol.VOL_LO: 1e4f06fea651e45cb41e306d516dd6a01ee2713260753969a8895579bceb8fad
+    vol.bs_greeks: cb53aeccf626f01c7f2ceb4d2f9af865be5c75c3cefef30e5698a9389be8afac
+    vol.bs_price: 3b8da14b55dc16967a9c53167bd702e8b51fba229a8a68ad0980d3650ee23b74
+    vol.implied_vol: 3ce83a2cfa8afb9e5488ba8bcff73dbd3d1da2bde7f5c04527907b2701ba0eab
+    wheel.CALL: 7b5a9cd2daa7f6c11f79ab186987ad7b17fc21f4e28f2ba822edcd35dd3dc252
+    wheel.CONTRACT: 77bc132d1762ae8ef5eb736a742c254841bdb1708c68d3879cecb8686beee4df
+    wheel.DAYS_PER_YEAR: cea20a3cf9fe5686981e1ef5ef5f1548cb932760f330734817bba1e7347130a6
+    wheel.PUT: 7b5a9cd2daa7f6c11f79ab186987ad7b17fc21f4e28f2ba822edcd35dd3dc252
+    wheel._num: 6e016b8d67492885f78987fd297f27ad1d7c593108e765d482d30e8e40ac187d
+    wheel.option_greeks: 16da0fb1cfabf70e2a4fb54e86862ead21a0f28c88c1f8eb9be392e3cdb12956
+    wheel.select: 17785699faeecab0233cbaef24f1d3b5dd0e90a5a7904d027ef2a313fd006753
 
 live_rules:
   - >-
