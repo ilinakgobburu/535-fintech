@@ -34,7 +34,11 @@ DEV_STOCKS = ["NVDA", "AMD", "DIS", "COST", "DAL"]
 
 
 def config(**over) -> dict:
+    """The real config, with the rung and pin of the synthetic panels these tests build (panel_obj records
+    rule_1 and nothing is pinned), so the tests do not depend on what the real development run chose."""
     cfg = yaml.safe_load(CONFIG.read_text())
+    cfg["rung"] = "rule_1"
+    cfg["panel_pin"] = {"sha256": None, "dev_output_sha256": None, "dev_output_commit": None}
     cfg.update(over)
     return cfg
 

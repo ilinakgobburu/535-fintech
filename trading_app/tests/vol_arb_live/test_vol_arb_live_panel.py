@@ -204,3 +204,18 @@ def test_decide_refuses_an_unknown_rung():
     df = VL.load_panel(S.panel_obj(), S.config())
     with pytest.raises(ValueError):
         VL.decide("rule_0", {f: 0.0 for f in VA.FEATURES}, df, S.ENTRY)
+
+
+def test_the_committed_panel_is_the_one_the_committed_config_pins_and_trades():
+    """The real data/vol_arb_dev_panel.json loads under the real config/vol_arb_live.yaml: its rung is the one the
+    development run chose, and panel_pin matches the file's bytes and the development output it came from."""
+    import json
+    import yaml
+    repo = S.REPO
+    cfg = yaml.safe_load((repo / "config" / "vol_arb_live.yaml").read_text())
+    raw = (repo / cfg["panel"]).read_bytes()
+    obj = json.loads(raw)
+    assert VL.panel_pin_problems(raw, obj, cfg) == []
+    assert obj["choice_for_test"]["chosen"] == cfg["rung"] == "logistic"
+    p = VL.load_panel(obj, cfg)
+    assert len(p) == 205 and p["label"].notna().all()

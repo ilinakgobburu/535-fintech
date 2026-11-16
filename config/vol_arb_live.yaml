@@ -14,14 +14,14 @@ owns_open_orders: true  # this strategy writes mkt/open_orders.json every night;
 
 # The rung the development run sends to the test (its choice_for_test). rule_1 is a placeholder until that
 # run records its choice; the script refuses to enter unless the panel below records the same rung.
-rung: rule_1          # one of rule_1, logistic, forest
+rung: logistic        # one of rule_1, logistic, forest; set 2026-11-16 from the development run (vol_arb_ml.yaml result_dev_2026_11_16)
 
 panel: data/vol_arb_dev_panel.json   # exported from cache/vol_arb_ml_dev.json by export_vol_arb_panel.py
 panel_pin:            # the panel the live model is fit on, pinned once it is exported (export_vol_arb_panel.py prints
                       # these three lines); empty until then. An entry night stops unless all three match the file
-  sha256: null              # the panel file's bytes
-  dev_output_sha256: null   # cache/vol_arb_ml_dev.json's, as the panel records it (made_from.sha256)
-  dev_output_commit: null   # the development run's commit, as the panel records it (made_from.commit)
+  sha256: 355e12873373431a17c7eae396a8cb58cc2c07fb7c1b944a06125c8d3e4ee3d9   # the panel file's bytes
+  dev_output_sha256: 18f1723aed4d638a7c86ddf3cacf990fca29aab12a6f8c498357382f0b8bf2ec   # cache/vol_arb_ml_dev.json's, as the panel records it (made_from.sha256)
+  dev_output_commit: "f06f6ed5f550aea56a9570fcb7faf54e5e95af7f"   # the development run's commit, as the panel records it (made_from.commit)
 development:          # the only rows the live model may be fit on (the 2024-26 final test is not used)
   stocks: [NVDA, AMD, DIS, COST, DAL]
   window: [2019-01-02, 2023-12-29]
