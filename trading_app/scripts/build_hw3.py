@@ -634,7 +634,8 @@ def render(R: dict, prose: dict[str, str], draft: bool, blotter: bool = False) -
 <div class="right"><span class="chip"><b>{R["period"][0]}</b> to <b>{R["period"][1]}</b></span>
 <span class="chip">daily bars · LSEG</span>
 <span class="chip hot"><a href="{REPO_URL}">Code (to GitHub Repo) ↗</a></span>
-<span class="chip"><a href="hw2.html">← covered call page</a></span></div></div>""",
+<span class="chip"><a href="hw2.html">← covered call page</a></span>
+<span class="chip"><a href="hw4.html">wheel page →</a></span></div></div>""",
         '<div class="grid g-4">',
         panel("Purpose of the strategy", say("purpose")),
         panel("Performance", say("performance")),
