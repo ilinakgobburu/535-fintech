@@ -150,7 +150,15 @@ def panel_obj(rule="tilt", chosen="rule_1", seed=7, stocks=DEV_STOCKS, rows=None
             "rows": rows if rows is not None else out}
 
 
+def pin_panel(cfg: dict, panel_path: Path) -> dict:
+    """cfg with panel_pin set to the panel file at `panel_path`, as export_vol_arb_panel.py prints it."""
+    raw = Path(panel_path).read_bytes()
+    made = json.loads(raw).get("made_from") or {}
+    return {**cfg, "panel_pin": {"sha256": VL.sha256_hex(raw), "dev_output_sha256": made.get("sha256"),
+                                 "dev_output_commit": made.get("commit")}}
+
+
 def write_json(path: Path, obj) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(obj, indent=1))
+    path.write_text(json.dumps(obj, indent=1, default=str))      # a config's YAML dates as strings
     return path

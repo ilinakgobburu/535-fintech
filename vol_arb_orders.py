@@ -8,8 +8,8 @@ Run workflow button:
      and lib/pmcc_daily.py function they use, against its hashes, and read
      the book (mkt/positions.json and mkt/fills.json, which Sanji writes). Stop if the book is not up to date
      with the orders already written;
-  2. on an entry night (the first session after a monthly expiry), read the development panel and Cboe's VIX
-     close, then log in to LSEG (lseg_login.py) for NVDA's closes and opens, dividends, the 3-month T-bill,
+  2. on an entry night (the first session after a monthly expiry), read the development panel (it must be the
+     file the config's panel_pin records) and Cboe's VIX close, then log in to LSEG (lseg_login.py) for NVDA's closes and opens, dividends, the 3-month T-bill,
      the report dates and the closing bid/ask of the next monthly expiry's chain, one RIC per request;
      on any night with options in the book, the closes, dividends, T-bill and each held leg's quotes;
   3. decide with trading_app/trading_app/lib/vol_arb_live.py (no I/O; tested in
@@ -224,15 +224,25 @@ def vix_close(url: str, day: dt.date) -> float:
 
 
 # --------------------------------------------------------------------------- the panel and the file
-def load_panel(cfg: dict, path: Path):
-    obj = read_json(path)
-    if obj is None:
+def load_panel(cfg: dict, path: Path, dry_run: bool = False):
+    """
+    The development panel, checked (VL.load_panel) and pinned: a real run stops unless the file is the one
+    config/vol_arb_live.yaml's panel_pin records; a dry run only says so.
+    """
+    if not path.exists():
         sys.exit(f"{path} does not exist: export the development panel (export_vol_arb_panel.py) before an "
                  f"entry night. No order written.")
+    raw = path.read_bytes()
+    obj = json.loads(raw)
     try:
         panel = VL.load_panel(obj, cfg)
     except VL.PanelError as exc:
         sys.exit(f"The development panel {path} can't be used: {exc}. No order written.")
+    pin = VL.panel_pin_problems(raw, obj, cfg)
+    if pin and not dry_run:
+        sys.exit(f"The development panel {path} is not the pinned one: {'; '.join(pin)}. No order written.")
+    for problem in pin:
+        print(f"Note: the panel is not the pinned one ({problem}); a real run would stop here")
     env = (obj.get("environment") or {}).get("sklearn")
     try:
         import sklearn
@@ -341,7 +351,7 @@ def main(argv=None) -> int:
 
     panel = None
     if tonight["entry"]:
-        panel = load_panel(cfg, args.panel or (ROOT / cfg["panel"]))
+        panel = load_panel(cfg, args.panel or (ROOT / cfg["panel"]), args.dry_run)
     if not tonight["entry"] and not held:
         plan = VL.plan_night(cfg, day, for_day, book)
         report(plan)

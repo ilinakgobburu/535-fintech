@@ -9,8 +9,9 @@ stock-cycle: id, stock, entry, expiry, the nine features and the label (null wit
 sha256 and commit and the rung the development run chose for the test. Nothing is recomputed: it is the
 output's own rows, through vol_arb_wf.panel(). The 2024-26 final test is not read.
 
-After exporting, set config/vol_arb_live.yaml's `rung` to the choice this prints; vol_arb_orders.py refuses to
-enter while the two disagree.
+After exporting, set config/vol_arb_live.yaml's `rung` to the choice this prints and its `panel_pin` to the three
+lines it prints (the panel file's sha256, and the development output's sha256 and commit); vol_arb_orders.py refuses
+to enter while the rung disagrees or the panel file is not the pinned one.
 """
 
 from __future__ import annotations
@@ -37,10 +38,17 @@ def main(argv=None) -> int:
     except VL.PanelError as exc:
         sys.exit(f"{args.dev}: {exc}")
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(panel, indent=1) + "\n")
+    text = json.dumps(panel, indent=1) + "\n"
+    args.out.write_bytes(text.encode())
     labelled = sum(r["label"] is not None for r in panel["rows"])
     print(f"wrote {args.out}: {len(panel['rows'])} rows ({labelled} labelled) from {args.dev.name} "
           f"(commit {panel['made_from']['commit']}); the development run chose {panel['choice_for_test']['chosen']}")
+    print("config/vol_arb_live.yaml:")
+    print(f"rung: {panel['choice_for_test']['chosen']}")
+    print("panel_pin:")
+    print(f"  sha256: {VL.sha256_hex(text.encode())}")
+    print(f"  dev_output_sha256: {panel['made_from']['sha256']}")
+    print(f"  dev_output_commit: {json.dumps(panel['made_from']['commit'])}")
     return 0
 
 

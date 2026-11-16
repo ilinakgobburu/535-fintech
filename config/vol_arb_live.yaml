@@ -14,6 +14,11 @@ underlying:
 rung: rule_1          # one of rule_1, logistic, forest
 
 panel: data/vol_arb_dev_panel.json   # exported from cache/vol_arb_ml_dev.json by export_vol_arb_panel.py
+panel_pin:            # the panel the live model is fit on, pinned once it is exported (export_vol_arb_panel.py prints
+                      # these three lines); empty until then. An entry night stops unless all three match the file
+  sha256: null              # the panel file's bytes
+  dev_output_sha256: null   # cache/vol_arb_ml_dev.json's, as the panel records it (made_from.sha256)
+  dev_output_commit: null   # the development run's commit, as the panel records it (made_from.commit)
 development:          # the only rows the live model may be fit on (the 2024-26 final test is not used)
   stocks: [NVDA, AMD, DIS, COST, DAL]
   window: [2019-01-02, 2023-12-29]

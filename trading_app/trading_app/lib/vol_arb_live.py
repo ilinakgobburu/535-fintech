@@ -20,7 +20,8 @@ On an entry night, from D's closing quotes of that expiry's NVDA chain:
     features      vol_arb.features(): the nine, from the trailing closes and dividends (vol_arb.realized),
                   Cboe's VIX close on D and the next report date (TR.ExpectedReportDate)
     the rung      config's `rung`, fit on the development panel (one row per measured 2019-23 stock-cycle,
-                  exported from the development output; the 2024-26 final test is not used):
+                  exported from the development output and pinned by panel_pin's sha256; the 2024-26 final test
+                  is not used):
                       rule_1     put_rich when f1 > f2, call_rich otherwise (no fit)
                       logistic   vol_arb_wf.fit_predict on the panel's labelled rows; p > 0.55 put_rich,
                       forest     p < 0.45 call_rich, no trade between (vol_arb_wf.decide)
@@ -333,6 +334,34 @@ def load_panel(obj, cfg: dict) -> pd.DataFrame:
     if df["label"].notna().sum() == 0:
         raise PanelError("no labelled row to fit on")
     return df.sort_values(["entry", "stock"]).reset_index(drop=True)
+
+
+_HEX64 = re.compile(r"^[0-9a-f]{64}$")
+
+
+def panel_pin_problems(raw: bytes, obj: dict, cfg: dict) -> list[str]:
+    """
+    Why the panel file is not the one config/vol_arb_live.yaml pins (empty when it is): panel_pin's sha256 of the
+    file's bytes, and the development output's sha256 and commit the panel says it was made from (made_from). An
+    empty pin (before the development run is exported) is a problem too: the live model may only be fit on the
+    exported panel, recorded once.
+    """
+    pin = cfg.get("panel_pin") or {}
+    if not pin.get("sha256"):
+        return ["config/vol_arb_live.yaml pins no panel yet (panel_pin.sha256 is empty): set panel_pin from "
+                "export_vol_arb_panel.py's output"]
+    if not _HEX64.match(str(pin["sha256"])):
+        return [f"panel_pin.sha256 {pin['sha256']!r} is not a sha256"]
+    out = []
+    got = sha256_hex(raw)
+    if got != pin["sha256"]:
+        out.append(f"its sha256 is {got}, panel_pin records {pin['sha256']}")
+    made = (obj.get("made_from") or {}) if isinstance(obj, dict) else {}
+    for key, name in (("dev_output_sha256", "sha256"), ("dev_output_commit", "commit")):
+        if made.get(name) != pin.get(key):
+            out.append(f"it was made from a development output with {name} {made.get(name)!r}, panel_pin records "
+                       f"{pin.get(key)!r}")
+    return out
 
 
 def decide(rung: str, features: dict, panel: pd.DataFrame, day) -> dict:

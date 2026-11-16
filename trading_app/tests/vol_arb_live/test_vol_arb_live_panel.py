@@ -14,6 +14,7 @@ import sys
 import numpy as np
 import pandas as pd
 import pytest
+import yaml
 
 import va_live_synth as S
 from trading_app.lib import vol_arb as VA
@@ -91,16 +92,45 @@ def test_export_refuses(bad):
         VL.export_panel({**dev_output(), **bad}, source="x", sha256="0")
 
 
-def test_the_export_script(tmp_path):
+def test_the_export_script(tmp_path, capsys):
     src = S.write_json(tmp_path / "vol_arb_ml_dev.json", dev_output("forest"))
     out = tmp_path / "data" / "vol_arb_dev_panel.json"
     assert EXPORT.main(["--dev", str(src), "--out", str(out)]) == 0
     obj = json.loads(out.read_text())
     assert obj["made_from"]["sha256"] == VL.sha256_hex(src.read_bytes()) and obj["made_from"]["file"] == src.name
     assert len(VL.load_panel(obj, S.config(rung="forest"))) == 295
+    # the lines it prints for config/vol_arb_live.yaml pin exactly the file it wrote
+    printed = capsys.readouterr().out.split("config/vol_arb_live.yaml:\n", 1)[1]
+    cfg = yaml.safe_load(printed)
+    assert cfg["rung"] == "forest"
+    assert cfg["panel_pin"] == {"sha256": VL.sha256_hex(out.read_bytes()),
+                                "dev_output_sha256": VL.sha256_hex(src.read_bytes()), "dev_output_commit": "abc123"}
+    assert VL.panel_pin_problems(out.read_bytes(), obj, {**S.config(), **cfg}) == []
     with pytest.raises(SystemExit):
         EXPORT.main(["--dev", str(S.write_json(tmp_path / "t.json", {**dev_output(), "stage": "test"})),
                      "--out", str(out)])
+
+
+def test_panel_pin_problems():
+    raw = json.dumps(S.panel_obj()).encode()
+    obj = json.loads(raw)
+    pin = {"sha256": VL.sha256_hex(raw), "dev_output_sha256": "0" * 64, "dev_output_commit": None}
+    assert VL.panel_pin_problems(raw, obj, {"panel_pin": pin}) == []
+    assert VL.panel_pin_problems(raw, obj, {"panel_pin": {**pin, "sha256": None}})[0].startswith(
+        "config/vol_arb_live.yaml pins no panel yet")
+    assert VL.panel_pin_problems(raw, obj, {}) == VL.panel_pin_problems(raw, obj, {"panel_pin": None})
+    assert len(VL.panel_pin_problems(raw, obj, {})) == 1
+    other = raw.replace(b'"label": 1', b'"label": 0', 1)
+    assert VL.panel_pin_problems(other, json.loads(other), {"panel_pin": pin}) == [
+        f"its sha256 is {VL.sha256_hex(other)}, panel_pin records {pin['sha256']}"]
+    assert len(VL.panel_pin_problems(raw, obj, {"panel_pin": {**pin, "dev_output_sha256": "1" * 64,
+                                                              "dev_output_commit": "x"}})) == 2
+    assert VL.panel_pin_problems(raw, obj, {"panel_pin": {**pin, "sha256": "A" * 64}}) == [
+        f"panel_pin.sha256 {'A' * 64!r} is not a sha256"]
+
+
+def test_the_repo_config_pins_no_panel_until_the_export():
+    assert S.config()["panel_pin"] == {"sha256": None, "dev_output_sha256": None, "dev_output_commit": None}
 
 
 def mutate(change):

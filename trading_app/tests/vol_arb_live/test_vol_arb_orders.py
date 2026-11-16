@@ -110,10 +110,12 @@ def env(tmp_path, monkeypatch):
     state = {"sessions": [], "sleeps": [], "vix_reads": 0, "vix": VIX_CSV}
     (tmp_path / "mkt").mkdir()
     S.write_json(tmp_path / "mkt" / "open_orders.json", OLD_ORDERS)
-    S.write_json(tmp_path / "data" / "vol_arb_dev_panel.json", S.panel_obj())
+    panel = S.write_json(tmp_path / "data" / "vol_arb_dev_panel.json", S.panel_obj())
     monkeypatch.setattr(O, "ROOT", tmp_path)
     monkeypatch.setattr(O, "MKT", tmp_path / "mkt")
-    monkeypatch.setattr(O, "CONFIG", S.CONFIG)
+    # the repo's config with the synthetic panel pinned, as export_vol_arb_panel.py's lines would pin the real one
+    state["config"] = S.write_json(tmp_path / "config.yaml", S.pin_panel(S.config(), panel))    # JSON is YAML
+    monkeypatch.setattr(O, "CONFIG", state["config"])
 
     def open_lseg():
         s = Session()
@@ -275,6 +277,67 @@ def test_a_missing_or_mismatched_panel_stops_before_lseg(env):
     assert env["sessions"] == [] and orders_file(env) == OLD_ORDERS
     other = S.write_json(env["root"] / "elsewhere.json", S.panel_obj())
     assert O.main(["--dry-run", "--panel", str(other)]) == 0
+
+
+def set_pin(env, **pin):
+    cfg = json.loads(env["config"].read_text())
+    cfg["panel_pin"] = {**cfg["panel_pin"], **pin}
+    S.write_json(env["config"], cfg)
+
+
+def test_an_unpinned_panel_stops_an_entry_but_a_dry_run_goes_on(env, capsys):
+    set_pin(env, sha256=None, dev_output_sha256=None, dev_output_commit=None)
+    env["use"](FakeLSEG(ENTRY))
+    with pytest.raises(SystemExit, match="pins no panel yet"):
+        O.main([])
+    assert env["sessions"] == [] and orders_file(env) == OLD_ORDERS
+    assert O.main(["--dry-run"]) == 0
+    out = capsys.readouterr().out
+    assert "a real run would stop here" in out and '"id": "nvda-va-put-2026-11-23"' in out
+
+
+@pytest.mark.parametrize("change", [
+    "another dev output",          # a second development run: other labels, other made_from, the same rung
+    "a hand-edited row",           # one finite feature changed
+    "a row removed",
+])
+def test_a_panel_that_is_not_the_pinned_one_stops(env, change):
+    path = env["root"] / "data" / "vol_arb_dev_panel.json"
+    if change == "another dev output":
+        obj = S.panel_obj(seed=11)
+        obj["made_from"] = {"file": "vol_arb_ml_dev.json", "sha256": "e" * 64, "commit": "deadbeef"}
+    else:
+        obj = json.loads(path.read_text())
+        if change == "a hand-edited row":
+            obj["rows"][7]["f4_tilt"] += 0.01
+        else:
+            del obj["rows"][7]
+    VL.load_panel(obj, S.config())                    # valid in every other way
+    S.write_json(path, obj)
+    env["use"](FakeLSEG(ENTRY))
+    with pytest.raises(SystemExit, match="not the pinned one: its sha256 is"):
+        O.main([])
+    assert env["sessions"] == [] and orders_file(env) == OLD_ORDERS
+
+
+def test_the_pin_must_agree_with_what_the_panel_says_it_was_made_from(env):
+    set_pin(env, dev_output_commit="0123abc")
+    env["use"](FakeLSEG(ENTRY))
+    with pytest.raises(SystemExit, match="commit None, panel_pin records '0123abc'"):
+        O.main([])
+    set_pin(env, dev_output_commit=None, dev_output_sha256="1" * 64)
+    with pytest.raises(SystemExit, match="sha256 '0000"):
+        O.main([])
+    set_pin(env, dev_output_sha256="0" * 64, sha256="not a hash")
+    with pytest.raises(SystemExit, match="is not a sha256"):
+        O.main([])
+    assert orders_file(env) == OLD_ORDERS
+
+
+def test_the_pin_is_not_needed_on_a_night_without_an_entry(env):
+    set_pin(env, sha256=None)
+    env["use"](FakeLSEG(FOR), now=dt.datetime(2026, 11, 24, 22, 0))
+    assert O.main([]) == 0 and orders_file(env) == []
 
 
 def test_changed_backtest_code_stops(env, tmp_path, monkeypatch):
