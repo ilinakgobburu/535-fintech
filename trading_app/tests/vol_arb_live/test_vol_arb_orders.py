@@ -90,7 +90,10 @@ class FakeLSEG:
         raise AssertionError(fields)
 
     def option_requests(self):
-        return [r for r in self.requests if r[0] == "history" and r[1] not in ("NVDA.O", "US3MT=RR")]
+        return [r for r in self.requests if r[0] == "history" and r[1] not in ("NVDA.O", "US3MT=RR", ".VIX")]
+
+    def lseg_requests(self):
+        return [r for r in self.requests if r[0] != "sleep"]
 
 
 class Session:
@@ -128,13 +131,19 @@ def env(tmp_path, monkeypatch):
         return io.BytesIO(state["vix"].encode())
 
     monkeypatch.setattr(O, "open_lseg", open_lseg)
-    monkeypatch.setattr(O.time, "sleep", lambda s: state["sleeps"].append(s))
+    def sleep(s):
+        state["sleeps"].append(s)
+        if state.get("fake") is not None:
+            state["fake"].requests.append(("sleep", s))
+
+    monkeypatch.setattr(O.time, "sleep", sleep)
     monkeypatch.setattr(urllib.request, "urlopen", urlopen)
     out = tmp_path / "github_output"
     monkeypatch.setenv("GITHUB_OUTPUT", str(out))
     state["root"], state["output"] = tmp_path, out
 
     def use(fake, now=None):
+        state["fake"] = fake
         monkeypatch.setattr(O, "ld", fake)
         monkeypatch.setattr(O, "now_ny", lambda: now or dt.datetime(2026, 11, 23, 22, 0))
         return fake
@@ -162,7 +171,7 @@ def test_the_entry_night_writes_the_two_legs(env, capsys):
     assert env["output"].read_text() == "for_day=2026-11-24\n"
     assert len(env["sessions"]) == 1 and env["sessions"][0].closed
     asked = fake.option_requests()
-    assert all(r[2] == ("BID", "ASK") for r in asked) and env["sleeps"] == [O.PAUSE] * len(asked)
+    assert all(r[2] == ("BID", "ASK") for r in asked) and env["sleeps"] == [O.PAUSE] * len(fake.lseg_requests())
     plan = VL.strike_plan(fake.closes, dt.date(2026, 11, 20), ENTRY, S.config()["chain"]["bands"],
                           S.config()["chain"]["grid"])
     assert [r[1] for r in asked] == [build_option_ric("NVDA", S.EXPIRY, k, cp, expired=False)
@@ -171,6 +180,25 @@ def test_the_entry_night_writes_the_two_legs(env, capsys):
     assert stock[0][2] == ("TRDPRC_1", "OPEN_PRC") and stock[0][3] == ["exchangeCorrection"]
     out = capsys.readouterr().out
     assert "not listed" in out and "put_rich (rule_1)" in out
+
+
+@pytest.mark.parametrize("night", ["entry", "hedge"])
+def test_every_lseg_request_is_followed_by_the_pause(env, night):
+    if night == "entry":
+        fake = env["use"](FakeLSEG(ENTRY))
+    else:
+        day = dt.date(2026, 11, 25)
+        fake = env["use"](FakeLSEG(day, chain=False, legs=leg_frames(day, [("P", 165.0, 0.5), ("C", 195.0, 0.4)])),
+                          now=dt.datetime(2026, 11, 25, 22, 0))
+        sanji(env, entry_orders([("P", 165.0, -10), ("C", 195.0, 12)]), [option("P", 165, -10), option("C", 195, 12)])
+    assert O.main([]) == 0
+    log = [r[0] for r in fake.requests]
+    kinds = {r[0] for r in fake.lseg_requests()}
+    assert len(log) >= 8 and kinds <= {"history", "data"}
+    # request, pause, request, pause, ...: never two requests without the pause between them
+    assert all((a == "sleep") != (b == "sleep") for a, b in zip(log, log[1:]))
+    assert log[0] != "sleep" and log[-1] == "sleep" and log.count("sleep") == len(fake.lseg_requests())
+    assert all(r[1] == O.PAUSE for r in fake.requests if r[0] == "sleep")
 
 
 def test_the_dry_run_prints_and_writes_nothing(env, capsys):

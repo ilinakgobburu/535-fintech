@@ -66,7 +66,7 @@ CONFIG = ROOT / "config" / "vol_arb_live.yaml"
 MKT = ROOT / "mkt"
 LEDGER = Path("data") / "vol_arb_ledger.json"       # under ROOT: every order this script has written, by id
 NY = ZoneInfo("America/New_York")
-PAUSE = 0.4         # seconds between LSEG requests: the course guideline is at most 3 a second
+PAUSE = 0.4         # seconds after every LSEG request (_paced): the course guideline is at most 3 a second
 LIBS = {"trading_app/trading_app/lib/vol_arb.py": VA, "trading_app/trading_app/lib/vol_arb_wf.py": WF}
 LIB = Path(VA.__file__).resolve().parent     # trading_app/trading_app/lib, where wheel.py, vol.py and pmcc_daily.py are
 
@@ -106,6 +106,14 @@ def check_libs(cfg: dict) -> None:
 
 
 # --------------------------------------------------------------------------- LSEG
+def _paced(call, *args, **kwargs):
+    """One LSEG request, then the pause, whatever it returned or raised: at most 3 requests a second."""
+    try:
+        return call(*args, **kwargs)
+    finally:
+        time.sleep(PAUSE)
+
+
 def _frame(df: pd.DataFrame | None) -> pd.DataFrame:
     if df is None or df.empty:
         return pd.DataFrame()
@@ -116,9 +124,8 @@ def _frame(df: pd.DataFrame | None) -> pd.DataFrame:
 
 def stock_bars(ric: str, day: dt.date, days: int) -> tuple[pd.Series, pd.Series]:
     """NVDA's unadjusted closes and opens up to D, as the backtest's cache was pulled; D's must be there."""
-    raw = _frame(ld.get_history(universe=ric, fields=["TRDPRC_1", "OPEN_PRC"], interval="daily",
-                                start=str(day - dt.timedelta(days=days)), end=str(day),
-                                adjustments=["exchangeCorrection"]))
+    raw = _frame(_paced(ld.get_history, universe=ric, fields=["TRDPRC_1", "OPEN_PRC"], interval="daily",
+                        start=str(day - dt.timedelta(days=days)), end=str(day), adjustments=["exchangeCorrection"]))
     if raw.empty or "TRDPRC_1" not in raw:
         sys.exit(f"LSEG returned no closes for {ric}: no order written.")
     raw = raw[raw.index.date <= day]
@@ -131,8 +138,8 @@ def stock_bars(ric: str, day: dt.date, days: int) -> tuple[pd.Series, pd.Series]
 
 
 def tbill(ric: str, day: dt.date) -> pd.Series:
-    df = _frame(ld.get_history(universe=ric, fields=["MID_YLD_1"], interval="daily",
-                               start=str(day - dt.timedelta(days=30)), end=str(day)))
+    df = _frame(_paced(ld.get_history, universe=ric, fields=["MID_YLD_1"], interval="daily",
+                       start=str(day - dt.timedelta(days=30)), end=str(day)))
     s = pd.to_numeric(df.get("MID_YLD_1", pd.Series(dtype=float)), errors="coerce").dropna()
     s = s[s.index.date <= day]
     if s.empty:
@@ -142,8 +149,8 @@ def tbill(ric: str, day: dt.date) -> pd.Series:
 
 def dividends(ric: str, day: dt.date, days: int) -> pd.Series:
     """Dividends as paid, the backtest's fields (aux.pkl): ex-date and unadjusted gross amount."""
-    df = ld.get_data(ric, ["TR.DivExDate", "TR.DivUnadjustedGross", "TR.DivPayDate"],
-                     {"SDate": str(day - dt.timedelta(days=days)), "EDate": str(day + dt.timedelta(days=60))})
+    df = _paced(ld.get_data, ric, ["TR.DivExDate", "TR.DivUnadjustedGross", "TR.DivPayDate"],
+                {"SDate": str(day - dt.timedelta(days=days)), "EDate": str(day + dt.timedelta(days=60))})
     if df is None or df.empty or df.shape[1] < 3:
         return pd.Series(dtype=float)
     d = df.iloc[:, 1:3].copy()
@@ -163,9 +170,9 @@ def _dates(df: pd.DataFrame | None) -> list:
 
 def report_dates(ric: str, day: dt.date) -> tuple[list, list]:
     """(the next expected report date, the actual report dates of the last two years)."""
-    expected = _dates(ld.get_data(ric, ["TR.ExpectedReportDate"]))
-    actual = _dates(ld.get_data(ric, ["TR.EPSActReportDate"],
-                                {"SDate": str(day - dt.timedelta(days=730)), "EDate": str(day), "Frq": "FQ"}))
+    expected = _dates(_paced(ld.get_data, ric, ["TR.ExpectedReportDate"]))
+    actual = _dates(_paced(ld.get_data, ric, ["TR.EPSActReportDate"],
+                           {"SDate": str(day - dt.timedelta(days=730)), "EDate": str(day), "Frq": "FQ"}))
     return expected, actual
 
 
@@ -175,15 +182,14 @@ def option_quotes(ric: str, start: dt.date, end: dt.date) -> pd.DataFrame | None
     (not listed); any other error stops the run, so a partial chain or book is never used.
     """
     try:
-        df = ld.get_history(universe=ric, fields=["BID", "ASK"], interval="daily", start=str(start), end=str(end))
+        df = _paced(ld.get_history, universe=ric, fields=["BID", "ASK"], interval="daily", start=str(start),
+                    end=str(end))
     except Exception as exc:
         msg = str(exc)
         if "not found" in msg.lower():
             return None
         first = msg.splitlines()[0][:200] if msg else repr(exc)
         sys.exit(f"LSEG error on {ric}, so no order was written: {first}")
-    finally:
-        time.sleep(PAUSE)
     df = _frame(df)
     if df.empty or not {"BID", "ASK"} <= set(df.columns):
         return pd.DataFrame(columns=["bid", "ask"])
