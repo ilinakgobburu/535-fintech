@@ -33,6 +33,11 @@ registered:           # config/vol_arb_ml.yaml's numbers; the script stops if li
   warm_months: 24             # the panel must hold 24 entry months of finished rows
   lot: 100                    # shares per NVDA contract
 
+limits:
+  max_hedge_x_capital: 5      # the hedge's target shares, and the shares held, times D's close, may not pass
+                              # 5 x capital: legs sized $200 a vol point hold about 2,400 / spot contracts each, so a
+                              # leg deep in the money is about 2.4 x; contracts read as shares would be about 100 x
+
 chain:                # the strikes asked for on an entry night, as scripts/fetch_wheel_raw.py banded the backtest
   bands:
     P: [0.70, 1.02]   # times the closes over the 7 days either side of the previous monthly expiry (up to D)
@@ -106,8 +111,12 @@ live_rules:
     After an expiry, the leftover shares are closed at the next open (the backtest closes them at the
     expiry's close). Shares Sanji delivers on an assignment or at expiry are hedged or closed the same way.
   - >-
-    Every NVDA option and share in the book counts as this strategy's, since the wheel's nightly schedule is
-    retired (wheel-orders.yml keeps only its Run button).
+    Every NVDA option in the book must be exactly what this strategy's filled orders add up to (its nvda-va ids in
+    mkt/fills.json, looked up in data/vol_arb_ledger.json, where the script records every order it writes; the
+    Action commits both files), except a short leg Sanji has assigned; NVDA shares need at least one fill of its
+    own. Anything else stops the run: the wheel's last cash-secured put, if Sanji filled it before the switch, must
+    be closed by hand (her own BTC order in mkt/open_orders.json) before the vol-arb trades on. With positions but
+    no mkt/fills.json the book can't be checked, and the run stops too.
   - >-
     A stale book is never traded on, as in wheel_live: once mkt/fills.json exists, every order written for a
     session up to D needs a result there; a rejected order or an option listed on or after its expiry stops

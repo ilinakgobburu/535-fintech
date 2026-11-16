@@ -14,7 +14,9 @@ Run workflow button:
      on any night with options in the book, the closes, dividends, T-bill and each held leg's quotes;
   3. decide with trading_app/trading_app/lib/vol_arb_live.py (no I/O; tested in
      trading_app/tests/vol_arb_live/), which computes with the backtest's own functions;
-  4. write mkt/open_orders.json: the next session's orders, or [] with the reason printed.
+  4. write mkt/open_orders.json: the next session's orders, or [] with the reason printed, and record them in
+     data/vol_arb_ledger.json (every order this script has written, by id), which step 1 uses to check that every
+     NVDA position in the book is what this strategy's own fills add up to (lib/vol_arb_live.book_problems).
 
 Every failure exits non-zero before mkt/open_orders.json is touched, so the Action goes red and the file keeps
 what it had.
@@ -57,6 +59,7 @@ except ImportError:          # the tests replace it; the Action installs lseg-da
 
 CONFIG = ROOT / "config" / "vol_arb_live.yaml"
 MKT = ROOT / "mkt"
+LEDGER = Path("data") / "vol_arb_ledger.json"       # under ROOT: every order this script has written, by id
 NY = ZoneInfo("America/New_York")
 PAUSE = 0.4         # seconds between LSEG requests: the course guideline is at most 3 a second
 LIBS = {"trading_app/trading_app/lib/vol_arb.py": VA, "trading_app/trading_app/lib/vol_arb_wf.py": WF}
@@ -255,10 +258,20 @@ def load_panel(cfg: dict, path: Path, dry_run: bool = False):
     return panel
 
 
-def write_orders(written: list[dict], new: list[dict], day: dt.date, for_day: dt.date, dry_run: bool) -> None:
+def write_orders(written: list[dict], new: list[dict], day: dt.date, for_day: dt.date, dry_run: bool,
+                 ledger: dict, root: str) -> None:
+    """
+    mkt/open_orders.json after wheel_live.merge_orders, and data/vol_arb_ledger.json with tonight's orders. Every
+    order that leaves the file is named, another strategy's (the wheel's last put) said to be so.
+    """
     orders, note = L.merge_orders(written, new, day, for_day)
     if note:
         print(note)
+    kept = {o.get("id") for o in orders}
+    for o in written:
+        if o.get("id") not in kept:
+            whose = "" if str(o.get("id", "")).startswith(VL.own_prefix(root)) else ", not this strategy's"
+            print(f"Dropped {o.get('id')} (for {o.get('for')}{whose}) from mkt/open_orders.json")
     if dry_run:
         print("Dry run, nothing written. mkt/open_orders.json would be:")
         print(json.dumps(orders, indent=2))
@@ -266,6 +279,11 @@ def write_orders(written: list[dict], new: list[dict], day: dt.date, for_day: dt
     MKT.mkdir(exist_ok=True)
     (MKT / "open_orders.json").write_text(json.dumps(orders, indent=2) + "\n")
     print(f"Wrote mkt/open_orders.json: {len(orders)} order(s): {', '.join(o['id'] for o in orders) or '[]'}")
+    if not note:
+        path = ROOT / LEDGER
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(VL.record_night(ledger, new, day, for_day), indent=1) + "\n")
+        print(f"Recorded tonight's {len(new)} order(s) in {LEDGER}")
     if os.environ.get("GITHUB_OUTPUT"):
         with open(os.environ["GITHUB_OUTPUT"], "a") as f:
             f.write(f"for_day={for_day.isoformat()}\n")
@@ -346,6 +364,15 @@ def main(argv=None) -> int:
     late = VL.expired_legs(book, day)
     if late:
         sys.exit(f"mkt/positions.json still lists options that expired by {day}: {late}. Book not updated yet.")
+    try:
+        ledger = VL.read_ledger(read_json(ROOT / LEDGER))
+        problems = VL.book_problems(book, fills, ledger, u["root"], day)
+    except VL.LedgerError as exc:
+        sys.exit(f"{exc}: no order written.")
+    if problems:
+        sys.exit("The book is not this strategy's alone, or not up to date with its fills, so no order was written: "
+                 + "; ".join(problems) + ". If another strategy's position is in it (the wheel's last put), close it "
+                 "by hand (a BTC or SEL order of your own in mkt/open_orders.json) and run again once Sanji has filled it.")
     held = VL.held_contracts(book)
     print(f"Book: {book.shares} shares, {len(held)} option contract(s) held")
 
@@ -355,7 +382,7 @@ def main(argv=None) -> int:
     if not tonight["entry"] and not held:
         plan = VL.plan_night(cfg, day, for_day, book)
         report(plan)
-        write_orders(written, plan["orders"], day, for_day, args.dry_run)
+        write_orders(written, plan["orders"], day, for_day, args.dry_run, ledger, u["root"])
         return 0
 
     vix = np.nan
@@ -400,7 +427,7 @@ def main(argv=None) -> int:
     except (ValueError, VL.StaleBook) as exc:
         sys.exit(f"{exc}. No order written.")
     report(plan)
-    write_orders(written, plan["orders"], day, for_day, args.dry_run)
+    write_orders(written, plan["orders"], day, for_day, args.dry_run, ledger, u["root"])
     return 0
 
 

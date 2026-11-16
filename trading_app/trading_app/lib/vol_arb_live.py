@@ -33,13 +33,19 @@ On an entry night, from D's closing quotes of that expiry's NVDA chain:
 A skipped cycle, a cycle whose nine features are not all finite, a leg missing, or a model's p inside the band
 is no trade that cycle, as in the backtest.
 
-EVERY NIGHT, THE HEDGE. The book's NVDA options are this strategy's (the wheel's schedule is retired). Their net
+WHOSE BOOK. Every NVDA option in the book must be exactly what this strategy's filled orders add up to (its ids in
+mkt/fills.json, looked up in data/vol_arb_ledger.json, which keeps every order it wrote), a short leg excepted when
+Sanji has assigned it; NVDA shares need a fill of its own. Anything else (the wheel's last put filled before the
+switch, a book read with contracts in shares) stops the run: book_problems.
+
+EVERY NIGHT, THE HEDGE. The book's NVDA options are this strategy's (checked as above). Their net
 delta at D's close, each leg's from its own closing mid's implied vol (wheel.option_greeks, as the backtest; a
 leg with no usable mid that close keeps its last IV, delta recomputed at D's spot and T), sets the target
 shares, -round(net delta). A market order for the next open moves the book's shares to it, as the backtest
 rebalances at each open from the previous close's deltas. One order cannot flip a long into a short, so
 crossing zero is two orders, the close first. With no options held the target is 0: after an expiry the
-leftover hedge (and any shares Sanji delivered) is closed. With no options and no shares, nothing.
+leftover hedge (and any shares Sanji delivered) is closed. With no options and no shares, nothing. A target or a
+holding worth more than limits.max_hedge_x_capital times the book stops the run (hedge_limit).
 
 The entry's legs are hedged from the night after they appear in the book, since a limit order may not fill.
 
@@ -499,6 +505,106 @@ def held_contracts(book: Book) -> dict:
     return {k: v for k, v in out.items() if v != 0}
 
 
+# --------------------------------------------------------------------------- whose positions they are
+LEDGER_FORMAT = "vol_arb_ledger/1"
+SIGNS = {"BUY": 1, "BTC": 1, "SEL": -1, "SHT": -1}      # what one filled order does to the position
+
+
+class LedgerError(ValueError):
+    """data/vol_arb_ledger.json is malformed, or a fill of this strategy's is not in it."""
+
+
+def own_prefix(root: str) -> str:
+    """Every id this strategy writes starts with it: 'nvda-va-'."""
+    return f"{root.lower()}-{TAG}-"
+
+
+def read_ledger(obj) -> dict:
+    """
+    data/vol_arb_ledger.json, which vol_arb_orders.py keeps beside mkt/open_orders.json (Sanji's file keeps only the
+    coming orders, so what this strategy wrote earlier, and so what its fills were, is kept here):
+
+        {"format": "vol_arb_ledger/1",
+         "orders": {"nvda-va-put-2026-11-23": {the order as written}, ...},
+         "nights": {"2026-11-23": {"for": "2026-11-24", "ids": ["nvda-va-put-2026-11-23", ...]}}}
+
+    None (no file yet) is an empty ledger.
+    """
+    if obj is None:
+        return {"format": LEDGER_FORMAT, "orders": {}, "nights": {}}
+    if (not isinstance(obj, dict) or obj.get("format") != LEDGER_FORMAT or not isinstance(obj.get("orders"), dict)
+            or not isinstance(obj.get("nights"), dict)):
+        raise LedgerError(f"data/vol_arb_ledger.json is not a {LEDGER_FORMAT} file")
+    return obj
+
+
+def record_night(ledger: dict, new: list[dict], day, for_day) -> dict:
+    """The ledger after tonight's orders were written: each by id (a rerun's version replaces the earlier one)."""
+    out = {"format": LEDGER_FORMAT, "orders": dict(ledger["orders"]), "nights": dict(ledger["nights"])}
+    for o in new:
+        out["orders"][o["id"]] = o
+    out["nights"][_d(day).isoformat()] = {"for": _d(for_day).isoformat(), "ids": [o["id"] for o in new]}
+    return out
+
+
+def strategy_options(ledger: dict, fills: list | None, root: str, day) -> tuple[dict, bool]:
+    """
+    ({(cp, expiry, strike): contracts}, any fill): what this strategy's filled option orders (its ids in
+    mkt/fills.json with status filled, looked up in the ledger) add up to for the expiries after D, and whether any
+    of its orders, a hedge included, has filled. Sanji fills all or nothing, so a filled order moved its full qty.
+    """
+    prefix = own_prefix(root)
+    own = sorted({f.get("id") for f in fills or [] if isinstance(f, dict) and isinstance(f.get("id"), str)
+                  and f["id"].startswith(prefix) and str(f.get("status", "")).lower() == "filled"})
+    unknown = [i for i in own if i not in ledger["orders"]]
+    if unknown:
+        raise LedgerError(f"mkt/fills.json records {', '.join(unknown)} filled, but data/vol_arb_ledger.json has no "
+                          f"such order, so what it bought or sold is not known")
+    out = {}
+    for i in own:
+        o = ledger["orders"][i]
+        if o.get("contract") not in ("put", "call"):
+            continue
+        key = (PUT if o["contract"] == "put" else CALL, dt.date.fromisoformat(o["expiry"]), float(o["strike"]))
+        out[key] = out.get(key, 0) + SIGNS[o["action"]] * int(o["qty"])
+    return {k: v for k, v in out.items() if v != 0 and k[1] > _d(day)}, bool(own)
+
+
+def _leg(key) -> str:
+    cp, expiry, strike = key
+    return f"{expiry} {strike:g} {'put' if cp == PUT else 'call'}"
+
+
+def book_problems(book: Book, fills: list | None, ledger: dict, root: str, day) -> list[str]:
+    """
+    Why the book's NVDA positions are not (all) this strategy's, or not up to date with its fills (empty when they
+    are). Every option held must be exactly what its filled orders add up to, except that a short leg may be gone
+    (Sanji assigns a short option whole, on any close through the strike); a long leg its fills hold must be there;
+    shares need at least one fill of its own (a hedge, or a leg whose assignment delivered them). With no
+    mkt/fills.json at all, a book with positions can't be checked against anything.
+    """
+    held = held_contracts(book)
+    if fills is None:
+        if held or book.shares:
+            return ["mkt/positions.json lists NVDA positions but there is no mkt/fills.json, so it can't be told "
+                    "whether they are this strategy's or whether the book is up to date with its orders"]
+        return []
+    want, any_fill = strategy_options(ledger, fills, root, day)
+    out = []
+    for key, qty in sorted(held.items()):
+        w = want.get(key, 0)
+        if w == 0:
+            out.append(f"the book holds {qty:+d} {_leg(key)}, which no filled {own_prefix(root)}* order accounts for")
+        elif qty != w:
+            out.append(f"the book holds {qty:+d} {_leg(key)}, but this strategy's fills add up to {w:+d}")
+    for key, w in sorted(want.items()):
+        if w > 0 and key not in held:
+            out.append(f"this strategy's fills hold {w:+d} {_leg(key)}, but the book does not list it")
+    if book.shares and not any_fill:
+        out.append(f"the book holds {book.shares:+d} NVDA shares, but no {own_prefix(root)}* order has filled")
+    return out
+
+
 # --------------------------------------------------------------------------- the hedge
 def leg_delta(mkt: dict, cp: str, expiry, strike: float, history: pd.DataFrame, day) -> dict:
     """
@@ -591,6 +697,20 @@ def check_orders(orders: list[dict]) -> None:
         raise ValueError(f"order ids repeat: {ids}")
 
 
+def hedge_limit(cfg: dict, spot: float, target: int, shares: int) -> None:
+    """
+    The hedge's target and the shares held, each times D's close, may not pass `limits.max_hedge_x_capital` times
+    the $100,000 book: legs sized $200 a vol point hold about 2,400 / spot contracts, so even one leg deep in the
+    money is near 2.4 x, while a book read with contracts in shares would be about 100 times its size.
+    """
+    cap = float(cfg["limits"]["max_hedge_x_capital"]) * VA.CAPITAL
+    for n, what in ((target, "hedge target"), (shares, "shares held")):
+        if abs(n) * spot > cap:
+            raise ValueError(f"the {what}, {n:+d} NVDA shares (${abs(n) * spot:,.0f} at {spot:.2f}), is more than "
+                             f"{cfg['limits']['max_hedge_x_capital']:g} x the ${VA.CAPITAL:,.0f} book: the book is "
+                             f"probably misread (contracts in shares?)")
+
+
 # --------------------------------------------------------------------------- the night
 def plan_night(cfg: dict, day, for_day, book: Book, *, entry_expiry=None, mkt: dict | None = None,
                leg_history: dict | None = None, vix_close: float = np.nan, panel: pd.DataFrame | None = None) -> dict:
@@ -619,6 +739,8 @@ def plan_night(cfg: dict, day, for_day, book: Book, *, entry_expiry=None, mkt: d
         legs.append({"cp": cp, "expiry": expiry, "strike": strike, "qty": qty, **d})
     net = float(sum(leg["qty"] * CONTRACT * leg["delta"] for leg in legs))
     target = -int(round(net)) if legs else 0
+    if legs:
+        hedge_limit(cfg, float(mkt["stock"].at[pd.Timestamp(day), "close"]), target, book.shares)
     stock = stock_orders(root=root, conid=conid, day=day, for_day=for_day, held=book.shares, target=target)
     if legs:
         notes.append(f"net option delta {net:+.1f} shares: hedge to {target} shares (holding {book.shares})")
@@ -672,6 +794,9 @@ def check_config(cfg: dict) -> None:
            if not _finite_number(reg.get(k)) or float(reg[k]) != float(v)]
     if bad:
         raise ValueError("config/vol_arb_live.yaml disagrees with lib/vol_arb*.py: " + "; ".join(bad))
+    x = (cfg.get("limits") or {}).get("max_hedge_x_capital")
+    if not _finite_number(x) or x <= 0:
+        raise ValueError(f"limits.max_hedge_x_capital must be a positive number, not {x!r}")
 
 
 def sha256_hex(data: bytes) -> str:

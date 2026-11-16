@@ -447,25 +447,74 @@ def priced(closes, cp, expiry, strike, sigma, r=S.RATE_PCT / 100, q_of=None):
     return pd.DataFrame.from_dict(rows, orient="index")
 
 
-def test_a_hedge_night_writes_the_stock_order(env):
-    day, for_day = dt.date(2026, 11, 25), dt.date(2026, 11, 27)
+def entry_orders(legs, day=ENTRY, for_day=FOR, expiry=S.EXPIRY):
+    """This strategy's entry orders for [(cp, strike, signed contracts)], as plan_night writes them."""
+    out = []
+    for cp, k, n in legs:
+        out += VL.option_orders(root="NVDA", conid=S.NVDA, day=day, for_day=for_day, cp=cp, expiry=expiry, strike=k,
+                                limit=3.0, held=0, target=n)
+    return out
+
+
+def hedge_orders(day, for_day, held, target):
+    return VL.stock_orders(root="NVDA", conid=S.NVDA, day=day, for_day=for_day, held=held, target=target)
+
+
+def option(cp, k, n, expiry="2026-12-18"):
+    return {"underlying": S.NVDA, "contract": "put" if cp == "P" else "call", "expiry": expiry, "strike": k, "qty": n}
+
+
+def shares(n):
+    return {"underlying": S.NVDA, "contract": "underlying", "qty": n}
+
+
+def sanji(env, filled, positions, other_fills=(), unfilled=(), written=None):
+    """
+    The repo after Sanji resolved this strategy's orders: the ledger holds every one of them (as the script records
+    what it writes), mkt/fills.json gives `filled` as filled and `unfilled` as unfilled (plus `other_fills`), and
+    mkt/positions.json is `positions`. mkt/open_orders.json is `written` (by default the orders just resolved).
+    """
+    path = env["root"] / "data" / "vol_arb_ledger.json"
+    ledger = VL.read_ledger(json.loads(path.read_text()) if path.exists() else None)
+    for o in [*filled, *unfilled]:
+        ledger["orders"][o["id"]] = o
+    S.write_json(path, ledger)
+    write_mkt(env, "fills.json", [{"id": o["id"], "status": "filled"} for o in filled]
+              + [{"id": o["id"], "status": "unfilled"} for o in unfilled] + list(other_fills))
+    write_mkt(env, "positions.json", {"cash": 0, "positions": positions})
+    write_mkt(env, "open_orders.json", [*filled, *unfilled] if written is None else written)
+
+
+def leg_frames(day, legs):
+    """Each held leg's daily BID/ASK at one vol, as LSEG would serve it: [(ric, frame)] for [(cp, strike, sigma)]."""
     closes = S.closes(end=day)
     divs = FakeLSEG(day).dividends_series()
-    q_of = lambda s, d: S.trailing_yield(divs, s, d)                    # noqa: E731
-    legs = [("P", 165.0, -10, 0.50), ("C", 195.0, 12, 0.40)]
-    frames = [(build_option_ric("NVDA", S.EXPIRY, k, cp, expired=False), priced(closes, cp, S.EXPIRY, k, s, q_of=q_of))
-              for cp, k, _, s in legs]
-    fake = env["use"](FakeLSEG(day, chain=False, legs=frames), now=dt.datetime(2026, 11, 25, 22, 0))
-    write_mkt(env, "positions.json", {"cash": 0, "positions": [
-        {"underlying": S.NVDA, "contract": "put" if cp == "P" else "call", "expiry": "2026-12-18", "strike": k, "qty": n}
-        for cp, k, n, _ in legs] + [{"underlying": S.NVDA, "contract": "underlying", "qty": -400}]})
-    assert O.main([]) == 0
-    # by hand: Black-76 delta to spot at each leg's vol on D's close
+    return [(build_option_ric("NVDA", S.EXPIRY, k, cp, expired=False),
+             priced(closes, cp, S.EXPIRY, k, s, q_of=lambda x, d: S.trailing_yield(divs, x, d))) for cp, k, s in legs]
+
+
+def by_hand_target(day, legs):
+    """-round(net delta) by hand: Black-76 delta to spot at each leg's vol on D's close, for [(cp, k, n, sigma)]."""
+    closes = S.closes(end=day)
+    divs = FakeLSEG(day).dividends_series()
     spot, r = float(closes.iloc[-1]), S.RATE_PCT / 100
     T = (pd.Timestamp(S.EXPIRY) - pd.Timestamp(day)).days / 365.0
-    F = spot * np.exp((r - q_of(spot, pd.Timestamp(day))) * T)
-    net = sum(n * 100 * bs_greeks(F, k, T, s, np.exp(-r * T), cp)["delta"] * F / spot for cp, k, n, s in legs)
-    target = -int(round(net))
+    F = spot * np.exp((r - S.trailing_yield(divs, spot, day)) * T)
+    return -int(round(sum(n * 100 * bs_greeks(F, k, T, s, np.exp(-r * T), cp)["delta"] * F / spot
+                          for cp, k, n, s in legs)))
+
+
+LEGS = [("P", 165.0, -10, 0.50), ("C", 195.0, 12, 0.40)]
+
+
+def test_a_hedge_night_writes_the_stock_order(env):
+    day, for_day = dt.date(2026, 11, 25), dt.date(2026, 11, 27)
+    fake = env["use"](FakeLSEG(day, chain=False, legs=leg_frames(day, [(cp, k, s) for cp, k, _, s in LEGS])),
+                      now=dt.datetime(2026, 11, 25, 22, 0))
+    sanji(env, entry_orders([(cp, k, n) for cp, k, n, _ in LEGS]) + hedge_orders("2026-11-24", day, 0, -400),
+          [option(cp, k, n) for cp, k, n, _ in LEGS] + [shares(-400)])
+    assert O.main([]) == 0
+    target = by_hand_target(day, LEGS)
     (o,) = orders_file(env)
     assert (o["id"], o["for"], o["order_type"], o["contract"]) == ("nvda-va-hedge-2026-11-25", "2026-11-27", "mkt",
                                                                    "underlying")
@@ -478,17 +527,17 @@ def test_a_hedge_night_writes_the_stock_order(env):
 def test_a_held_contract_lseg_does_not_know_stops(env):
     day = dt.date(2026, 11, 25)
     env["use"](FakeLSEG(day, chain=False), now=dt.datetime(2026, 11, 25, 22, 0))
-    write_mkt(env, "positions.json", {"cash": 0, "positions": [
-        {"underlying": S.NVDA, "contract": "put", "expiry": "2026-12-18", "strike": 165, "qty": -10}]})
+    sanji(env, entry_orders([("P", 165.0, -10)]), [option("P", 165, -10)])
     with pytest.raises(SystemExit, match="does not know"):
         O.main([])
-    assert orders_file(env) == OLD_ORDERS
+    assert orders_file(env) == entry_orders([("P", 165.0, -10)])
 
 
 def test_after_the_expiry_the_leftover_shares_are_closed_without_lseg(env):
     env["use"](FakeLSEG(dt.date(2026, 12, 18), chain=False), now=dt.datetime(2026, 12, 18, 22, 0))
-    write_mkt(env, "positions.json", {"cash": 0, "positions": [
-        {"underlying": S.NVDA, "contract": "underlying", "qty": -350}]})
+    # the legs expired today (Sanji removed them); the hedge sold short 350 shares on the 17th
+    sanji(env, entry_orders([("P", 165.0, -10), ("C", 195.0, 12)]) + hedge_orders("2026-12-16", "2026-12-17", 0, -350),
+          [shares(-350)], written=hedge_orders("2026-12-17", "2026-12-18", -350, -350))
     assert O.main([]) == 0
     assert [(o["action"], o["qty"], o["for"]) for o in orders_file(env)] == [("BTC", 350, "2026-12-21")]
     assert env["sessions"] == []

@@ -34,10 +34,11 @@ def test_the_vol_arb_action():
     run = next(s for s in job["steps"] if s.get("id") == "orders")
     assert run["run"] == "python vol_arb_orders.py"
     assert set(run["env"]) == {"PYTHONWARNINGS", "LSEG_APP_KEY", "LSEG_USERNAME", "LSEG_PASSWORD"}
-    commit = steps["Commit mkt/open_orders.json"]["run"]
-    assert "git add mkt/open_orders.json" in commit and "git pull --rebase origin main" in commit
+    commit = steps["Commit mkt/open_orders.json and the ledger"]["run"]
+    assert "git add mkt/open_orders.json data/vol_arb_ledger.json" in commit       # the ledger the book check reads
+    assert "git pull --rebase origin main" in commit
     assert "git push origin HEAD:main" in commit and "steps.orders.outputs.for_day" in \
-        steps["Commit mkt/open_orders.json"]["env"]["FOR_DAY"]
+        steps["Commit mkt/open_orders.json and the ledger"]["env"]["FOR_DAY"]
 
 
 def test_the_wheel_action_keeps_only_its_run_button():

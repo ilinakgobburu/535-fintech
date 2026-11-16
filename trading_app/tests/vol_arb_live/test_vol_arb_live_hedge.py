@@ -94,7 +94,7 @@ def test_crossing_zero_is_two_orders(flip):
     mkt = hedge_market()
     legs = [(cp, e, k, flip * n, s) for cp, e, k, n, s in LEGS]       # flip = -1: the opposite trade
     target = -int(round(sum(n * 100 * by_hand_delta(mkt, cp, e, k, s) for cp, e, k, n, s in legs)))
-    shares = -int(np.sign(target)) * 5000                              # held on the other side of zero
+    shares = -int(np.sign(target)) * 1500                              # held on the other side of zero
     p = VL.plan_night(S.config(), DAY, FOR, book_of(legs, shares=shares), mkt=mkt, leg_history=histories(mkt, legs))
     assert p["hedge"]["target"] == target and target != 0
     if shares > 0:
