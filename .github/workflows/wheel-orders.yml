@@ -1,11 +1,11 @@
 name: Wheel orders
 
-# Every weeknight: read the book the course server (Sanji) wrote, ask LSEG for that session's
+# When run: read the book the course server (Sanji) wrote, ask LSEG for that session's
 # closing quotes, and write the next session's wheel order to mkt/open_orders.json (one order,
 # or []). The rules are config/wheel_live.yaml; the decision is lib/wheel_live.py.
+# Its nightly schedule is retired: .github/workflows/vol-arb-orders.yml now writes mkt/open_orders.json every
+# weeknight. Only the Run workflow button is left, and a run overwrites the vol-arb orders in that file.
 on:
-  schedule:
-    - cron: "0 2 * * 2-6"   # 02:00 UTC Tue-Sat = 21:00 New York Mon-Fri in winter, 22:00 in summer
   workflow_dispatch:
 
 concurrency:
