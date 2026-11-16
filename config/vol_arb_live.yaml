@@ -1,0 +1,84 @@
+# The two-sided variance trade, live: what vol_arb_orders.py trades through the course server (Sanji).
+# The strategy is config/vol_arb_ml.yaml's (part_2, amended_2026_11_15, clarified_2026_11_15, amended_2026_11_15b),
+# computed by lib/vol_arb.py and lib/vol_arb_wf.py, copied byte for byte from the frozen backtest (hashes below).
+# This file only says what the live script needs that the backtest did not: which rung, which panel, where the
+# data comes from, and how the server's fills differ from the backtest's.
+
+underlying:
+  root: NVDA          # option RIC root
+  ric: NVDA.O         # the stock on LSEG
+  conid: 4815747      # Interactive Brokers' id, as in config/wheel_live.yaml (order.html asks for it)
+
+# The rung the development run sends to the test (its choice_for_test). rule_1 is a placeholder until that
+# run records its choice; the script refuses to enter unless the panel below records the same rung.
+rung: rule_1          # one of rule_1, logistic, forest
+
+panel: data/vol_arb_dev_panel.json   # exported from cache/vol_arb_ml_dev.json by export_vol_arb_panel.py
+development:          # the only rows the live model may be fit on (the 2024-26 final test is not used)
+  stocks: [NVDA, AMD, DIS, COST, DAL]
+  window: [2019-01-02, 2023-12-29]
+
+registered:           # config/vol_arb_ml.yaml's numbers; the script stops if lib/vol_arb*.py says otherwise
+  corridor_sd: 1.5            # |ln(K/F)| <= 1.5 x sigma_ATM x sqrt(T)
+  band_put_rich_above: 0.55   # a model trades put_rich when p > 0.55,
+  band_call_rich_below: 0.45  # call_rich when p < 0.45, nothing between
+  target_delta: 0.25          # each leg: wheel.select()'s strike nearest 0.25 |delta|
+  vega_dollars: 200           # each leg: round(200 / vega per vol point per contract) contracts, at least 1
+  capital: 100000             # the book the $200 a vol point is sized for (the P&L is an overlay)
+  warm_months: 24             # the panel must hold 24 entry months of finished rows
+  lot: 100                    # shares per NVDA contract
+
+chain:                # the strikes asked for on an entry night, as scripts/fetch_wheel_raw.py banded the backtest
+  bands:
+    P: [0.70, 1.02]   # times the closes over the 7 days either side of the previous monthly expiry (up to D)
+    C: [0.97, 1.40]
+  grid:               # [price below which it applies, increment]: NVDA_2024's, from the 2026-11-11 probe
+    - [150, 1.0]
+    - [300, 2.5]
+    - [null, 10.0]
+  history_days: 14    # each option's daily BID/ASK asked for over the 14 days up to D; only D's row is used
+
+data:
+  closes_days: 200            # NVDA.O TRDPRC_1 and OPEN_PRC, unadjusted (exchangeCorrection), 200 calendar days
+                              # up to D: 63 returns for the semivariances, 21 for rv21 and ret21, plus slack
+  dividends_days: 400         # TR.DivExDate / TR.DivUnadjustedGross: the trailing year's yield and ex-dates
+  rate_ric: US3MT=RR          # 3-month T-bill, MID_YLD_1, as in the backtest
+  leg_history_days: 45        # a held leg's daily BID/ASK, for its last usable mid
+  vix_csv: https://cdn.cboe.com/api/global/us_indices/daily_prices/VIX_History.csv
+  min_days_between_reports: 80  # when TR.ExpectedReportDate has not rolled past D: a report inside the cycle is
+                                # ruled out only if the last actual report was within this many days of the expiry
+
+lib:                  # the frozen backtest code, copied unchanged; tests/vol_arb_live checks these hashes
+  source: >-
+    branch vol-arb-ml: copied at commit 51cab41d41df3208074ec78aec8cecdf2a08ddc8 and still identical at
+    b8002f3df17fe79194789fbeada3fb60ef182add; both files last changed in 46da7d9a39a794dd1b24e63e4160d8483868c707
+  sha256:
+    trading_app/trading_app/lib/vol_arb.py: 5b6363607c7edf418d55bef10c266fb764d711da00475ebeb0084f5923676c8e
+    trading_app/trading_app/lib/vol_arb_wf.py: c288253f52cb0186373a1b7a42dc50ae6869fb88b2c95ac7b761d98f5b020355
+
+live_rules:
+  - >-
+    Entry nights are the backtest's: the first session after each monthly expiry, trading the next monthly
+    expiry. The measurement uses that session's closing quotes, as the backtest did; the orders are for the
+    next session, which Sanji fills at its prices (a limit against the bar's high and low), not at the close.
+  - >-
+    The model is fit on the development panel only (2019-23, five stocks). The registered test refits each
+    month on development and finished test rows; live, neither the 2024-26 test rows nor the live cycles
+    (whose labels would need the backtest's hedged P&L) are added.
+  - >-
+    The option orders are limits at the closing mid. If only one leg fills, the book holds one leg and is
+    hedged as it stands; an unfilled entry is not placed again (the backtest enters only at the entry close).
+  - >-
+    The hedge is a market order for the next open, to -round(net delta) shares from D's closing deltas, as
+    the backtest rebalances at each open. The new legs are hedged from the night after they appear in the
+    book (the backtest hedges them at the entry close).
+  - >-
+    After an expiry, the leftover shares are closed at the next open (the backtest closes them at the
+    expiry's close). Shares Sanji delivers on an assignment or at expiry are hedged or closed the same way.
+  - >-
+    Every NVDA option and share in the book counts as this strategy's, since the wheel's nightly schedule is
+    retired (wheel-orders.yml keeps only its Run button).
+  - >-
+    A stale book is never traded on, as in wheel_live: once mkt/fills.json exists, every order written for a
+    session up to D needs a result there; a rejected order or an option listed on or after its expiry stops
+    the run; an order for a session not yet resolved is kept and nothing is added.
