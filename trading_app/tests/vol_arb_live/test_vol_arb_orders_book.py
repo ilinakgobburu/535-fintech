@@ -158,3 +158,43 @@ def test_a_run_while_the_session_is_open_records_nothing(env, capsys):
     assert O.main([]) == 0
     assert "its session has not been resolved yet, so no new order" in capsys.readouterr().out
     assert orders_file(env) == entry and ledger(env) == before
+
+
+def ack(env, **ids):
+    cfg = json.loads(env["config"].read_text())
+    cfg["acknowledged"] = {k.replace("_", "-"): v for k, v in ids.items()}
+    S.write_json(env["config"], cfg)
+
+
+def test_a_rejected_leg_stops_every_night_until_acknowledged(env, capsys):
+    # the entry's put was rejected and its call filled: the book holds the call alone
+    put, call = entry_orders([("P", 165.0, -14), ("C", 195.0, 14)])
+    write_mkt(env, "open_orders.json", [put, call])
+    path = env["root"] / "data" / "vol_arb_ledger.json"
+    S.write_json(path, {"format": "vol_arb_ledger/1", "orders": {put["id"]: put, call["id"]: call}, "nights": {}})
+    write_mkt(env, "fills.json", [{"id": put["id"], "status": "rejected"}, {"id": call["id"], "status": "filled"}])
+    write_mkt(env, "positions.json", {"cash": 0, "positions": [option("C", 195, 14)]})
+    for day in (dt.date(2026, 11, 24), dt.date(2026, 11, 25)):
+        env["use"](FakeLSEG(day, chain=False, legs=leg_frames(day, [("C", 195.0, 0.4)])),
+                   now=dt.datetime.combine(day, dt.time(22, 0)))
+        with pytest.raises(SystemExit, match="Sanji rejected nvda-va-put-2026-11-23"):
+            O.main([])
+        assert orders_file(env) == [put, call]
+    ack(env, nvda_va_put_2026_11_23="rejected; the call filled alone and is hedged as it stands")
+    assert O.main([]) == 0
+    out = capsys.readouterr().out
+    assert "Note: Sanji rejected nvda-va-put-2026-11-23; acknowledged" in out
+    (hedge,) = orders_file(env)                                            # the rejected order is gone from the file
+    assert hedge["id"] == "nvda-va-hedge-2026-11-25" and hedge["action"] == "SHT"
+    assert hedge["qty"] == -by_hand_target(dt.date(2026, 11, 25), [("C", 195.0, 14, 0.4)])
+
+
+def test_the_wheels_unanswered_put_does_not_stop_the_vol_arb(env, capsys):
+    # Sanji starts keeping fills.json without a result for the wheel's last order: noted, not red
+    env["use"](FakeLSEG(dt.date(2026, 11, 17), chain=False), now=dt.datetime(2026, 11, 17, 22, 0))
+    write_mkt(env, "fills.json", [])
+    write_mkt(env, "positions.json", {"cash": 100000, "positions": []})
+    assert O.main([]) == 0
+    out = capsys.readouterr().out
+    assert "Note: mkt/fills.json has no result for nvda-csp-2026-11-16, which is not this strategy's" in out
+    assert "Dropped nvda-csp-2026-11-16 (for 2026-11-16, not this strategy's)" in out and orders_file(env) == []

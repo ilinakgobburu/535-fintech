@@ -91,6 +91,11 @@ lib:                  # the frozen backtest code, copied unchanged; tests/vol_ar
     wheel.option_greeks: 16da0fb1cfabf70e2a4fb54e86862ead21a0f28c88c1f8eb9be392e3cdb12956
     wheel.select: 17785699faeecab0233cbaef24f1d3b5dd0e90a5a7904d027ef2a313fd006753
 
+acknowledged: {}      # order id: why Sanji's rejection of it, or his missing result for it, no longer stops the run.
+                      # This strategy's rejected or unanswered orders stop every night until the id is here (after
+                      # fixing what was wrong); the next run notes it and rewrites mkt/open_orders.json without it.
+                      #   e.g.  nvda-va-put-2026-11-23: rejected, strike token fixed in 1a2b3c4; the call filled alone
+
 live_rules:
   - >-
     Entry nights are the backtest's: the first session after each monthly expiry, trading the next monthly
@@ -118,6 +123,8 @@ live_rules:
     be closed by hand (her own BTC order in mkt/open_orders.json) before the vol-arb trades on. With positions but
     no mkt/fills.json the book can't be checked, and the run stops too.
   - >-
-    A stale book is never traded on, as in wheel_live: once mkt/fills.json exists, every order written for a
-    session up to D needs a result there; a rejected order or an option listed on or after its expiry stops
-    the run; an order for a session not yet resolved is kept and nothing is added.
+    A stale book is never traded on, as in wheel_live: once mkt/fills.json exists, every order of this strategy's
+    written for a session up to D needs a result there; a rejected order or an option listed on or after its
+    expiry stops the run; an order for a session not yet resolved is kept and nothing is added. A rejected or
+    unanswered order stops every night until she adds its id to `acknowledged` with the reason (the hand fix);
+    another strategy's orders are only noted.

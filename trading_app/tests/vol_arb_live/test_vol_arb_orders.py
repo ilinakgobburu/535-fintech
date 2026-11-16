@@ -408,9 +408,13 @@ def test_an_order_with_no_result_stops_once_sanji_keeps_fills(env):
 
 def test_a_rejected_order_stops(env):
     env["use"](FakeLSEG(ENTRY))
-    write_mkt(env, "fills.json", [{"id": "nvda-csp-2026-11-16", "status": "rejected"}])
-    with pytest.raises(SystemExit, match="rejected"):
+    hedge = {"id": "nvda-va-hedge-2026-11-20", "for": "2026-11-23", "order_type": "mkt", "action": "BTC", "qty": 300,
+             "underlying": S.NVDA, "contract": "underlying", "ref": "open"}
+    write_mkt(env, "open_orders.json", [hedge])
+    write_mkt(env, "fills.json", [{"id": hedge["id"], "status": "rejected"}])
+    with pytest.raises(SystemExit, match="Sanji rejected nvda-va-hedge-2026-11-20"):
         O.main([])
+    assert orders_file(env) == [hedge] and env["sessions"] == []
 
 
 def test_an_option_listed_past_its_expiry_stops(env):

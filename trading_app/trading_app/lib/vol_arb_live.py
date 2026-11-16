@@ -50,7 +50,9 @@ holding worth more than limits.max_hedge_x_capital times the book stops the run 
 The entry's legs are hedged from the night after they appear in the book, since a limit order may not fill.
 
 A STALE BOOK stops the run, as in wheel_live: an order this script wrote for a session up to D with no result
-yet once mkt/fills.json exists, a rejected order, or an option still listed on or after its expiry.
+yet once mkt/fills.json exists, a rejected order, or an option still listed on or after its expiry. Only this
+strategy's own orders count (guard_problems); one she has looked at and listed in config's `acknowledged` is noted
+instead, so the next run goes on and rewrites mkt/open_orders.json without it.
 """
 
 from __future__ import annotations
@@ -570,6 +572,38 @@ def strategy_options(ledger: dict, fills: list | None, root: str, day) -> tuple[
     return {k: v for k, v in out.items() if v != 0 and k[1] > _d(day)}, bool(own)
 
 
+def guard_problems(written: list[dict], fills: list | None, day, root: str, acknowledged: dict) -> tuple[list, list]:
+    """
+    (why the run must stop, notes), wheel_live's guards on mkt/open_orders.json as it stands: an order Sanji
+    rejected, or one written for a session up to D with no result once mkt/fills.json exists. Only this
+    strategy's orders stop the run; another's (the wheel's last put) is noted. An id in config's `acknowledged`
+    (her reason, once she has looked at it) is noted instead of stopping the run, so a rejected or unanswered order
+    can't keep every later night red: the run that goes on rewrites the file without it.
+    """
+    prefix, stops, notes = own_prefix(root), [], []
+    for f in L.rejected_orders(written, fills):
+        i = f.get("id")
+        if not str(i).startswith(prefix):
+            notes.append(f"Sanji rejected {i}, which is not this strategy's: {f}")
+        elif i in acknowledged:
+            notes.append(f"Sanji rejected {i}; acknowledged in config/vol_arb_live.yaml: {acknowledged[i]}")
+        else:
+            stops.append(f"Sanji rejected {i}: {f}. Fix the order format; to trade on, add {i} to "
+                         f"config/vol_arb_live.yaml's acknowledged with the reason")
+    waiting = L.unresolved_orders(written, fills, _d(day))
+    for i in [i for i in waiting if not str(i).startswith(prefix)]:
+        notes.append(f"mkt/fills.json has no result for {i}, which is not this strategy's")
+    for i in [i for i in waiting if str(i).startswith(prefix) and i in acknowledged]:
+        notes.append(f"mkt/fills.json has no result for {i}; acknowledged in config/vol_arb_live.yaml: "
+                     f"{acknowledged[i]}")
+    mine = [i for i in waiting if str(i).startswith(prefix) and i not in acknowledged]
+    if mine:
+        stops.append(f"mkt/fills.json has no result yet for {', '.join(mine)}: the book may be stale. If Sanji has "
+                     f"resolved the session and will not answer, add the id to config/vol_arb_live.yaml's "
+                     f"acknowledged with the reason")
+    return stops, notes
+
+
 def _leg(key) -> str:
     cp, expiry, strike = key
     return f"{expiry} {strike:g} {'put' if cp == PUT else 'call'}"
@@ -794,6 +828,10 @@ def check_config(cfg: dict) -> None:
            if not _finite_number(reg.get(k)) or float(reg[k]) != float(v)]
     if bad:
         raise ValueError("config/vol_arb_live.yaml disagrees with lib/vol_arb*.py: " + "; ".join(bad))
+    ack = cfg.get("acknowledged", {})
+    if not isinstance(ack, dict) or not all(isinstance(k, str) and isinstance(v, str) and v.strip()
+                                            for k, v in ack.items()):
+        raise ValueError("acknowledged must map order ids to the reason each no longer stops the run")
     x = (cfg.get("limits") or {}).get("max_hedge_x_capital")
     if not _finite_number(x) or x <= 0:
         raise ValueError(f"limits.max_hedge_x_capital must be a positive number, not {x!r}")

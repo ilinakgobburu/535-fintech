@@ -21,6 +21,11 @@ Run workflow button:
 Every failure exits non-zero before mkt/open_orders.json is touched, so the Action goes red and the file keeps
 what it had.
 
+When Sanji rejects one of this strategy's orders, or gives no result for one, every night stops (the file keeps
+the order, so the same check fails again) until she has looked at it: fix what was wrong, then add the id to
+config/vol_arb_live.yaml's `acknowledged` with the reason. The next run notes it, goes on and rewrites the file
+without it. Another strategy's orders (the wheel's last put) are only noted.
+
     python3 vol_arb_orders.py                       # tonight, as the Action runs it (LSEG from the Keychain)
     python3 vol_arb_orders.py --dry-run             # print tonight's orders, write nothing
     python3 vol_arb_orders.py --dry-run --as-of 2026-11-16 --force-entry
@@ -352,11 +357,13 @@ def main(argv=None) -> int:
     if not isinstance(written, list):
         sys.exit("mkt/open_orders.json is not a JSON list")
     fills = read_json(MKT / "fills.json")
-    for f in L.rejected_orders(written, fills):
-        sys.exit(f"Sanji rejected {f.get('id')}: {f}. Fix the order format before trading on.")
-    waiting = L.unresolved_orders(written, fills, day)
-    if waiting:
-        sys.exit(f"mkt/fills.json has no result yet for {', '.join(waiting)}: the book may be stale, no order written.")
+    if fills is not None and not isinstance(fills, list):
+        sys.exit("mkt/fills.json is not a JSON list")
+    stops, notes = VL.guard_problems(written, fills, day, u["root"], cfg.get("acknowledged") or {})
+    for n in notes:
+        print(f"Note: {n}")
+    if stops:
+        sys.exit(". ".join(stops) + ". No order written.")
     try:
         book = VL.read_book(read_json(MKT / "positions.json"), fills, u["conid"])
     except L.BookFormatError as exc:
