@@ -6,12 +6,13 @@ Run by .github/workflows/vol-arb-orders.yml every weeknight at 22:00 New York ti
 --retry at 01:00 (06:00 UTC; it does nothing if the first run wrote tonight's orders, so a failed first run is
 retried before the open), and from its Run workflow button:
   1. read config/vol_arb_live.yaml, check lib/vol_arb.py and lib/vol_arb_wf.py, and each lib/wheel.py, lib/vol.py
-     and lib/pmcc_daily.py function they use, against its hashes, and read
-     the book (mkt/positions.json and mkt/fills.json, which Sanji writes). Stop if the book is not up to date
-     with the orders already written;
+     and lib/pmcc_daily.py function they use, against its hashes, and read the book (mkt/positions.json and
+     mkt/fills.json, which Sanji writes). Stop if the book is not up to date with the orders already written, or
+     holds anything this strategy's own fills do not account for;
   2. on an entry night (the first session after a monthly expiry), read the development panel (it must be the
-     file the config's panel_pin records) and Cboe's VIX close (LSEG's .VIX close when Cboe's file lacks D), then log in to LSEG (lseg_login.py) for NVDA's closes and opens, dividends, the 3-month T-bill,
-     the report dates and the closing bid/ask of the next monthly expiry's chain, one RIC per request;
+     file the config's panel_pin records) and Cboe's VIX close (LSEG's .VIX close when Cboe's file lacks D),
+     then log in to LSEG (lseg_login.py) for NVDA's closes and opens, dividends, the 3-month T-bill, the report
+     dates and the closing bid/ask of the next monthly expiry's chain, one RIC per request, each request paced;
      on any night with options in the book, the closes, dividends, T-bill and each held leg's quotes;
   3. decide with trading_app/trading_app/lib/vol_arb_live.py (no I/O; tested in
      trading_app/tests/vol_arb_live/), which computes with the backtest's own functions;
@@ -201,11 +202,14 @@ def option_quotes(ric: str, start: dt.date, end: dt.date) -> pd.DataFrame | None
                          "ask": pd.to_numeric(df["ASK"], errors="coerce")}, index=df.index)
 
 
-def chain(root: str, expiry: dt.date, plan: dict, day: dt.date, days: int, min_share: float) -> pd.DataFrame:
+def chain(root: str, expiry: dt.date, plan: dict, day: dt.date, days: int, min_share: float,
+          strict: bool = True) -> pd.DataFrame:
     """
     The expiry's puts and calls on D's close, in load_market's frame. Stops when LSEG looks part-way through
-    publishing D (VL.chain_problem): no contract with a D row, a listed contract with earlier rows but none for
-    D, or fewer than `min_share` of the listed contracts with a D row.
+    publishing D (VL.chain_problem): no contract with a D row, fewer than `min_share` of the listed contracts with
+    a D row, or (`strict`, the 22:00 run) a listed contract with earlier rows but none for D. The 01:00 retry is
+    not strict: three hours on, such a contract is taken as a hole in D's chain (no quote that close), and the
+    chain is measured without it, as the backtest measured its cache's holes.
     """
     rows, unlisted, dated, stale = [], 0, 0, []
     for cp in (VL.PUT, VL.CALL):
@@ -228,9 +232,12 @@ def chain(root: str, expiry: dt.date, plan: dict, day: dt.date, days: int, min_s
     two = int((frame["mid"] > 0).sum())
     print(f"  {asked} asked: {dated} with a {day} row ({two} two-sided), {unlisted} not listed"
           + (f", {len(stale)} with earlier rows but none for {day}" if stale else ""))
-    problem = VL.chain_problem(expiry, day, asked - unlisted, dated, stale, min_share)
+    problem = VL.chain_problem(expiry, day, asked - unlisted, dated, stale if strict else [], min_share)
     if problem:
         sys.exit(f"{problem}: no order written.")
+    if stale:
+        print(f"  Note: measured without {len(stale)} listed contract(s) with no {day} quote ({', '.join(stale[:4])}"
+              f"{', ...' if len(stale) > 4 else ''}): the retry takes them as holes in {day}'s chain")
     return frame
 
 
@@ -490,7 +497,7 @@ def _tonight(args, cfg, day, for_day, tonight, written, book, held, ledger) -> i
                   f"{strikes['P'][0]:g}-{strikes['P'][-1]:g} and {len(strikes['C'])} calls "
                   f"{strikes['C'][0]:g}-{strikes['C'][-1]:g} of {tonight['expiry']}")
             quotes = chain(u["root"], tonight["expiry"], strikes, day, int(cfg["chain"]["history_days"]),
-                           float(cfg["chain"]["min_dated_share"]))
+                           float(cfg["chain"]["min_dated_share"]), strict=not args.retry)
         history = {}
         for (cp, expiry, strike) in held:
             ric = build_option_ric(u["root"], expiry, strike, cp, expired=False)

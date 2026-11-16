@@ -274,6 +274,19 @@ def test_a_chain_missing_d_for_two_listed_contracts_stops(env):
     assert orders_file(env) == OLD_ORDERS and not env["output"].exists() and env["sessions"][0].closed
 
 
+def test_the_retry_measures_a_chain_with_a_hole_the_first_run_stopped_on(env, capsys):
+    fake = FakeLSEG(ENTRY)
+    ric = build_option_ric("NVDA", S.EXPIRY, 150.0, "P", expired=False)
+    fake.options[ric] = fake.options[ric].iloc[:1]                 # still no D quote for the 150 put at 01:00
+    env["use"](fake)
+    with pytest.raises(SystemExit, match="1 listed 2026-12-18 option\\(s\\) have earlier rows but none"):
+        O.main([])
+    env["use"](fake, now=dt.datetime(2026, 11, 24, 1, 0))
+    assert O.main(["--retry"]) == 0
+    assert f"Note: measured without 1 listed contract(s) with no 2026-11-23 quote ({ric})" in capsys.readouterr().out
+    assert [o["id"] for o in orders_file(env)] == ["nvda-va-put-2026-11-23", "nvda-va-call-2026-11-23"]
+
+
 def test_a_chain_with_too_few_d_rows_stops(env):
     # every other listed contract with no row at all in the window: under 90% of the chain has D
     fake = FakeLSEG(ENTRY)
