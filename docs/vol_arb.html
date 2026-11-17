@@ -259,6 +259,11 @@
   sub{line-height:0}
   /* inline code in running text: no box, whose faint edges and padding read as spaces beside brackets */
   p code,li code,.takeaway code{background:none;border:0;padding:0}
+  /* the serif's own spacing: at text sizes its automatic optical size is its loose small-print cut, so running
+     text is pinned to a mid cut (tighter, even letters); headings keep the automatic one */
+  body{font-optical-sizing:none;font-variation-settings:'opsz' 24}
+  .lede,.takeaway{font-variation-settings:'opsz' 28;letter-spacing:-.005em}
+  h1,h2,h3,h4{font-optical-sizing:auto;font-variation-settings:normal}
 </style>
 </head>
 <body data-fill="mid">
