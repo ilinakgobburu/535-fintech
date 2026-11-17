@@ -28,7 +28,7 @@ def book(options=(), shares=0):
 
 
 def plan(day, b, mkt=None, **kw):
-    return FW.plan_night(CFG, day, FW.next_session(day), b, mkt=mkt, **kw)
+    return FW.plan_night(CFG, day, FW.next_session(day), b, name=S.NVDA_NAME, mkt=mkt, **kw)
 
 
 # --------------------------------------------------------------------------- the entry night

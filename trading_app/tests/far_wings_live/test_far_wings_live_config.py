@@ -1,6 +1,7 @@
 """
-config/far_wings_live.yaml: its registered numbers are the module's (and the choices' as she gave them), the lib
-functions it pins hash to the files as they stand, and each malformed setting is refused.
+config/far_wings_live.yaml: its registered numbers are the module's (and the choices' as she gave them), the basket's
+31 names as she chose them (NVDA's entry as the single-name config had it), the lib functions it pins hash to the
+files as they stand, and each malformed setting is refused.
 """
 
 from __future__ import annotations
@@ -21,18 +22,84 @@ def read(module):
     return (LIB / f"{module}.py").read_text()
 
 
+# The basket as she chose it on 2026-11-17: NVDA, then the long/short vol book's registered draw (ranks 1-30), each
+# ticker's RIC as LSEG returns it and its IB conid, all 31 confirmed through her TWS by matching IB's ISIN to LSEG's
+# (V 49462172 and T 37018770 too, and XOM's new 895178251 after its holding-company reorganization).
+BASKET = [("NVDA", "NVDA.O", 4815747), ("MSFT", "MSFT.OQ", 272093), ("AAPL", "AAPL.OQ", 265598),
+          ("AMZN", "AMZN.OQ", 3691937), ("GOOG", "GOOG.OQ", 208813720), ("BRK B", "BRKb.N", 72063691),
+          ("META", "META.OQ", 107113386), ("JNJ", "JNJ.N", 8719), ("JPM", "JPM.N", 1520593), ("V", "V.N", 49462172),
+          ("XOM", "XOM.N", 895178251), ("WMT", "WMT.OQ", 13824), ("PFE", "PFE.N", 11031), ("UNH", "UNH.N", 13272),
+          ("BAC", "BAC.N", 10098), ("VZ", "VZ.N", 4901), ("PG", "PG.N", 11054), ("WFC", "WFC.N", 10375),
+          ("INTC", "INTC.OQ", 270639), ("CVX", "CVX.N", 5684), ("T", "T.N", 37018770), ("KO", "KO.N", 8894),
+          ("MRK", "MRK.N", 70101545), ("MA", "MA.N", 38685693), ("CSCO", "CSCO.OQ", 268084), ("HD", "HD.N", 7930),
+          ("BA", "BA.N", 4762), ("DIS", "DIS.N", 6459), ("ORCL", "ORCL.N", 272800), ("PEP", "PEP.OQ", 11017),
+          ("CMCSA", "CMCSA.OQ", 267748)]
+
+
 def test_the_repo_config_is_well_formed_and_owns_the_orders():
     cfg = S.config()
     FW.check_config(cfg)
     assert cfg["owns_open_orders"] is True and cfg["acknowledged"] == {}
-    assert cfg["underlying"] == {"root": "NVDA", "ric": "NVDA.O", "conid": S.NVDA}
+    assert "underlying" not in cfg
     assert cfg["registered"] == {"put_max_abs_delta": 0.10, "put_target_abs_delta": 0.05, "call_max_abs_delta": 0.05,
                                  "call_target_abs_delta": 0.03, "vega_dollars": 200, "capital": 100000,
                                  "band_share_of_book": 0.05, "lot": 100}
-    # the strikes asked for are the backtest caches' bands and grid, as vol-arb's live config has them
+    # the strikes asked for are the backtest caches' bands, as vol-arb's live config has them, and NVDA's grid is
+    # still the backtest's (NVDA_2024's); the single-name config's NVDA is the basket's first name, unchanged
     va = VL_config()
-    assert cfg["chain"]["bands"] == va["chain"]["bands"] and cfg["chain"]["grid"] == va["chain"]["grid"]
-    assert set(cfg["technical_choices"]) >= {"calendar", "wings", "size", "fills", "hedge"}
+    assert cfg["chain"]["bands"] == va["chain"]["bands"] and "grid" not in cfg["chain"]
+    nvda = cfg["names"][0]
+    assert {k: nvda[k] for k in ("ticker", "root", "ric", "conid")} == {"ticker": "NVDA", "root": "NVDA",
+                                                                         "ric": "NVDA.O", "conid": S.NVDA}
+    assert nvda["grid"] == va["chain"]["grid"] and nvda["lot"] == 100
+    assert set(cfg["technical_choices"]) >= {"calendar", "wings", "size", "fills", "hedge", "basket_grids",
+                                             "one_file", "name_by_name"}
+
+
+def test_the_basket_is_the_31_names_she_chose():
+    names = S.config()["names"]
+    assert [(n["ticker"], n["ric"], n["conid"]) for n in names] == BASKET
+    assert all(type(n["conid"]) is int for n in names)              # no name waits for a conid
+    for t, isin in (("V", "US92826C8394"), ("T", "US00206R1023")):
+        note = " ".join(S.name(t)["probe"].split())
+        assert f"ISIN {isin} matches LSEG's" in note and "not yet confirmed" not in note
+    assert all(n["lot"] == 100 and n["root"] == n["ticker"].replace(" ", "") for n in names)
+    # BRK B's option root as LSEG answered it; its id root has no space; every probe note is dated
+    brk = S.name("BRK B")
+    assert brk["root"] == "BRKB" and FW.own_prefix("BRK B") == "brkb-fw-" and "root BRKB confirmed" in brk["probe"]
+    assert all(n["probe"].startswith("2026-11-17 probe, Dec 18 2026 monthlies") for n in names[1:])
+    assert all(len(n["grid"]) == 1 and n["grid"][0][0] is None for n in names[1:])
+    steps = {n["ticker"]: n["grid"][0][1] for n in names[1:]}
+    assert {t for t, k in steps.items() if k == 10.0} == {"JNJ", "UNH"}
+    # $0.50 where $1 and $2.50 strikes are both listed (BAC, VZ) or may be: PFE, T and CMCSA (the probe never asked
+    # a $2.50-multiple x.50 strike), INTC (its put wing, near 41, is below the $50 the probe rounded to); $2.50 for
+    # ORCL and DIS, whose put wings fall below the $100 the probe rounded to
+    assert {t for t, k in steps.items() if k == 0.5} == {"BAC", "VZ", "PFE", "T", "CMCSA", "INTC"}
+    assert {t for t, k in steps.items() if k == 1.0} == set()
+    assert {t for t, k in steps.items() if k == 2.5} == {"WFC", "KO", "CSCO", "DIS", "ORCL"}
+    assert {t for t, k in steps.items() if k == 5.0} == set(steps) - {"JNJ", "UNH", "BAC", "VZ", "PFE", "T", "CMCSA",
+                                                                      "INTC", "WFC", "KO", "CSCO", "DIS", "ORCL"}
+    for t in ("PFE", "T", "CMCSA", "INTC", "ORCL", "DIS"):
+        assert "costs only never-listed requests" in " ".join(S.name(t)["probe"].split()), t
+    header = " ".join((S.REPO / "config" / "far_wings_live.yaml").read_text().split("\nnames:")[0]
+                      .replace("#", " ").split())
+    assert "These 30 names were NOT in the far-wing backtest, which used 11 stocks" in header
+    assert '"why cant you do more than nvda?"' in header and '"The 30-stock basket" and "$100k book per stock"' in header
+
+
+def test_every_id_root_and_prefix_is_distinct_and_none_starts_another():
+    tickers = [n["ticker"] for n in S.config()["names"]]
+    prefixes = [FW.own_prefix(t) for t in tickers]
+    assert len(set(prefixes)) == 31 and all("-" not in FW.id_root(t) and FW.id_root(t).isalnum() for t in tickers)
+    for a in prefixes:
+        assert [b for b in prefixes if b.startswith(a)] == [a]
+    for t in tickers:
+        assert FW.owner(f"{FW.own_prefix(t)}put-2026-11-23", tickers) == t
+    assert FW.owner("nvda-va-put-2026-11-23", tickers) is None and FW.owner("t-csp-2026-11-16", tickers) is None
+    assert FW.owner("nvda-fw-put-2026-11-23", tickers) == "NVDA" and FW.owner(None, tickers) is None
+    # only the start of an id says whose it is: her own order naming another id inside is not T's (t-fw-)
+    assert FW.owner("msft-close-t-fw-put-2026-11-23", tickers) is None
+    assert FW.owner("hand-brkb-fw-call-2026-11-23", tickers) is None
 
 
 def VL_config():
@@ -59,8 +126,32 @@ def test_a_registered_number_that_differs_stops(key, value):
 
 
 @pytest.mark.parametrize("path, value, match", [
-    (("underlying", "conid"), "4815747", "integer conid"),
-    (("underlying", "ric"), "", "integer conid"),
+    (("names", 0, "conid"), "4815747", "conid must be an integer, or null"),
+    (("names", 0, "conid"), True, "conid must be an integer, or null"),
+    (("names", 0, "ric"), "", "ric must be the stock's LSEG RIC"),
+    (("names", 0, "root"), "nvda", "upper-case option root"),
+    (("names", 0, "root"), "BRK B", "upper-case option root"),
+    (("names", 0, "ticker"), "", "ticker must be a non-empty string"),
+    (("names", 0, "ticker"), " NVDA", "ticker must be a non-empty string"),
+    (("names", 0, "ticker"), "NVDA\nstopped=x", "ticker must be a non-empty string"),
+    (("names", 0, "ticker"), "nvda", "ticker must be a non-empty string"),
+    (("names", 0, "lot"), 10, "every name is sized on the registered lot 100"),
+    (("names", 0, "grid"), [], "grid is not a list"),
+    (("names", 0, "grid"), [[150, 1.0], [300, 2.5]], "null \\(any price above\\) last"),
+    (("names", 0, "grid"), [[300, 2.5], [150, 1.0], [None, 10.0]], "rising bounds"),
+    (("names", 0, "grid"), [[None, 0.0]], "positive increment"),
+    (("names", 0, "grid"), [[None, "5"]], "positive increment"),
+    (("names", 0, "probe"), "", "probe, when given"),
+    (("names", 1, "ticker"), "NVDA", "two names have the same ticker"),
+    (("names", 1, "ticker"), "NV DA", "two names have the same id root"),
+    (("names", 1, "ticker"), "N.V.D.A", "two names have the same id root"),
+    (("names", 1, "conid"), 4815747, "two names have the same conid"),
+    (("names", 0), {"ticker": "NVDA", "ric": "NVDA.O", "root": "NVDA", "conid": 4815747, "lot": 100},
+     "each name needs exactly ticker, ric, root, conid, grid, lot"),
+    (("names", 0), {**S.NVDA_NAME, "exchange": "NASDAQ"}, "each name needs exactly"),
+    (("names",), [], "names must be a list"),
+    (("names",), {"NVDA": {}}, "names must be a list"),
+    (("underlying",), {"root": "NVDA", "ric": "NVDA.O", "conid": 4815747}, "underlying is gone"),
     (("owns_open_orders",), "true", "owns_open_orders"),
     (("acknowledged",), {"nvda-fw-put-2026-11-23": ""}, "acknowledged"),
     (("acknowledged",), ["nvda-fw-put-2026-11-23"], "acknowledged"),

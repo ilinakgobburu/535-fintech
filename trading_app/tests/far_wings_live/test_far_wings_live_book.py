@@ -1,8 +1,9 @@
 """
-Whose book it is and whether it is up to date, as vol_arb_live has it, for this strategy's ids (nvda-fw-...): the
-ledger, the guards on mkt/open_orders.json (rejected or unanswered orders, acknowledged ones, another strategy's), and
-the book reconciliation (every option exactly what the filled orders add up to, a short wing assigned, shares with a
-fill of their own, no fills file).
+Whose book it is and whether it is up to date, as vol_arb_live has it, for this strategy's ids (nvda-fw-...), name by
+name: the ledger (each name's part), the guards on mkt/open_orders.json (an unanswered order stops every name, a
+rejected one only its own name; acknowledged ones and another strategy's are noted), and the book reconciliation
+(every option exactly what the name's filled orders add up to, a short wing assigned, shares with a fill of their
+own, no fills file).
 """
 
 from __future__ import annotations
@@ -25,9 +26,13 @@ WHEEL = {"id": "nvda-csp-2026-11-16", "for": "2026-11-16", "order_type": "lmt", 
 DAY = dt.date(2026, 11, 25)
 
 
-def ledger(*orders):
-    led = FW.read_ledger(None)
-    return FW.record_night(led, list(orders), dt.date(2026, 11, 23), dt.date(2026, 11, 24))
+TICKERS = [n["ticker"] for n in S.config()["names"]]
+
+
+def ledger(*orders, ticker="NVDA"):
+    """A name's part of the ledger after one night with these orders."""
+    led = FW.record_night(FW.read_ledger(None), ticker, list(orders), dt.date(2026, 11, 23), dt.date(2026, 11, 24))
+    return FW.name_ledger(led, ticker)
 
 
 def book(options=(), shares=0):
@@ -40,46 +45,75 @@ def filled(*ids):
 
 
 # --------------------------------------------------------------------------- the ledger
-def test_the_ledger_records_each_night_and_each_order():
-    led = ledger(PUT, CALL)
-    assert led["format"] == "far_wings_ledger/1" and set(led["orders"]) == {PUT["id"], CALL["id"]}
+def test_the_ledger_records_each_night_and_each_order_name_by_name():
+    full = FW.record_night(FW.read_ledger(None), "NVDA", [PUT, CALL], dt.date(2026, 11, 23), dt.date(2026, 11, 24))
+    assert full["format"] == "far_wings_ledger/2" and set(full["names"]) == {"NVDA"}
+    led = FW.name_ledger(full, "NVDA")
+    assert set(led["orders"]) == {PUT["id"], CALL["id"]}
     assert led["nights"]["2026-11-23"] == {"for": "2026-11-24", "ids": [PUT["id"], CALL["id"]]}
     assert FW.decided(led, dt.date(2026, 11, 23), dt.date(2026, 11, 24)) == f"{PUT['id']}, {CALL['id']}"
     assert FW.decided(led, dt.date(2026, 11, 23), dt.date(2026, 11, 25)) is None
-    empty = FW.record_night(led, [], DAY, dt.date(2026, 11, 26))
-    assert FW.decided(empty, DAY, dt.date(2026, 11, 26)) == "no order" and set(empty["orders"]) == set(led["orders"])
+    # another name's night is its own: NVDA's is untouched, and a name with no night yet is undecided
+    brk = {**PUT, "id": "brkb-fw-put-2026-11-23", "underlying": 72063691, "strike": "500"}
+    both = FW.record_night(full, "BRK B", [brk], dt.date(2026, 11, 23), dt.date(2026, 11, 24))
+    assert FW.name_ledger(both, "NVDA") == led and set(FW.name_ledger(both, "BRK B")["orders"]) == {brk["id"]}
+    assert FW.decided(FW.name_ledger(both, "AAPL"), dt.date(2026, 11, 23), dt.date(2026, 11, 24)) is None
+    assert FW.read_ledger(both) is both
+    empty = FW.record_night(both, "NVDA", [], DAY, dt.date(2026, 11, 26))
+    mine = FW.name_ledger(empty, "NVDA")
+    assert FW.decided(mine, DAY, dt.date(2026, 11, 26)) == "no order" and set(mine["orders"]) == set(led["orders"])
+    assert FW.name_ledger(empty, "BRK B") == FW.name_ledger(both, "BRK B")
+    assert full["names"]["NVDA"]["nights"] == {"2026-11-23": {"for": "2026-11-24", "ids": [PUT["id"], CALL["id"]]}}
 
 
-@pytest.mark.parametrize("obj", [{"format": "vol_arb_ledger/1", "orders": {}, "nights": {}}, [], {"format":
-                                 "far_wings_ledger/1", "orders": [], "nights": {}}])
+@pytest.mark.parametrize("obj", [{"format": "vol_arb_ledger/1", "orders": {}, "nights": {}}, [],
+                                 {"format": "far_wings_ledger/1", "orders": {}, "nights": {}},
+                                 {"format": "far_wings_ledger/2", "names": []},
+                                 {"format": "far_wings_ledger/2", "names": {"NVDA": {"orders": {}}}},
+                                 {"format": "far_wings_ledger/2", "names": {"NVDA": {"orders": [], "nights": {}}}},
+                                 # a valid names map under another format string, or none: refused all the same
+                                 {"format": "far_wings_ledger/3", "names": {"NVDA": {"orders": {}, "nights": {}}}},
+                                 {"names": {"NVDA": {"orders": {}, "nights": {}}}}])
 def test_a_bad_ledger_is_an_error(obj):
-    with pytest.raises(FW.LedgerError, match="data/far_wings_ledger.json is not a far_wings_ledger/1 file"):
+    with pytest.raises(FW.LedgerError, match="data/far_wings_ledger.json is not a far_wings_ledger/2 file"):
         FW.read_ledger(obj)
 
 
 # --------------------------------------------------------------------------- the guards
-def test_an_unanswered_order_of_its_own_stops_until_acknowledged():
-    stops, notes = FW.guard_problems([PUT, CALL], filled(PUT["id"]), DAY, "NVDA", {})
-    assert len(stops) == 1 and "no result yet for nvda-fw-call-2026-11-23" in stops[0] and notes == []
-    stops, notes = FW.guard_problems([PUT, CALL], filled(PUT["id"]), DAY, "NVDA", {CALL["id"]: "Sanji skipped it"})
-    assert stops == [] and "acknowledged in config/far_wings_live.yaml: Sanji skipped it" in notes[0]
+def test_an_unanswered_order_of_any_name_stops_every_name_until_acknowledged():
+    stale, rejected, notes = FW.guard_problems([PUT, CALL], filled(PUT["id"]), DAY, TICKERS, {})
+    assert len(stale) == 1 and "no result yet for nvda-fw-call-2026-11-23" in stale[0] and notes == []
+    assert rejected == {}
+    stale, rejected, notes = FW.guard_problems([PUT, CALL], filled(PUT["id"]), DAY, TICKERS,
+                                               {CALL["id"]: "Sanji skipped it"})
+    assert stale == [] and "acknowledged in config/far_wings_live.yaml: Sanji skipped it" in notes[0]
+    # another name's unanswered order is the same: the one book file may be stale for every name
+    brk = {**CALL, "id": "brkb-fw-call-2026-11-23", "underlying": 72063691}
+    stale, rejected, _ = FW.guard_problems([PUT, brk], filled(PUT["id"]), DAY, TICKERS, {})
+    assert len(stale) == 1 and "no result yet for brkb-fw-call-2026-11-23" in stale[0] and rejected == {}
     # before Sanji keeps a fills file, nothing is waited for; an order for a later session is not waited for
-    assert FW.guard_problems([PUT, CALL], None, DAY, "NVDA", {}) == ([], [])
-    assert FW.guard_problems([PUT, CALL], [], dt.date(2026, 11, 23), "NVDA", {}) == ([], [])
+    assert FW.guard_problems([PUT, CALL], None, DAY, TICKERS, {}) == ([], {}, [])
+    assert FW.guard_problems([PUT, CALL], [], dt.date(2026, 11, 23), TICKERS, {}) == ([], {}, [])
 
 
-def test_a_rejected_order_of_its_own_stops_until_acknowledged():
+def test_a_rejected_order_of_its_own_stops_that_name_until_acknowledged():
     fills = [{"id": PUT["id"], "status": "rejected"}, {"id": CALL["id"], "status": "filled"}]
-    stops, _ = FW.guard_problems([PUT, CALL], fills, DAY, "NVDA", {})
-    assert len(stops) == 1 and stops[0].startswith("Sanji rejected nvda-fw-put-2026-11-23")
-    stops, notes = FW.guard_problems([PUT, CALL], fills, DAY, "NVDA", {PUT["id"]: "strike token fixed"})
-    assert stops == [] and "Sanji rejected nvda-fw-put-2026-11-23; acknowledged" in notes[0]
+    stale, rejected, _ = FW.guard_problems([PUT, CALL], fills, DAY, TICKERS, {})
+    assert stale == [] and list(rejected) == ["NVDA"] and len(rejected["NVDA"]) == 1
+    assert rejected["NVDA"][0].startswith("Sanji rejected nvda-fw-put-2026-11-23")
+    stale, rejected, notes = FW.guard_problems([PUT, CALL], fills, DAY, TICKERS, {PUT["id"]: "strike token fixed"})
+    assert stale == [] and rejected == {} and "Sanji rejected nvda-fw-put-2026-11-23; acknowledged" in notes[0]
+    brk = {**PUT, "id": "brkb-fw-put-2026-11-23", "underlying": 72063691}
+    _, rejected, _ = FW.guard_problems([PUT, brk], filled(PUT["id"]) + [{"id": brk["id"], "status": "rejected"}],
+                                       DAY, TICKERS, {})
+    assert list(rejected) == ["BRK B"] and rejected["BRK B"][0].startswith("Sanji rejected brkb-fw-put-2026-11-23")
 
 
 def test_another_strategys_orders_are_only_noted():
     va = {**PUT, "id": "nvda-va-put-2026-11-23"}
-    stops, notes = FW.guard_problems([WHEEL, va], [{"id": va["id"], "status": "rejected"}], DAY, "NVDA", {})
-    assert stops == []
+    stale, rejected, notes = FW.guard_problems([WHEEL, va], [{"id": va["id"], "status": "rejected"}], DAY, TICKERS,
+                                               {})
+    assert stale == [] and rejected == {}
     assert any("Sanji rejected nvda-va-put-2026-11-23, which is not this strategy's" in n for n in notes)
     assert any("no result for nvda-csp-2026-11-16, which is not this strategy's" in n for n in notes)
 
@@ -112,6 +146,19 @@ def test_anything_else_in_the_book_stops():
     got = FW.book_problems(book([("P", 145, -41)]), None, led, "NVDA", DAY)
     assert "there is no mkt/fills.json" in got[0]
     assert FW.book_problems(book(), None, led, "NVDA", DAY) == []
+
+
+def test_another_names_book_is_checked_against_its_own_fills_and_named():
+    # BRK B's book against BRK B's part of the ledger: NVDA's fills do not account for it, and the messages name it
+    brk = {**PUT, "id": "brkb-fw-put-2026-11-23", "underlying": 72063691, "strike": "500", "qty": 3}
+    led = ledger(brk, ticker="BRK B")
+    assert FW.book_problems(book([("P", 500, -3)]), filled(brk["id"]), led, "BRK B", DAY) == []
+    assert FW.book_problems(book(shares=300), filled(PUT["id"]), led, "BRK B", DAY) == [
+        "the book holds +300 BRK B shares, but no brkb-fw-* order has filled"]
+    assert FW.book_problems(book([("P", 145, -41)]), filled(PUT["id"]), ledger(PUT), "BRK B", DAY) == [
+        "the book holds -41 2026-12-18 145 put, which no filled brkb-fw-* order accounts for"]
+    got = FW.book_problems(book(shares=10), None, led, "BRK B", DAY)
+    assert got[0].startswith("mkt/positions.json lists BRK B positions but there is no mkt/fills.json")
 
 
 def test_a_hedge_fill_lets_the_shares_through_and_a_fill_not_in_the_ledger_stops():

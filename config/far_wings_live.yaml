@@ -4,11 +4,357 @@
 # only"), limits at the mid ("Yes, limits at the mid"), and this becomes the class algorithm ("Yes, switch to far
 # wings"): the nightly script switches from the vol-arb. The rules are lib/far_wings_live.py; the numbers below are
 # checked against it before anything runs.
+#
+# The basket (her choices of 2026-11-17, asked "why cant you do more than nvda?"): "The 30-stock basket" and "$100k
+# book per stock". NVDA stays, and the long/short vol book's registered draw of 2026-11-17 (ranks 1-30, below in rank
+# order) joins it: 31 names, each its own independent $100,000 book under exactly NVDA's rules (the same wings, size,
+# limits at the mid, its own $5,000 band and its own 40 x hedge limit, held to expiry; entry the first session after
+# each monthly expiry, the next on 2026-11-23). No pooling across names and no new rule. These 30 names were NOT in
+# the far-wing backtest, which used 11 stocks: their live results are out of sample in names as well as in time.
 
-underlying:
-  root: NVDA          # option RIC root
-  ric: NVDA.O         # the stock on LSEG
-  conid: 4815747      # Interactive Brokers' id, as in config/wheel_live.yaml (order.html asks for it)
+names:                # each name: ticker (in its order ids, made safe: BRK B -> brkb-fw-...), ric (the stock on LSEG,
+                      # as LSEG returns it), root (LSEG's option root), conid (Interactive Brokers' id, which every
+                      # order names: confirmed by matching IB's ISIN to LSEG's; null until confirmed, and a null name
+                      # gets no orders), grid ([price below which it applies, increment] for the strikes asked for)
+                      # and lot. A name gets no orders on a night its conid is null, or not in price_history.json with
+                      # tracked: true (Sanji prices and resolves only those): one log line says why, and the other
+                      # names go on. A grid from the probe is one increment at the price it was probed at; if a
+                      # stock moves far from it (half or double), probe it again: a step finer than listed only
+                      # costs never-listed requests, a coarser one only costs precision in delta
+  - ticker: NVDA
+    ric: NVDA.O
+    root: NVDA
+    conid: 4815747    # as in config/wheel_live.yaml
+    grid: [[150, 1.0], [300, 2.5], [null, 10.0]]
+    lot: 100
+    probe: >-
+      NVDA_2024's grid, from the 2026-11-11 probe, as the backtest's caches had it (and config/vol_arb_live.yaml);
+      unchanged by the basket
+  - ticker: MSFT
+    ric: MSFT.OQ
+    root: MSFT
+    conid: 272093
+    grid: [[null, 5.0]]
+    lot: 100
+    probe: >-
+      2026-11-17 probe, Dec 18 2026 monthlies at the 2026-11-16 close 517.99: puts near spot 520/525 listed,
+      521/522.50 not; puts near 0.85x 440/445 listed, 441/442.50 not; calls near 1.15x 600/605 listed, 601/602.50 not.
+      Increments 5, 5, 5 (near spot, put wing, call wing): grid 5, the largest step holding every listed strike found
+  - ticker: AAPL
+    ric: AAPL.OQ
+    root: AAPL
+    conid: 265598
+    grid: [[null, 5.0]]
+    lot: 100
+    probe: >-
+      2026-11-17 probe, Dec 18 2026 monthlies at the 2026-11-16 close 352.78: puts near spot 350/355 listed,
+      351/352.50 not; puts near 0.85x 300/305 listed, 301/302.50 not; calls near 1.15x 410/415 listed, 411/412.50 not.
+      Increments 5, 5, 5 (near spot, put wing, call wing): grid 5, the largest step holding every listed strike found
+  - ticker: AMZN
+    ric: AMZN.OQ
+    root: AMZN
+    conid: 3691937
+    grid: [[null, 5.0]]
+    lot: 100
+    probe: >-
+      2026-11-17 probe, Dec 18 2026 monthlies at the 2026-11-16 close 257.75: puts near spot 260/265 listed,
+      261/262.50 not; puts near 0.85x 220/225 listed, 221/222.50 not; calls near 1.15x 300/305 listed, 301/302.50 not.
+      Increments 5, 5, 5 (near spot, put wing, call wing): grid 5, the largest step holding every listed strike found
+  - ticker: GOOG
+    ric: GOOG.OQ
+    root: GOOG
+    conid: 208813720
+    grid: [[null, 5.0]]
+    lot: 100
+    probe: >-
+      2026-11-17 probe, Dec 18 2026 monthlies at the 2026-11-16 close 281.26: puts near spot 280/285 listed,
+      281/282.50 not; puts near 0.85x 240/245 listed, 241/242.50 not; calls near 1.15x 320/325 listed, 321/322.50 not.
+      Increments 5, 5, 5 (near spot, put wing, call wing): grid 5, the largest step holding every listed strike found
+  - ticker: BRK B
+    ric: BRKb.N
+    root: BRKB
+    conid: 72063691
+    grid: [[null, 5.0]]
+    lot: 100
+    probe: >-
+      2026-11-17 probe, Dec 18 2026 monthlies at the 2026-11-16 close 592.85: puts near spot 590/595 listed,
+      591/592.50 not; puts near 0.85x 500/505 listed, 501/502.50 not; calls near 1.15x 680 listed, 681/682.50/685 not.
+      Increments 5, 5, 10 (near spot, put wing, call wing): grid 5, the largest step holding every listed strike
+      found. Option root BRKB confirmed (BRKBX182659000.U and the rest answered with quotes; the stock RIC is BRKb.N)
+  - ticker: META
+    ric: META.OQ
+    root: META
+    conid: 107113386
+    grid: [[null, 5.0]]
+    lot: 100
+    probe: >-
+      2026-11-17 probe, Dec 18 2026 monthlies at the 2026-11-16 close 626.41: puts near spot 630/635 listed,
+      631/632.50 not; puts near 0.85x 530/535 listed, 531/532.50 not; calls near 1.15x 720/725 listed, 721/722.50 not.
+      Increments 5, 5, 5 (near spot, put wing, call wing): grid 5, the largest step holding every listed strike found
+  - ticker: JNJ
+    ric: JNJ.N
+    root: JNJ
+    conid: 8719
+    grid: [[null, 10.0]]
+    lot: 100
+    probe: >-
+      2026-11-17 probe, Dec 18 2026 monthlies at the 2026-11-16 close 282.55: puts near spot 280 listed,
+      281/282.50/285 not; puts near 0.85x 240 listed, 241/242.50/245 not; calls near 1.15x 320 listed, 321/322.50/325
+      not. Increments 10, 10, 10 (near spot, put wing, call wing): grid 10, the largest step holding every listed
+      strike found
+  - ticker: JPM
+    ric: JPM.N
+    root: JPM
+    conid: 1520593
+    grid: [[null, 5.0]]
+    lot: 100
+    probe: >-
+      2026-11-17 probe, Dec 18 2026 monthlies at the 2026-11-16 close 338.21: puts near spot 340/345 listed,
+      341/342.50 not; puts near 0.85x 290/295 listed, 291/292.50 not; calls near 1.15x 390/395 listed, 391/392.50 not.
+      Increments 5, 5, 5 (near spot, put wing, call wing): grid 5, the largest step holding every listed strike found
+  - ticker: V
+    ric: V.N
+    root: V
+    conid: 49462172
+    grid: [[null, 5.0]]
+    lot: 100
+    probe: >-
+      2026-11-17 probe, Dec 18 2026 monthlies at the 2026-11-16 close 426.46: puts near spot 430/435 listed,
+      431/432.50 not; puts near 0.85x 360/365 listed, 361/362.50 not; calls near 1.15x 490/495 listed, 491/492.50 not.
+      Increments 5, 5, 5 (near spot, put wing, call wing): grid 5, the largest step holding every listed strike found.
+      IB conid 49462172 (VISA INC-CLASS A SHARES) confirmed through her TWS (reqContractDetails, read-only): IB's
+      ISIN US92826C8394 matches LSEG's
+  - ticker: XOM
+    ric: XOM.N
+    root: XOM
+    conid: 895178251
+    grid: [[null, 5.0]]
+    lot: 100
+    probe: >-
+      2026-11-17 probe, Dec 18 2026 monthlies at the 2026-11-16 close 166.87: puts near spot 170/175 listed,
+      171/172.50 not; puts near 0.85x 140/145 listed, 141/142.50 not; calls near 1.15x 190/195 listed, 191/192.50 not.
+      Increments 5, 5, 5 (near spot, put wing, call wing): grid 5, the largest step holding every listed strike found.
+      Conid 895178251 is ExxonMobil Holdings Corp, IB's new conid after the holding-company reorganization; the
+      options are still under XOM
+  - ticker: WMT
+    ric: WMT.OQ
+    root: WMT
+    conid: 13824
+    grid: [[null, 5.0]]
+    lot: 100
+    probe: >-
+      2026-11-17 probe, Dec 18 2026 monthlies at the 2026-11-16 close 128.41: puts near spot 130/135 listed,
+      131/132.50 not; puts near 0.85x 110/115 listed, 111/112.50 not; calls near 1.15x 150/155 listed, 151/152.50 not.
+      Increments 5, 5, 5 (near spot, put wing, call wing): grid 5, the largest step holding every listed strike found
+  - ticker: PFE
+    ric: PFE.N
+    root: PFE
+    conid: 11031
+    grid: [[null, 0.5]]
+    lot: 100
+    probe: >-
+      2026-11-17 probe, Dec 18 2026 monthlies at the 2026-11-16 close 28.86: puts near spot 30/31 listed, 30.50 not;
+      puts near 0.85x 25/26 listed, 25.50 not; calls near 1.15x 35/36 listed, 35.50 not. Increments 1, 1, 1 (near
+      spot, put wing, call wing). Grid 0.50, not 1: the probe asked only x.50 strikes that are not $2.50 multiples,
+      never one such as 27.50 or 32.50, and VZ lists $2.50 strikes beside its $1 ones, so the finer step asks for
+      both; it costs only never-listed requests
+  - ticker: UNH
+    ric: UNH.N
+    root: UNH
+    conid: 13272
+    grid: [[null, 10.0]]
+    lot: 100
+    probe: >-
+      2026-11-17 probe, Dec 18 2026 monthlies at the 2026-11-16 close 412.02: puts near spot 410 listed,
+      411/412.50/415 not; puts near 0.85x 350 listed, 351/352.50/355 not; calls near 1.15x 470 listed, 471/472.50/475
+      not. Increments 10, 10, 10 (near spot, put wing, call wing): grid 10, the largest step holding every listed
+      strike found
+  - ticker: BAC
+    ric: BAC.N
+    root: BAC
+    conid: 10098
+    grid: [[null, 0.5]]
+    lot: 100
+    probe: >-
+      2026-11-17 probe, Dec 18 2026 monthlies at the 2026-11-16 close 50.08: puts near spot 50/52.50/55 listed, 51
+      not; puts near 0.85x 40/41/45 listed, 42.50 not; calls near 1.15x 60/62.50/65 listed, 61 not. Increments 2.50,
+      1, 2.50 (near spot, put wing, call wing): grid 0.50, the largest step holding every listed strike found
+  - ticker: VZ
+    ric: VZ.N
+    root: VZ
+    conid: 4901
+    grid: [[null, 0.5]]
+    lot: 100
+    probe: >-
+      2026-11-17 probe, Dec 18 2026 monthlies at the 2026-11-16 close 46.34: puts near spot 45/46 listed, 45.50 not;
+      puts near 0.85x 40/41 listed, 40.50 not; calls near 1.15x 55/57.50 listed, 55.50/56 not. Increments 1, 1, 2.50
+      (near spot, put wing, call wing): grid 0.50, the largest step holding every listed strike found
+  - ticker: PG
+    ric: PG.N
+    root: PG
+    conid: 11054
+    grid: [[null, 5.0]]
+    lot: 100
+    probe: >-
+      2026-11-17 probe, Dec 18 2026 monthlies at the 2026-11-16 close 173.02: puts near spot 170/175 listed,
+      171/172.50 not; puts near 0.85x 150/155 listed, 151/152.50 not; calls near 1.15x 200 listed, 201/202.50/205 not.
+      Increments 5, 5, 10 (near spot, put wing, call wing): grid 5, the largest step holding every listed strike found
+  - ticker: WFC
+    ric: WFC.N
+    root: WFC
+    conid: 10375
+    grid: [[null, 2.5]]
+    lot: 100
+    probe: >-
+      2026-11-17 probe, Dec 18 2026 monthlies at the 2026-11-16 close 84.84: puts near spot 80/82.50/85 listed, 81
+      not; puts near 0.85x 70/72.50/75 listed, 71 not; calls near 1.15x 100/105 listed, 101/102.50 not. Increments
+      2.50, 2.50, 5 (near spot, put wing, call wing): grid 2.50, the largest step holding every listed strike found
+  - ticker: INTC
+    ric: INTC.OQ
+    root: INTC
+    conid: 270639
+    grid: [[null, 0.5]]
+    lot: 100
+    probe: >-
+      2026-11-17 probe, Dec 18 2026 monthlies at the 2026-11-16 close 55.47: puts near spot 60/62.50/65 listed, 61
+      not; puts near 0.85x 50/52.50/55 listed, 51 not; calls near 1.15x 60/62.50/65 listed, 61 not. Increments 2.50,
+      2.50, 2.50 (near spot, put wing, call wing). Grid 0.50, not 2.50: the probe rounded its 0.85x zone to $10 (50),
+      above where the 0.05 put falls (about 41 on the probe's quotes, IV about 76%), and every name probed below $50
+      lists $1 strikes there (BAC, VZ, PFE, T, CMCSA), so the step holds $1 strikes below $50 and $2.50 strikes
+      above, as BAC's and VZ's does; it costs only never-listed requests
+  - ticker: CVX
+    ric: CVX.N
+    root: CVX
+    conid: 5684
+    grid: [[null, 5.0]]
+    lot: 100
+    probe: >-
+      2026-11-17 probe, Dec 18 2026 monthlies at the 2026-11-16 close 217.14: puts near spot 220 listed,
+      221/222.50/225 not; puts near 0.85x 180/185 listed, 181/182.50 not; calls near 1.15x 250 listed, 251/252.50/255
+      not. Increments 10, 5, 10 (near spot, put wing, call wing): grid 5, the largest step holding every listed strike
+      found
+  - ticker: T
+    ric: T.N
+    root: T
+    conid: 37018770
+    grid: [[null, 0.5]]
+    lot: 100
+    probe: >-
+      2026-11-17 probe, Dec 18 2026 monthlies at the 2026-11-16 close 22.36: puts near spot 20/21 listed, 20.50 not;
+      calls near 1.15x 25/26 listed, 25.50 not (the probe's 0.85x zone rounded to the same 20 as near spot, so the
+      put wing was not probed apart). Increments 1, 1 (near spot, call wing). Grid 0.50, not 1: the probe asked only
+      x.50 strikes that are not $2.50 multiples, never one such as 22.50, and VZ lists $2.50 strikes beside its $1
+      ones (57.50 listed, 55.50 and 56 not), so the finer step asks for both; it costs only never-listed requests.
+      IB conid 37018770 (AT&T INC) confirmed through her TWS (reqContractDetails, read-only): IB's ISIN
+      US00206R1023 matches LSEG's
+  - ticker: KO
+    ric: KO.N
+    root: KO
+    conid: 8894
+    grid: [[null, 2.5]]
+    lot: 100
+    probe: >-
+      2026-11-17 probe, Dec 18 2026 monthlies at the 2026-11-16 close 99.48: puts near spot 100/105 listed, 101/102.50
+      not; puts near 0.85x 80/82.50/85 listed, 81 not; calls near 1.15x 110/115 listed, 111/112.50 not. Increments 5,
+      2.50, 5 (near spot, put wing, call wing): grid 2.50, the largest step holding every listed strike found
+  - ticker: MRK
+    ric: MRK.N
+    root: MRK
+    conid: 70101545
+    grid: [[null, 5.0]]
+    lot: 100
+    probe: >-
+      2026-11-17 probe, Dec 18 2026 monthlies at the 2026-11-16 close 144.46: puts near spot 140/145 listed,
+      141/142.50 not; puts near 0.85x 120/125 listed, 121/122.50 not; calls near 1.15x 170/175 listed, 171/172.50 not.
+      Increments 5, 5, 5 (near spot, put wing, call wing): grid 5, the largest step holding every listed strike found
+  - ticker: MA
+    ric: MA.N
+    root: MA
+    conid: 38685693
+    grid: [[null, 5.0]]
+    lot: 100
+    probe: >-
+      2026-11-17 probe, Dec 18 2026 monthlies at the 2026-11-16 close 661.71: puts near spot 660/665 listed,
+      661/662.50 not; puts near 0.85x 560/565 listed, 561/562.50 not; calls near 1.15x 760 listed, 761/762.50/765 not.
+      Increments 5, 5, 10 (near spot, put wing, call wing): grid 5, the largest step holding every listed strike found
+  - ticker: CSCO
+    ric: CSCO.OQ
+    root: CSCO
+    conid: 268084
+    grid: [[null, 2.5]]
+    lot: 100
+    probe: >-
+      2026-11-17 probe, Dec 18 2026 monthlies at the 2026-11-16 close 94.52: puts near spot 90/92.50/95 listed, 91
+      not; puts near 0.85x 80/82.50/85 listed, 81 not; calls near 1.15x 110/115 listed, 111/112.50 not. Increments
+      2.50, 2.50, 5 (near spot, put wing, call wing): grid 2.50, the largest step holding every listed strike found
+  - ticker: HD
+    ric: HD.N
+    root: HD
+    conid: 7930
+    grid: [[null, 5.0]]
+    lot: 100
+    probe: >-
+      2026-11-17 probe, Dec 18 2026 monthlies at the 2026-11-16 close 347.51: puts near spot 350/355 listed,
+      351/352.50 not; puts near 0.85x 300/305 listed, 301/302.50 not; calls near 1.15x 400 listed, 401/402.50/405 not.
+      Increments 5, 5, 10 (near spot, put wing, call wing): grid 5, the largest step holding every listed strike found
+  - ticker: BA
+    ric: BA.N
+    root: BA
+    conid: 4762
+    grid: [[null, 5.0]]
+    lot: 100
+    probe: >-
+      2026-11-17 probe, Dec 18 2026 monthlies at the 2026-11-16 close 165.22: puts near spot 170/175 listed,
+      171/172.50 not; puts near 0.85x 140/145 listed, 141/142.50 not; calls near 1.15x 190/195 listed, 191/192.50 not.
+      Increments 5, 5, 5 (near spot, put wing, call wing): grid 5, the largest step holding every listed strike found
+  - ticker: DIS
+    ric: DIS.N
+    root: DIS
+    conid: 6459
+    grid: [[null, 2.5]]
+    lot: 100
+    probe: >-
+      2026-11-17 probe, Dec 18 2026 monthlies at the 2026-11-16 close 118.70: puts near spot 120/125 listed,
+      121/122.50 not; puts near 0.85x 100/105 listed, 101/102.50 not; calls near 1.15x 140/145 listed, 141/142.50 not.
+      Increments 5, 5, 5 (near spot, put wing, call wing). Grid 2.50, not 5: the probe rounded its 0.85x zone to $10
+      (100), where the 0.05 put falls or above it (about 100 on the probe's quotes, IV about 41%, lower with skew),
+      and every name probed between $50 and $100 lists $2.50 strikes there (KO, CSCO, WFC, INTC), so the step holds
+      $2.50 strikes below $100 and $5 strikes above; it costs only never-listed requests
+  - ticker: ORCL
+    ric: ORCL.N
+    root: ORCL
+    conid: 272800
+    grid: [[null, 2.5]]
+    lot: 100
+    probe: >-
+      2026-11-17 probe, Dec 18 2026 monthlies at the 2026-11-16 close 119.09: puts near spot 120/125 listed,
+      121/122.50 not; puts near 0.85x 100/105 listed, 101/102.50 not; calls near 1.15x 140/145 listed, 141/142.50 not.
+      Increments 5, 5, 5 (near spot, put wing, call wing). Grid 2.50, not 5: the probe rounded its 0.85x zone to $10
+      (100), above where the 0.05 put falls (about 86 on the probe's quotes, IV about 81%), and every name probed
+      between $50 and $100 lists $2.50 strikes there (KO, CSCO, WFC, INTC), so the step holds $2.50 strikes below
+      $100 and $5 strikes above; it costs only never-listed requests. ORCL.OQ is not a RIC (70005); ORCL.N is
+  - ticker: PEP
+    ric: PEP.OQ
+    root: PEP
+    conid: 11017
+    grid: [[null, 5.0]]
+    lot: 100
+    probe: >-
+      2026-11-17 probe, Dec 18 2026 monthlies at the 2026-11-16 close 146.43: puts near spot 150/155 listed,
+      151/152.50 not; puts near 0.85x 120/125 listed, 121/122.50 not; calls near 1.15x 170/175 listed, 171/172.50 not.
+      Increments 5, 5, 5 (near spot, put wing, call wing): grid 5, the largest step holding every listed strike found
+  - ticker: CMCSA
+    ric: CMCSA.OQ
+    root: CMCSA
+    conid: 267748
+    grid: [[null, 0.5]]
+    lot: 100
+    probe: >-
+      2026-11-17 probe, Dec 18 2026 monthlies at the 2026-11-16 close 25.60: puts near spot 25/26 listed, 25.50 not;
+      puts near 0.85x 20/21 listed, 20.50 not; calls near 1.15x 30/31 listed, 30.50 not. Increments 1, 1, 1 (near
+      spot, put wing, call wing). Grid 0.50, not 1: the probe asked only x.50 strikes that are not $2.50 multiples,
+      never one such as 22.50 or 27.50, and VZ lists $2.50 strikes beside its $1 ones, so the finer step asks for
+      both; it costs only never-listed requests
 
 owns_open_orders: true  # this strategy writes mkt/open_orders.json every night (.github/workflows/far-wings-orders.yml).
                         # While this is true, vol_arb_orders.py and wheel_orders.py both refuse outright (no flag gets
@@ -23,13 +369,15 @@ registered:           # lib/far_wings_live.py's numbers; the script stops if the
   call_max_abs_delta: 0.05      # the call wing: two-sided calls with |delta| strictly under 0.05 ...
   call_target_abs_delta: 0.03   # ... the one closest to 0.03 (a tie to the higher strike)
   vega_dollars: 200             # each wing: round(200 / Black-76 vega per vol point per contract), at least 1
-  capital: 100000               # the book the $200 a vol point and the band are sized on (the P&L is an overlay)
-  band_share_of_book: 0.05      # re-hedge to zero shares-delta when |net delta x close| > 5% of the book ($5,000)
-  lot: 100                      # shares per NVDA contract
+  capital: 100000               # EACH name's book, which its $200 a vol point and its band are sized on (the P&L
+                                # is an overlay); 31 names are 31 books of $100,000, never pooled
+  band_share_of_book: 0.05      # re-hedge a name to zero shares-delta when ITS |net delta x close| > 5% of its book
+                                # ($5,000 a name)
+  lot: 100                      # shares per contract; every name's lot must be this
 
 limits:
-  max_hedge_x_capital: 40     # the hedge's target shares, and the shares held, times D's close, may not pass 40 x
-                              # the book. Far wings at $200 a vol point are many contracts (about 20,000 / (spot x
+  max_hedge_x_capital: 40     # a name's hedge target shares, and the shares it holds, times D's close, may not
+                              # pass 40 x its own book. Far wings at $200 a vol point are many contracts (about 20,000 / (spot x
                               # pdf(d1) x sqrt(T)) shares a wing: some 3,500 put and 5,500 call shares at $180): a
                               # 0.03-delta call deep in the money after a 50% rise needs a hedge of about 15 x the
                               # book, so vol-arb's 5 would stop the run exactly then; a book misread 100 times is far
@@ -39,14 +387,18 @@ chain:                # the strikes asked for on an entry night, banded as the b
                       # (scripts/fetch_wheel_raw.py, the same bands as config/vol_arb_live.yaml), so the live wing is
                       # chosen from the strikes the backtest could choose from. In a high-vol month the 0.05 put or
                       # the 0.03 call can lie outside the band; then, as in the backtest, the wing is the eligible
-                      # strike nearest the target that the band holds
+                      # strike nearest the target that the band holds. The bands are every name's; each name's
+                      # increment is its own grid (names). Requests on an entry night, from the 2026-11-17 probe's
+                      # closes: about 1,790 for all 31 names (the chains 1,723, from WMT's 24 to INTC's 121, and a
+                      # close and a dividends request a name, and one T-bill), each paced 0.4 s, about 0.58 s apiece in
+                      # the probe: some 17 minutes. A request LSEG fails on (anything but "The universe is not found")
+                      # is asked once more 5 s later, so a failing request costs at most two, and a name stops at its
+                      # first request that fails twice. LSEG's daily limit is about 10,000 requests, so the 01:00
+                      # retry (about 3,600 with the 22:00 run, were both full) and a Run button the same day stay
+                      # well inside it; the bands are not narrowed
   bands:
     P: [0.70, 1.02]   # times the closes over the 7 days either side of the previous monthly expiry (up to D)
     C: [0.97, 1.40]
-  grid:               # [price below which it applies, increment]: NVDA_2024's, from the 2026-11-11 probe
-    - [150, 1.0]
-    - [300, 2.5]
-    - [null, 10.0]
   history_days: 14    # each option's daily BID/ASK asked for over the 14 days up to D; only D's row is used
   min_dated_share: 0.9  # stop (data not final) unless this share of the listed contracts has a D row. At 22:00 any
                         # listed contract with earlier rows but none for D stops the run too (LSEG part-way through
@@ -54,10 +406,10 @@ chain:                # the strikes asked for on an entry night, banded as the b
                         # counts as not listed
 
 data:
-  closes_days: 70             # NVDA.O TRDPRC_1, unadjusted (exchangeCorrection), 70 calendar days up to D: the
+  closes_days: 70             # each name's TRDPRC_1 (its ric), unadjusted (exchangeCorrection), 70 calendar days up to D: the
                               # strike band's window and the closes of each held leg's 45 days of quotes
   dividends_days: 400         # TR.DivExDate / TR.DivUnadjustedGross: the trailing year's yield (wheel.carry)
-  rate_ric: US3MT=RR          # 3-month T-bill, MID_YLD_1, as in the backtest
+  rate_ric: US3MT=RR          # 3-month T-bill, MID_YLD_1, as in the backtest; asked for once a night, for every name
   leg_history_days: 45        # a held leg's daily BID/ASK, for its last usable mid (at most 30 sessions back)
 
 lib_functions:        # sha256 of the source lines of every lib function and constant lib/far_wings_live.py uses
@@ -143,9 +495,11 @@ lib_functions:        # sha256 of the source lines of every lib function and con
   wheel_live.validate_order: 2329f1568f10d7dfddc7bfef5e1757d5024092fc9b3c59215eb17d7712e0077a
 
 acknowledged: {}      # order id: why Sanji's rejection of it, or his missing result for it, no longer stops the run.
-                      # This strategy's rejected or unanswered orders stop every night until the id is here (after
-                      # fixing what was wrong); the next run notes it and rewrites mkt/open_orders.json without it.
+                      # A name's rejected order stops that name every night until the id is here (after fixing what
+                      # was wrong); any name's unanswered order stops every name. The next run notes it and rewrites
+                      # mkt/open_orders.json without it.
                       #   e.g.  nvda-fw-put-2026-11-23: rejected, strike token fixed in 1a2b3c4; the call filled alone
+                      #         brkb-fw-call-2026-12-21: no result from Sanji for the session; the book shows no fill
 
 technical_choices:    # Claude's, each with its reason, for her to scan (the backtest registration lists the same)
   calendar: >-
@@ -170,6 +524,41 @@ technical_choices:    # Claude's, each with its reason, for her to scan (the bac
   hedge_limit: >-
     40 x the book (limits above), not vol-arb's 5: the far wings' hedge can legitimately reach about 15 x after a
     large rise, and the limit is there to catch a misread book, not to cap the hedge.
+  basket_grids: >-
+    each new name's strike increment from a small probe of its Dec 18 2026 monthly chain (2026-11-17, 383 requests in
+    all, paced 0.4 s): near spot and in both wing zones (about 0.85 and 1.15 times spot), the step that holds every
+    strike found listed there (the largest common step: $5 for most, $10 for JNJ and UNH, $2.50 for WFC, KO and CSCO,
+    $0.50 for BAC and VZ, whose $1 strikes below spot and $2.50 strikes above it share no larger step). The step is
+    made finer where the probe could have missed a listed strike: $0.50 for PFE, T and CMCSA (the probe asked none
+    of their x.50 strikes that are $2.50 multiples, and VZ lists such strikes beside its $1 ones); $0.50 for INTC and
+    $2.50 for ORCL and DIS (the probe rounded the 0.85x zone to $10, above where their 0.05 puts fall: below $50 for
+    INTC and below $100 for ORCL and DIS, where the names probed list $1 and $2.50 strikes). A finer step than
+    listed costs only never-listed requests (LSEG's 70005, "The universe is not found", which the script counts as
+    not listed); a coarser one would hide listed strikes from the rule. WMT's, PEP's and MRK's put bands also reach
+    below $100 on their $5 steps, but their wings sit near 110-130; probe them if they fall toward $100. Not
+    checked: a strike of $1,000 or more, whose RIC lib/ric.build_option_ric writes with six strike digits; the call
+    band (1.40 x) reaches it once MA, META or MSFT trade above about $715 (MA's reached $930 in the probe), and if
+    LSEG writes such RICs another way those strikes count as not listed, so probe one before then.
+  one_file: >-
+    the night's orders for every name go into one mkt/open_orders.json (one writer, as before), in config order, and
+    the ledger keeps each name apart (data/far_wings_ledger.json, far_wings_ledger/2: each name's orders and nights).
+    The T-bill is asked for once a night; everything else per name, in config order, in one LSEG session. An order of
+    her own for a session after D stays in the file as written (her BTC or SEL closing another strategy's position by
+    hand, which a stopped name waits for, is not dropped because the other names were written). The vol-arb's and the
+    wheel's own orders (ids <root>-va-, -csp-, -cc-) leave the file as before, and so does any order for a session up
+    to D.
+  name_by_name: >-
+    one name's trouble never stops the others, except where the whole book is in doubt. A name whose LSEG data is not
+    final at 22:00 (its close, its chain, a held leg's quotes, any LSEG error on its requests) is left for the 01:00
+    retry, which decides only the names not yet decided that night; still not final then, it is skipped with a note
+    (no entry this cycle, as no eligible strike is) and the run ends red, as the cycle's entry (or the night's hedge)
+    was lost. A request LSEG fails on is asked once more first, 5 s later. A name whose own book does not add up
+    (another strategy's position on its conid, a rejected order of its own, a fill its ledger lacks, its hedge past
+    40 x its book), or whose data or plan raises an unexpected error, gets no orders, keeps its orders in the file,
+    and the run ends red after the commit. Every name stops, with nothing written, only when the book file itself is
+    in doubt (an order of this strategy's with no result, an option listed past its expiry, an unreadable file),
+    when the LSEG login or the T-bill fails (every name's rate), or when no name could be decided at all (as the
+    single-name script stopped when NVDA's data was not final).
 
 live_rules:
   - >-
@@ -191,17 +580,22 @@ live_rules:
   - >-
     After an expiry the leftover shares are closed at the next open (the backtest closes them at the expiry's close).
   - >-
-    Every NVDA option in the book must be exactly what this strategy's filled orders add up to (its nvda-fw ids in
-    mkt/fills.json, looked up in data/far_wings_ledger.json, where the script records every order it writes; the
-    Action commits both files), except a short leg Sanji has assigned; NVDA shares need at least one fill of its own.
-    Anything else stops the run: another strategy's position (the wheel's last put, a vol-arb leg) must be closed by
-    hand (her own BTC or SEL order in mkt/open_orders.json) first. With positions but no mkt/fills.json the book
-    can't be checked, and the run stops too.
+    Name by name, every option the book holds on a name's conid must be exactly what that name's filled orders add up
+    to (its <ticker>-fw ids in mkt/fills.json, looked up in its part of data/far_wings_ledger.json, where the script
+    records every order it writes; the Action commits both files), except a short leg Sanji has assigned; its shares
+    need at least one fill of its own. Anything else stops that name: another strategy's position on it (the wheel's
+    last NVDA put, a vol-arb leg) must be closed by hand (her own BTC or SEL order in mkt/open_orders.json) first. With
+    positions but no mkt/fills.json a name's book can't be checked, and that name stops too. Positions on another
+    conid are not this strategy's and are left alone.
   - >-
-    A stale book is never traded on: once mkt/fills.json exists, every order of this strategy's written for a session
-    up to D needs a result there; a rejected order or an option listed on or after its expiry stops the run; an order
-    for a session not yet resolved is kept and nothing is added. A rejected or unanswered order stops every night
+    A stale book is never traded on: once mkt/fills.json exists, every order of this strategy's (any name's) written
+    for a session up to D needs a result there, or every name stops; so does an option listed on or after its expiry.
+    An order for a session not yet resolved is kept and nothing is added. A name's rejected order stops that name
     until she adds its id to `acknowledged` with the reason; another strategy's orders are only noted.
+  - >-
+    Sanji prices only the conids price_history.json tracks (tracked: true), so a name whose conid is not there, or is
+    null in names (none is today: all 31 were confirmed by matching IB's ISIN to LSEG's), gets no orders that night;
+    if it holds positions, the run ends red, as its hedge was not written.
   - >-
     The vol-arb and wheel Actions keep only their Run buttons, and while owns_open_orders is true here
     vol_arb_orders.py and wheel_orders.py refuse outright (no flag gets past it), so a click can never write orders

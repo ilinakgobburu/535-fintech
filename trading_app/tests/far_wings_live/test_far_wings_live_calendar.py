@@ -34,7 +34,7 @@ def test_every_other_night_to_the_expiry_is_no_entry_and_writes_nothing():
         if d in entries:
             continue
         assert FW.entry_expiry(d) is None
-        got = FW.plan_night(cfg, d, FW.next_session(d), FW.Book())
+        got = FW.plan_night(cfg, d, FW.next_session(d), FW.Book(), name=S.NVDA_NAME)
         assert got["orders"] == [] and got["entry"] is None
 
 

@@ -1,8 +1,9 @@
 """
-far_wings_orders.py end to end with LSEG replaced by a fake (no network): what it asks for, what it writes, and that
-every failure stops it before mkt/open_orders.json is touched. The fake serves the synthetic NVDA closes, the T-bill,
-dividends and a Black-76 chain (fw_live_synth); a RIC it does not hold answers as LSEG does for an unlisted contract
-("The universe is not found").
+far_wings_orders.py end to end with LSEG replaced by a fake (no network), with NVDA the one name Sanji tracks (the
+basket's other 30 names each get one "no orders tonight" line): what it asks for, what it writes, and that every
+failure stops it before mkt/open_orders.json is touched, as the single-name script did. The fake serves the synthetic
+NVDA closes, the T-bill, dividends and a Black-76 chain (fw_live_synth); a RIC it does not hold answers as LSEG does
+for an unlisted contract ("The universe is not found"). The basket's own nights are test_far_wings_basket.py.
 """
 
 from __future__ import annotations
@@ -63,7 +64,8 @@ class FakeLSEG:
             return self._window(pd.DataFrame({"MID_YLD_1": S.RATE_PCT}, index=self.closes.index), start, end)
         if universe in self.options:
             return self._window(self.options[universe], start, end)
-        raise Exception(f"Error code -1 | The universe is not found: {universe}")
+        raise Exception("No data to return, please check errors: ERROR: No successful response.\n"
+                        "(TS.Interday.UserRequestError.70005, The universe is not found)")
 
     def get_data(self, universe, fields, parameters=None):
         self.requests.append(("data", universe, tuple(fields), parameters))
@@ -98,6 +100,7 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(O, "MKT", tmp_path / "mkt")
     state["config"] = S.write_json(tmp_path / "config.yaml", S.config())          # JSON is YAML
     monkeypatch.setattr(O, "CONFIG", state["config"])
+    S.write_json(tmp_path / "price_history.json", S.price_history(S.NVDA))       # Sanji tracks NVDA alone here
 
     def open_lseg():
         s = Session()
@@ -181,21 +184,23 @@ def test_the_entry_night_writes_the_two_wings(env, capsys):
         ("nvda-fw-call-2026-11-23", "SHT", "call", "220", "2026-11-24", "lmt")]
     assert all(S.order_problems(o) == [] for o in got)
     # the same orders the pure plan gives on the same data (the wheel's old order for Nov 16 is dropped)
-    want = FW.plan_night(S.config(), ENTRY, FOR, FW.Book(), entry_expiry=EXP, mkt=S.market())["orders"]
+    want = FW.plan_night(S.config(), ENTRY, FOR, FW.Book(), name=S.NVDA_NAME, entry_expiry=EXP,
+                         mkt=S.market())["orders"]
     assert got == want
     assert env["output"].read_text() == "for_day=2026-11-24\n"
     assert len(env["sessions"]) == 1 and env["sessions"][0].closed
     asked = fake.option_requests()
     assert all(r[2] == ("BID", "ASK") for r in asked)
     plan = FW.strike_plan(fake.closes, dt.date(2026, 11, 20), ENTRY, S.config()["chain"]["bands"],
-                          S.config()["chain"]["grid"])
+                          S.NVDA_NAME["grid"])
     assert [r[1] for r in asked] == [build_option_ric("NVDA", EXP, k, cp, expired=False)
                                      for cp in ("P", "C") for k in plan[cp]]
     stock = [r for r in fake.requests if r[1] == "NVDA.O" and r[0] == "history"]
     assert stock == [("history", "NVDA.O", ("TRDPRC_1",), ["exchangeCorrection"])]
     led = ledger_file(env)
-    assert led["nights"]["2026-11-23"] == {"for": "2026-11-24", "ids": [o["id"] for o in got]}
-    assert led["orders"] == {o["id"]: o for o in got}
+    assert led["format"] == "far_wings_ledger/2" and list(led["names"]) == ["NVDA"]
+    assert led["names"]["NVDA"]["nights"]["2026-11-23"] == {"for": "2026-11-24", "ids": [o["id"] for o in got]}
+    assert led["names"]["NVDA"]["orders"] == {o["id"]: o for o in got}
     out = capsys.readouterr().out
     assert "Dropped nvda-csp-2026-11-16 (for 2026-11-16, not this strategy's)" in out
     assert "sell 41 145 puts at 0.53" in out and "sell 59 220 calls at 0.24" in out
@@ -229,7 +234,8 @@ def test_a_night_that_is_not_an_entry_with_an_empty_book_writes_nothing_new_and_
     assert orders_file(env) == [] and env["sessions"] == []
     nxt = FW.next_session(day)
     assert env["output"].read_text() == f"for_day={nxt.isoformat()}\n"
-    assert ledger_file(env)["nights"] == {day.isoformat(): {"for": nxt.isoformat(), "ids": []}}
+    assert ledger_file(env)["names"] == {"NVDA": {"orders": {}, "nights": {day.isoformat(): {"for": nxt.isoformat(),
+                                                                                         "ids": []}}}}
 
 
 def test_the_dry_run_prints_and_writes_nothing(env, capsys):
@@ -275,7 +281,7 @@ def test_a_late_run_with_leftover_shares_closes_them_and_still_places_no_wing(en
     hedge = {"id": "nvda-fw-hedge-2026-11-19", "for": "2026-11-20", "order_type": "mkt", "action": "SHT", "qty": 350,
              "underlying": S.NVDA, "contract": "underlying", "ref": "open"}
     S.write_json(env["root"] / "data" / "far_wings_ledger.json",
-                 FW.record_night(FW.read_ledger(None), [hedge], dt.date(2026, 11, 19), dt.date(2026, 11, 20)))
+                 FW.record_night(FW.read_ledger(None), "NVDA", [hedge], dt.date(2026, 11, 19), dt.date(2026, 11, 20)))
     write_mkt(env, "fills.json", [{"id": hedge["id"], "status": "filled"}])
     write_mkt(env, "positions.json", {"cash": 0, "positions": [
         {"underlying": S.NVDA, "contract": "underlying", "qty": -350}]})
@@ -320,8 +326,8 @@ def test_a_move_past_the_band_writes_the_hedge(env, capsys):
     hist = {(cp, EXP, k): S.leg_history(c, cp, EXP, k, v) for cp, k, v in legs}
     book = FW.Book(cash=100_000, options=[{"cp": "P", "expiry": EXP, "strike": 145.0, "qty": -41},
                                           {"cp": "C", "expiry": EXP, "strike": 220.0, "qty": -59}])
-    want = FW.plan_night(S.config(), day, dt.date(2026, 11, 27), book, mkt=S.market(day, c=c, chain=False),
-                         leg_history=hist)
+    want = FW.plan_night(S.config(), day, dt.date(2026, 11, 27), book, name=S.NVDA_NAME,
+                         mkt=S.market(day, c=c, chain=False), leg_history=hist)
     assert got == want["orders"] and want["hedge"]["breached"] is True
     assert S.order_problems(got[0]) == []
     assert "is outside the $5,000 band: hedge to" in capsys.readouterr().out
@@ -332,7 +338,7 @@ def test_the_night_of_the_expiry_closes_the_leftover_shares_from_the_close_alone
     hedge = {"id": "nvda-fw-hedge-2026-12-10", "for": "2026-12-11", "order_type": "mkt", "action": "SHT", "qty": 350,
              "underlying": S.NVDA, "contract": "underlying", "ref": "open"}
     S.write_json(env["root"] / "data" / "far_wings_ledger.json",
-                 FW.record_night(FW.read_ledger(None), [hedge], dt.date(2026, 12, 10), dt.date(2026, 12, 11)))
+                 FW.record_night(FW.read_ledger(None), "NVDA", [hedge], dt.date(2026, 12, 10), dt.date(2026, 12, 11)))
     write_mkt(env, "fills.json", [{"id": hedge["id"], "status": "filled"}])
     write_mkt(env, "positions.json", {"cash": 0, "positions": [
         {"underlying": S.NVDA, "contract": "underlying", "qty": -350}]})
@@ -355,7 +361,7 @@ def test_huge_shares_held_stop_before_any_order(env):
     hedge = {"id": "nvda-fw-hedge-2026-12-10", "for": "2026-12-11", "order_type": "mkt", "action": "BUY", "qty": 120,
              "underlying": S.NVDA, "contract": "underlying", "ref": "open"}
     S.write_json(env["root"] / "data" / "far_wings_ledger.json",
-                 FW.record_night(FW.read_ledger(None), [hedge], dt.date(2026, 12, 10), dt.date(2026, 12, 11)))
+                 FW.record_night(FW.read_ledger(None), "NVDA", [hedge], dt.date(2026, 12, 10), dt.date(2026, 12, 11)))
     write_mkt(env, "fills.json", [{"id": hedge["id"], "status": "filled"}])
     write_mkt(env, "positions.json", {"cash": 0, "positions": [
         {"underlying": S.NVDA, "contract": "underlying", "qty": 120 * 100}]})           # read a hundred times over
@@ -415,7 +421,7 @@ def test_a_bad_ledger_stops(env):
     S.write_json(env["root"] / "data" / "far_wings_ledger.json", {"format": "vol_arb_ledger/1", "orders": {},
                                                                   "nights": {}})
     env["use"](FakeLSEG(ENTRY))
-    with pytest.raises(SystemExit, match="is not a far_wings_ledger/1 file"):
+    with pytest.raises(SystemExit, match="is not a far_wings_ledger/2 file"):
         O.main([])
     assert orders_file(env) == OLD_ORDERS
 
@@ -478,7 +484,7 @@ def test_a_right_with_d_rows_but_no_two_sided_quote_stops_and_the_retry_decides(
     assert no_bid_on_d(fake, lambda r: r["cp"] in rights)
     env["use"](fake)
     with pytest.raises(SystemExit, match=f"^No 2026-12-18 {named} has a two-sided 2026-11-23 quote on LSEG .* "
-                                         f"LSEG's 2026-11-23 data is not final, no order written"):
+                                         f"LSEG's 2026-11-23 data is not final: no order written"):
         O.main([])
     # red, before anything is written: the night is not in the ledger, so the 01:00 retry decides
     assert orders_file(env) == OLD_ORDERS and ledger_file(env) is None and not env["output"].exists()
@@ -492,7 +498,7 @@ def test_a_right_with_d_rows_but_no_two_sided_quote_stops_and_the_retry_decides(
     got = [o["id"] for o in orders_file(env)]
     assert got == [i for cp, i in (("P", "nvda-fw-put-2026-11-23"), ("C", "nvda-fw-call-2026-11-23"))
                    if cp not in rights]
-    assert ledger_file(env)["nights"]["2026-11-23"] == {"for": "2026-11-24", "ids": got}
+    assert ledger_file(env)["names"]["NVDA"]["nights"]["2026-11-23"] == {"for": "2026-11-24", "ids": got}
 
 
 def test_a_few_one_sided_strikes_are_not_a_partial_chain(env, capsys):
@@ -543,7 +549,7 @@ def test_an_entry_night_failure_says_the_hedge_was_not_written_either(env):
     hedge = {"id": "nvda-fw-hedge-2026-11-19", "for": "2026-11-20", "order_type": "mkt", "action": "SHT", "qty": 350,
              "underlying": S.NVDA, "contract": "underlying", "ref": "open"}
     S.write_json(env["root"] / "data" / "far_wings_ledger.json",
-                 FW.record_night(FW.read_ledger(None), [hedge], dt.date(2026, 11, 19), dt.date(2026, 11, 20)))
+                 FW.record_night(FW.read_ledger(None), "NVDA", [hedge], dt.date(2026, 11, 19), dt.date(2026, 11, 20)))
     write_mkt(env, "fills.json", [{"id": hedge["id"], "status": "filled"}, {"id": OLD_ORDERS[0]["id"],
                                                                              "status": "filled"}])
     write_mkt(env, "positions.json", {"cash": 0, "positions": [
@@ -585,7 +591,8 @@ def test_the_ledger_is_renamed_into_place_before_the_orders_file(env, monkeypatc
     now = files_now(env)
     assert set(now) == set(before)                                         # no temporary file left behind
     assert json.loads(now["mkt/open_orders.json"]) == []
-    assert json.loads(now["data/far_wings_ledger.json"])["nights"]["2026-11-24"] == {"for": "2026-11-25", "ids": []}
+    assert json.loads(now["data/far_wings_ledger.json"])["names"]["NVDA"]["nights"]["2026-11-24"] == {
+        "for": "2026-11-25", "ids": []}
     assert all((env["root"] / f).stat().st_mode & 0o777 == 0o644 for f in now)
 
 

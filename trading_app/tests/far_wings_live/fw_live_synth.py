@@ -40,6 +40,21 @@ def config(**over) -> dict:
     return cfg
 
 
+def name(ticker: str = "NVDA", cfg: dict | None = None) -> dict:
+    """One name of the basket as the config has it (NVDA by default)."""
+    return next(n for n in (cfg or config())["names"] if n["ticker"] == ticker)
+
+
+NVDA_NAME = name("NVDA")
+
+
+def price_history(*conids, untracked=()) -> dict:
+    """price_history.json's shape: each conid tracked (or, in `untracked`, listed but tracked: false)."""
+    out = {str(c): {"tracked": True, "name": f"made-up {c}", "price_history": {}} for c in conids}
+    out.update({str(c): {"tracked": False, "name": f"made-up {c}", "price_history": {}} for c in untracked})
+    return out
+
+
 def closes(end=ENTRY, n=60, start_px=175.0, step=0.02, last=None) -> pd.Series:
     days = L.sessions(pd.Timestamp(end) - pd.Timedelta(days=int(n * 1.6)), end)[-n:]
     rets = np.array([step if i % 2 else -step for i in range(len(days))])
@@ -66,7 +81,7 @@ def strikes_around(spot: float, lo=0.70, hi=1.43, step=2.5) -> np.ndarray:
 
 
 def chain_rows(spot, day=ENTRY, expiry=EXPIRY, b=-0.06, s0=0.45, strikes=None, r=RATE_PCT / 100, q=None,
-               spread=0.02, drop=(), one_sided=()):
+               spread=0.02, drop=(), one_sided=(), root="NVDA", step=2.5):
     """
     Option quote rows as far_wings_orders.chain() builds them. `drop` removes (cp, strike) pairs; `one_sided` keeps
     them with no bid (LSEG gives a zero bid as missing), so they are not two-sided.
@@ -74,7 +89,7 @@ def chain_rows(spot, day=ENTRY, expiry=EXPIRY, b=-0.06, s0=0.45, strikes=None, r
     q = trailing_yield(spot, day) if q is None else q
     T = (pd.Timestamp(expiry) - pd.Timestamp(day)).days / 365.0
     F, Dc = spot * np.exp((r - q) * T), np.exp(-r * T)
-    ks = strikes_around(spot) if strikes is None else strikes
+    ks = strikes_around(spot, step=step) if strikes is None else strikes
     rows = []
     for cp in ("P", "C"):
         for k in ks:
@@ -84,7 +99,7 @@ def chain_rows(spot, day=ENTRY, expiry=EXPIRY, b=-0.06, s0=0.45, strikes=None, r
             if not mid > 0.02:
                 continue
             bid = np.nan if (cp, float(k)) in one_sided else round(mid * (1 - spread), 6)
-            rows.append({"date": pd.Timestamp(day), "ric": build_option_ric("NVDA", expiry, float(k), cp, expired=False),
+            rows.append({"date": pd.Timestamp(day), "ric": build_option_ric(root, expiry, float(k), cp, expired=False),
                          "cp": cp, "strike": float(k), "expiry": pd.Timestamp(expiry),
                          "bid": bid, "ask": round(mid * (1 + spread), 6)})
     return rows

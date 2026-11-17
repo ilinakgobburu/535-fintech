@@ -1,0 +1,1302 @@
+{
+ "recorded_with": "b5f201e (single-name far_wings_live.plan_night)",
+ "scenarios": {
+  "entry b=-0.15 s0=0.3": {
+   "orders": [
+    {
+     "id": "nvda-fw-put-2026-11-23",
+     "for": "2026-11-24",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 46,
+     "underlying": 4815747,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "150",
+     "ref": "open",
+     "lmt_prc": "0.37"
+    },
+    {
+     "id": "nvda-fw-call-2026-11-23",
+     "for": "2026-11-24",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 77,
+     "underlying": 4815747,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "202.5",
+     "ref": "open",
+     "lmt_prc": "0.1"
+    }
+   ],
+   "notes": [
+    "entry 2026-11-23 -> 2026-12-18: sell 46 150 puts at 0.37 (|delta| 0.045)",
+    "entry 2026-11-23 -> 2026-12-18: sell 77 202.5 calls at 0.1 (|delta| 0.024)"
+   ]
+  },
+  "entry b=-0.15 s0=0.45": {
+   "orders": [
+    {
+     "id": "nvda-fw-put-2026-11-23",
+     "for": "2026-11-24",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 40,
+     "underlying": 4815747,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "140",
+     "ref": "open",
+     "lmt_prc": "0.66"
+    },
+    {
+     "id": "nvda-fw-call-2026-11-23",
+     "for": "2026-11-24",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 68,
+     "underlying": 4815747,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "215",
+     "ref": "open",
+     "lmt_prc": "0.17"
+    }
+   ],
+   "notes": [
+    "entry 2026-11-23 -> 2026-12-18: sell 40 140 puts at 0.66 (|delta| 0.052)",
+    "entry 2026-11-23 -> 2026-12-18: sell 68 215 calls at 0.17 (|delta| 0.027)"
+   ]
+  },
+  "entry b=-0.15 s0=0.7": {
+   "orders": [
+    {
+     "id": "nvda-fw-put-2026-11-23",
+     "for": "2026-11-24",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 41,
+     "underlying": 4815747,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "122.5",
+     "ref": "open",
+     "lmt_prc": "1.05"
+    },
+    {
+     "id": "nvda-fw-call-2026-11-23",
+     "for": "2026-11-24",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 59,
+     "underlying": 4815747,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "237.5",
+     "ref": "open",
+     "lmt_prc": "0.31"
+    }
+   ],
+   "notes": [
+    "entry 2026-11-23 -> 2026-12-18: sell 41 122.5 puts at 1.05 (|delta| 0.051)",
+    "entry 2026-11-23 -> 2026-12-18: sell 59 237.5 calls at 0.31 (|delta| 0.032)"
+   ]
+  },
+  "entry b=-0.06 s0=0.3": {
+   "orders": [
+    {
+     "id": "nvda-fw-put-2026-11-23",
+     "for": "2026-11-24",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 43,
+     "underlying": 4815747,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "155",
+     "ref": "open",
+     "lmt_prc": "0.32"
+    },
+    {
+     "id": "nvda-fw-call-2026-11-23",
+     "for": "2026-11-24",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 60,
+     "underlying": 4815747,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "205",
+     "ref": "open",
+     "lmt_prc": "0.16"
+    }
+   ],
+   "notes": [
+    "entry 2026-11-23 -> 2026-12-18: sell 43 155 puts at 0.32 (|delta| 0.048)",
+    "entry 2026-11-23 -> 2026-12-18: sell 60 205 calls at 0.16 (|delta| 0.032)"
+   ]
+  },
+  "entry b=-0.06 s0=0.45": {
+   "orders": [
+    {
+     "id": "nvda-fw-put-2026-11-23",
+     "for": "2026-11-24",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 41,
+     "underlying": 4815747,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "145",
+     "ref": "open",
+     "lmt_prc": "0.53"
+    },
+    {
+     "id": "nvda-fw-call-2026-11-23",
+     "for": "2026-11-24",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 59,
+     "underlying": 4815747,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "220",
+     "ref": "open",
+     "lmt_prc": "0.24"
+    }
+   ],
+   "notes": [
+    "entry 2026-11-23 -> 2026-12-18: sell 41 145 puts at 0.53 (|delta| 0.050)",
+    "entry 2026-11-23 -> 2026-12-18: sell 59 220 calls at 0.24 (|delta| 0.033)"
+   ]
+  },
+  "entry b=-0.06 s0=0.7": {
+   "orders": [
+    {
+     "id": "nvda-fw-put-2026-11-23",
+     "for": "2026-11-24",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 40,
+     "underlying": 4815747,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "130",
+     "ref": "open",
+     "lmt_prc": "0.89"
+    },
+    {
+     "id": "nvda-fw-call-2026-11-23",
+     "for": "2026-11-24",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 60,
+     "underlying": 4815747,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "250",
+     "ref": "open",
+     "lmt_prc": "0.35"
+    }
+   ],
+   "notes": [
+    "entry 2026-11-23 -> 2026-12-18: sell 40 130 puts at 0.89 (|delta| 0.052)",
+    "entry 2026-11-23 -> 2026-12-18: sell 60 250 calls at 0.35 (|delta| 0.031)"
+   ]
+  },
+  "entry b=0.0 s0=0.3": {
+   "orders": [
+    {
+     "id": "nvda-fw-put-2026-11-23",
+     "for": "2026-11-24",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 42,
+     "underlying": 4815747,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "157.5",
+     "ref": "open",
+     "lmt_prc": "0.31"
+    },
+    {
+     "id": "nvda-fw-call-2026-11-23",
+     "for": "2026-11-24",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 71,
+     "underlying": 4815747,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "210",
+     "ref": "open",
+     "lmt_prc": "0.14"
+    }
+   ],
+   "notes": [
+    "entry 2026-11-23 -> 2026-12-18: sell 42 157.5 puts at 0.31 (|delta| 0.050)",
+    "entry 2026-11-23 -> 2026-12-18: sell 71 210 calls at 0.14 (|delta| 0.026)"
+   ]
+  },
+  "entry b=0.0 s0=0.45": {
+   "orders": [
+    {
+     "id": "nvda-fw-put-2026-11-23",
+     "for": "2026-11-24",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 43,
+     "underlying": 4815747,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "147.5",
+     "ref": "open",
+     "lmt_prc": "0.45"
+    },
+    {
+     "id": "nvda-fw-call-2026-11-23",
+     "for": "2026-11-24",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 65,
+     "underlying": 4815747,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "227.5",
+     "ref": "open",
+     "lmt_prc": "0.23"
+    }
+   ],
+   "notes": [
+    "entry 2026-11-23 -> 2026-12-18: sell 43 147.5 puts at 0.45 (|delta| 0.048)",
+    "entry 2026-11-23 -> 2026-12-18: sell 65 227.5 calls at 0.23 (|delta| 0.029)"
+   ]
+  },
+  "entry b=0.0 s0=0.7": {
+   "orders": [
+    {
+     "id": "nvda-fw-put-2026-11-23",
+     "for": "2026-11-24",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 44,
+     "underlying": 4815747,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "132.5",
+     "ref": "open",
+     "lmt_prc": "0.7"
+    },
+    {
+     "id": "nvda-fw-call-2026-11-23",
+     "for": "2026-11-24",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 53,
+     "underlying": 4815747,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "257.5",
+     "ref": "open",
+     "lmt_prc": "0.48"
+    }
+   ],
+   "notes": [
+    "entry 2026-11-23 -> 2026-12-18: sell 44 132.5 puts at 0.7 (|delta| 0.047)",
+    "entry 2026-11-23 -> 2026-12-18: sell 53 257.5 calls at 0.48 (|delta| 0.037)"
+   ]
+  },
+  "entry b=0.05 s0=0.3": {
+   "orders": [
+    {
+     "id": "nvda-fw-put-2026-11-23",
+     "for": "2026-11-24",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 36,
+     "underlying": 4815747,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "160",
+     "ref": "open",
+     "lmt_prc": "0.35"
+    },
+    {
+     "id": "nvda-fw-call-2026-11-23",
+     "for": "2026-11-24",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 62,
+     "underlying": 4815747,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "212.5",
+     "ref": "open",
+     "lmt_prc": "0.18"
+    }
+   ],
+   "notes": [
+    "entry 2026-11-23 -> 2026-12-18: sell 36 160 puts at 0.35 (|delta| 0.060)",
+    "entry 2026-11-23 -> 2026-12-18: sell 62 212.5 calls at 0.18 (|delta| 0.030)"
+   ]
+  },
+  "entry b=0.05 s0=0.45": {
+   "orders": [
+    {
+     "id": "nvda-fw-put-2026-11-23",
+     "for": "2026-11-24",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 41,
+     "underlying": 4815747,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "150",
+     "ref": "open",
+     "lmt_prc": "0.43"
+    },
+    {
+     "id": "nvda-fw-call-2026-11-23",
+     "for": "2026-11-24",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 60,
+     "underlying": 4815747,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "232.5",
+     "ref": "open",
+     "lmt_prc": "0.29"
+    }
+   ],
+   "notes": [
+    "entry 2026-11-23 -> 2026-12-18: sell 41 150 puts at 0.43 (|delta| 0.050)",
+    "entry 2026-11-23 -> 2026-12-18: sell 60 232.5 calls at 0.29 (|delta| 0.032)"
+   ]
+  },
+  "entry b=0.05 s0=0.7": {
+   "orders": [
+    {
+     "id": "nvda-fw-put-2026-11-23",
+     "for": "2026-11-24",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 45,
+     "underlying": 4815747,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "135",
+     "ref": "open",
+     "lmt_prc": "0.61"
+    }
+   ],
+   "notes": [
+    "entry 2026-11-23 -> 2026-12-18: sell 45 135 puts at 0.61 (|delta| 0.045)",
+    "entry 2026-11-23 -> 2026-12-18: no call wing (no two-sided call under 0.05 |delta|)"
+   ]
+  },
+  "entry from 60.0": {
+   "orders": [
+    {
+     "id": "nvda-fw-put-2026-11-23",
+     "for": "2026-11-24",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 113,
+     "underlying": 4815747,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "50",
+     "ref": "open",
+     "lmt_prc": "0.2"
+    },
+    {
+     "id": "nvda-fw-call-2026-11-23",
+     "for": "2026-11-24",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 155,
+     "underlying": 4815747,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "75",
+     "ref": "open",
+     "lmt_prc": "0.09"
+    }
+   ],
+   "notes": [
+    "entry 2026-11-23 -> 2026-12-18: sell 113 50 puts at 0.2 (|delta| 0.054)",
+    "entry 2026-11-23 -> 2026-12-18: sell 155 75 calls at 0.09 (|delta| 0.037)"
+   ]
+  },
+  "entry from 120.0": {
+   "orders": [
+    {
+     "id": "nvda-fw-put-2026-11-23",
+     "for": "2026-11-24",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 57,
+     "underlying": 4815747,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "100",
+     "ref": "open",
+     "lmt_prc": "0.39"
+    },
+    {
+     "id": "nvda-fw-call-2026-11-23",
+     "for": "2026-11-24",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 104,
+     "underlying": 4815747,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "152.5",
+     "ref": "open",
+     "lmt_prc": "0.12"
+    }
+   ],
+   "notes": [
+    "entry 2026-11-23 -> 2026-12-18: sell 57 100 puts at 0.39 (|delta| 0.054)",
+    "entry 2026-11-23 -> 2026-12-18: sell 104 152.5 calls at 0.12 (|delta| 0.026)"
+   ]
+  },
+  "entry from 250.0": {
+   "orders": [
+    {
+     "id": "nvda-fw-put-2026-11-23",
+     "for": "2026-11-24",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 28,
+     "underlying": 4815747,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "207.5",
+     "ref": "open",
+     "lmt_prc": "0.77"
+    },
+    {
+     "id": "nvda-fw-call-2026-11-23",
+     "for": "2026-11-24",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 43,
+     "underlying": 4815747,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "315",
+     "ref": "open",
+     "lmt_prc": "0.32"
+    }
+   ],
+   "notes": [
+    "entry 2026-11-23 -> 2026-12-18: sell 28 207.5 puts at 0.77 (|delta| 0.051)",
+    "entry 2026-11-23 -> 2026-12-18: sell 43 315 calls at 0.32 (|delta| 0.031)"
+   ]
+  },
+  "entry from 420.0": {
+   "orders": [
+    {
+     "id": "nvda-fw-put-2026-11-23",
+     "for": "2026-11-24",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 17,
+     "underlying": 4815747,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "347.5",
+     "ref": "open",
+     "lmt_prc": "1.24"
+    },
+    {
+     "id": "nvda-fw-call-2026-11-23",
+     "for": "2026-11-24",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 26,
+     "underlying": 4815747,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "530",
+     "ref": "open",
+     "lmt_prc": "0.52"
+    }
+   ],
+   "notes": [
+    "entry 2026-11-23 -> 2026-12-18: sell 17 347.5 puts at 1.24 (|delta| 0.049)",
+    "entry 2026-11-23 -> 2026-12-18: sell 26 530 calls at 0.52 (|delta| 0.030)"
+   ]
+  },
+  "entry with leftover shares": {
+   "orders": [
+    {
+     "id": "nvda-fw-put-2026-11-23",
+     "for": "2026-11-24",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 41,
+     "underlying": 4815747,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "145",
+     "ref": "open",
+     "lmt_prc": "0.53"
+    },
+    {
+     "id": "nvda-fw-call-2026-11-23",
+     "for": "2026-11-24",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 59,
+     "underlying": 4815747,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "220",
+     "ref": "open",
+     "lmt_prc": "0.24"
+    },
+    {
+     "id": "nvda-fw-hedge-2026-11-23",
+     "for": "2026-11-24",
+     "order_type": "mkt",
+     "action": "BTC",
+     "qty": 350,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    }
+   ],
+   "notes": [
+    "no options held: close the -350 leftover shares",
+    "entry 2026-11-23 -> 2026-12-18: sell 41 145 puts at 0.53 (|delta| 0.050)",
+    "entry 2026-11-23 -> 2026-12-18: sell 59 220 calls at 0.24 (|delta| 0.033)"
+   ]
+  },
+  "band last=100.0 shares=0": {
+   "orders": [
+    {
+     "id": "nvda-fw-hedge-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "SHT",
+     "qty": 4098,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    }
+   ],
+   "notes": [
+    "net delta +4098.4 shares ($409,843 at 100.00) is outside the $5,000 band: hedge to -4098 shares (holding 0)"
+   ]
+  },
+  "band last=100.0 shares=300": {
+   "orders": [
+    {
+     "id": "nvda-fw-hedge-sel-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "SEL",
+     "qty": 300,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    },
+    {
+     "id": "nvda-fw-hedge-sht-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "SHT",
+     "qty": 4098,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    }
+   ],
+   "notes": [
+    "net delta +4398.4 shares ($439,843 at 100.00) is outside the $5,000 band: hedge to -4098 shares (holding 300)"
+   ]
+  },
+  "band last=100.0 shares=-300": {
+   "orders": [
+    {
+     "id": "nvda-fw-hedge-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "SHT",
+     "qty": 3798,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    }
+   ],
+   "notes": [
+    "net delta +3798.4 shares ($379,843 at 100.00) is outside the $5,000 band: hedge to -4098 shares (holding -300)"
+   ]
+  },
+  "band last=100.0 shares=1200": {
+   "orders": [
+    {
+     "id": "nvda-fw-hedge-sel-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "SEL",
+     "qty": 1200,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    },
+    {
+     "id": "nvda-fw-hedge-sht-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "SHT",
+     "qty": 4098,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    }
+   ],
+   "notes": [
+    "net delta +5298.4 shares ($529,843 at 100.00) is outside the $5,000 band: hedge to -4098 shares (holding 1200)"
+   ]
+  },
+  "band last=150.0 shares=0": {
+   "orders": [
+    {
+     "id": "nvda-fw-hedge-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "SHT",
+     "qty": 1435,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    }
+   ],
+   "notes": [
+    "net delta +1434.7 shares ($215,198 at 150.00) is outside the $5,000 band: hedge to -1435 shares (holding 0)"
+   ]
+  },
+  "band last=150.0 shares=300": {
+   "orders": [
+    {
+     "id": "nvda-fw-hedge-sel-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "SEL",
+     "qty": 300,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    },
+    {
+     "id": "nvda-fw-hedge-sht-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "SHT",
+     "qty": 1435,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    }
+   ],
+   "notes": [
+    "net delta +1734.7 shares ($260,198 at 150.00) is outside the $5,000 band: hedge to -1435 shares (holding 300)"
+   ]
+  },
+  "band last=150.0 shares=-300": {
+   "orders": [
+    {
+     "id": "nvda-fw-hedge-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "SHT",
+     "qty": 1135,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    }
+   ],
+   "notes": [
+    "net delta +1134.7 shares ($170,198 at 150.00) is outside the $5,000 band: hedge to -1435 shares (holding -300)"
+   ]
+  },
+  "band last=150.0 shares=1200": {
+   "orders": [
+    {
+     "id": "nvda-fw-hedge-sel-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "SEL",
+     "qty": 1200,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    },
+    {
+     "id": "nvda-fw-hedge-sht-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "SHT",
+     "qty": 1435,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    }
+   ],
+   "notes": [
+    "net delta +2634.7 shares ($395,198 at 150.00) is outside the $5,000 band: hedge to -1435 shares (holding 1200)"
+   ]
+  },
+  "band last=172.0 shares=0": {
+   "orders": [
+    {
+     "id": "nvda-fw-hedge-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "SHT",
+     "qty": 161,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    }
+   ],
+   "notes": [
+    "net delta +161.1 shares ($27,706 at 172.00) is outside the $5,000 band: hedge to -161 shares (holding 0)"
+   ]
+  },
+  "band last=172.0 shares=300": {
+   "orders": [
+    {
+     "id": "nvda-fw-hedge-sel-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "SEL",
+     "qty": 300,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    },
+    {
+     "id": "nvda-fw-hedge-sht-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "SHT",
+     "qty": 161,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    }
+   ],
+   "notes": [
+    "net delta +461.1 shares ($79,306 at 172.00) is outside the $5,000 band: hedge to -161 shares (holding 300)"
+   ]
+  },
+  "band last=172.0 shares=-300": {
+   "orders": [
+    {
+     "id": "nvda-fw-hedge-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "BTC",
+     "qty": 139,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    }
+   ],
+   "notes": [
+    "net delta -138.9 shares ($23,894 at 172.00) is outside the $5,000 band: hedge to -161 shares (holding -300)"
+   ]
+  },
+  "band last=172.0 shares=1200": {
+   "orders": [
+    {
+     "id": "nvda-fw-hedge-sel-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "SEL",
+     "qty": 1200,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    },
+    {
+     "id": "nvda-fw-hedge-sht-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "SHT",
+     "qty": 161,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    }
+   ],
+   "notes": [
+    "net delta +1361.1 shares ($234,106 at 172.00) is outside the $5,000 band: hedge to -161 shares (holding 1200)"
+   ]
+  },
+  "band last=175.0 shares=0": {
+   "orders": [
+    {
+     "id": "nvda-fw-hedge-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "SHT",
+     "qty": 78,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    }
+   ],
+   "notes": [
+    "net delta +77.7 shares ($13,594 at 175.00) is outside the $5,000 band: hedge to -78 shares (holding 0)"
+   ]
+  },
+  "band last=175.0 shares=300": {
+   "orders": [
+    {
+     "id": "nvda-fw-hedge-sel-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "SEL",
+     "qty": 300,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    },
+    {
+     "id": "nvda-fw-hedge-sht-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "SHT",
+     "qty": 78,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    }
+   ],
+   "notes": [
+    "net delta +377.7 shares ($66,094 at 175.00) is outside the $5,000 band: hedge to -78 shares (holding 300)"
+   ]
+  },
+  "band last=175.0 shares=-300": {
+   "orders": [
+    {
+     "id": "nvda-fw-hedge-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "BTC",
+     "qty": 222,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    }
+   ],
+   "notes": [
+    "net delta -222.3 shares ($38,906 at 175.00) is outside the $5,000 band: hedge to -78 shares (holding -300)"
+   ]
+  },
+  "band last=175.0 shares=1200": {
+   "orders": [
+    {
+     "id": "nvda-fw-hedge-sel-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "SEL",
+     "qty": 1200,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    },
+    {
+     "id": "nvda-fw-hedge-sht-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "SHT",
+     "qty": 78,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    }
+   ],
+   "notes": [
+    "net delta +1277.7 shares ($223,594 at 175.00) is outside the $5,000 band: hedge to -78 shares (holding 1200)"
+   ]
+  },
+  "band last=190.0 shares=0": {
+   "orders": [
+    {
+     "id": "nvda-fw-hedge-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "BUY",
+     "qty": 420,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    }
+   ],
+   "notes": [
+    "net delta -420.1 shares ($79,810 at 190.00) is outside the $5,000 band: hedge to 420 shares (holding 0)"
+   ]
+  },
+  "band last=190.0 shares=300": {
+   "orders": [
+    {
+     "id": "nvda-fw-hedge-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "BUY",
+     "qty": 120,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    }
+   ],
+   "notes": [
+    "net delta -120.1 shares ($22,810 at 190.00) is outside the $5,000 band: hedge to 420 shares (holding 300)"
+   ]
+  },
+  "band last=190.0 shares=-300": {
+   "orders": [
+    {
+     "id": "nvda-fw-hedge-btc-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "BTC",
+     "qty": 300,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    },
+    {
+     "id": "nvda-fw-hedge-buy-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "BUY",
+     "qty": 420,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    }
+   ],
+   "notes": [
+    "net delta -720.1 shares ($136,810 at 190.00) is outside the $5,000 band: hedge to 420 shares (holding -300)"
+   ]
+  },
+  "band last=190.0 shares=1200": {
+   "orders": [
+    {
+     "id": "nvda-fw-hedge-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "SEL",
+     "qty": 780,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    }
+   ],
+   "notes": [
+    "net delta +779.9 shares ($148,190 at 190.00) is outside the $5,000 band: hedge to 420 shares (holding 1200)"
+   ]
+  },
+  "band last=205.0 shares=0": {
+   "orders": [
+    {
+     "id": "nvda-fw-hedge-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "BUY",
+     "qty": 1501,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    }
+   ],
+   "notes": [
+    "net delta -1501.2 shares ($307,746 at 205.00) is outside the $5,000 band: hedge to 1501 shares (holding 0)"
+   ]
+  },
+  "band last=205.0 shares=300": {
+   "orders": [
+    {
+     "id": "nvda-fw-hedge-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "BUY",
+     "qty": 1201,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    }
+   ],
+   "notes": [
+    "net delta -1201.2 shares ($246,246 at 205.00) is outside the $5,000 band: hedge to 1501 shares (holding 300)"
+   ]
+  },
+  "band last=205.0 shares=-300": {
+   "orders": [
+    {
+     "id": "nvda-fw-hedge-btc-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "BTC",
+     "qty": 300,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    },
+    {
+     "id": "nvda-fw-hedge-buy-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "BUY",
+     "qty": 1501,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    }
+   ],
+   "notes": [
+    "net delta -1801.2 shares ($369,246 at 205.00) is outside the $5,000 band: hedge to 1501 shares (holding -300)"
+   ]
+  },
+  "band last=205.0 shares=1200": {
+   "orders": [
+    {
+     "id": "nvda-fw-hedge-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "BUY",
+     "qty": 301,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    }
+   ],
+   "notes": [
+    "net delta -301.2 shares ($61,746 at 205.00) is outside the $5,000 band: hedge to 1501 shares (holding 1200)"
+   ]
+  },
+  "band last=240.0 shares=0": {
+   "orders": [
+    {
+     "id": "nvda-fw-hedge-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "BUY",
+     "qty": 4911,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    }
+   ],
+   "notes": [
+    "net delta -4911.1 shares ($1,178,659 at 240.00) is outside the $5,000 band: hedge to 4911 shares (holding 0)"
+   ]
+  },
+  "band last=240.0 shares=300": {
+   "orders": [
+    {
+     "id": "nvda-fw-hedge-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "BUY",
+     "qty": 4611,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    }
+   ],
+   "notes": [
+    "net delta -4611.1 shares ($1,106,659 at 240.00) is outside the $5,000 band: hedge to 4911 shares (holding 300)"
+   ]
+  },
+  "band last=240.0 shares=-300": {
+   "orders": [
+    {
+     "id": "nvda-fw-hedge-btc-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "BTC",
+     "qty": 300,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    },
+    {
+     "id": "nvda-fw-hedge-buy-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "BUY",
+     "qty": 4911,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    }
+   ],
+   "notes": [
+    "net delta -5211.1 shares ($1,250,659 at 240.00) is outside the $5,000 band: hedge to 4911 shares (holding -300)"
+   ]
+  },
+  "band last=240.0 shares=1200": {
+   "orders": [
+    {
+     "id": "nvda-fw-hedge-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "BUY",
+     "qty": 3711,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    }
+   ],
+   "notes": [
+    "net delta -3711.1 shares ($890,659 at 240.00) is outside the $5,000 band: hedge to 4911 shares (holding 1200)"
+   ]
+  },
+  "band last=400.0 shares=0": {
+   "orders": [
+    {
+     "id": "nvda-fw-hedge-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "BUY",
+     "qty": 5900,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    }
+   ],
+   "notes": [
+    "net delta -5900.0 shares ($2,359,995 at 400.00) is outside the $5,000 band: hedge to 5900 shares (holding 0)"
+   ]
+  },
+  "band last=400.0 shares=300": {
+   "orders": [
+    {
+     "id": "nvda-fw-hedge-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "BUY",
+     "qty": 5600,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    }
+   ],
+   "notes": [
+    "net delta -5600.0 shares ($2,239,995 at 400.00) is outside the $5,000 band: hedge to 5900 shares (holding 300)"
+   ]
+  },
+  "band last=400.0 shares=-300": {
+   "orders": [
+    {
+     "id": "nvda-fw-hedge-btc-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "BTC",
+     "qty": 300,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    },
+    {
+     "id": "nvda-fw-hedge-buy-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "BUY",
+     "qty": 5900,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    }
+   ],
+   "notes": [
+    "net delta -6200.0 shares ($2,479,995 at 400.00) is outside the $5,000 band: hedge to 5900 shares (holding -300)"
+   ]
+  },
+  "band last=400.0 shares=1200": {
+   "orders": [
+    {
+     "id": "nvda-fw-hedge-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "BUY",
+     "qty": 4700,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    }
+   ],
+   "notes": [
+    "net delta -4700.0 shares ($1,879,995 at 400.00) is outside the $5,000 band: hedge to 5900 shares (holding 1200)"
+   ]
+  },
+  "band with a missing mid": {
+   "orders": [
+    {
+     "id": "nvda-fw-hedge-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "SHT",
+     "qty": 48,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    }
+   ],
+   "notes": [
+    "net delta +48.4 shares ($8,704 at 180.00) is outside the $5,000 band: hedge to -48 shares (holding 0)"
+   ]
+  },
+  "one wing assigned": {
+   "orders": [
+    {
+     "id": "nvda-fw-hedge-2026-12-01",
+     "for": "2026-12-02",
+     "order_type": "mkt",
+     "action": "BTC",
+     "qty": 4100,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    }
+   ],
+   "notes": [
+    "net delta -4100.0 shares ($574,002 at 140.00) is outside the $5,000 band: hedge to 0 shares (holding -4100)"
+   ]
+  },
+  "expiry night shares": {
+   "orders": [
+    {
+     "id": "nvda-fw-hedge-2026-12-18",
+     "for": "2026-12-21",
+     "order_type": "mkt",
+     "action": "BTC",
+     "qty": 250,
+     "underlying": 4815747,
+     "contract": "underlying",
+     "ref": "open"
+    }
+   ],
+   "notes": [
+    "no options held: close the -250 leftover shares"
+   ]
+  },
+  "quiet night": {
+   "orders": [],
+   "notes": [
+    "no order tonight"
+   ]
+  }
+ }
+}

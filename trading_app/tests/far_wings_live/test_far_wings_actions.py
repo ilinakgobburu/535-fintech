@@ -42,6 +42,23 @@ def test_the_far_wing_action():
     assert "if [ -f data/far_wings_ledger.json ]; then git add data/far_wings_ledger.json; fi" in commit["run"]
     assert "git pull --rebase origin main" in commit["run"] and "git push origin HEAD:main" in commit["run"]
     assert commit["env"]["FOR_DAY"] == "${{ steps.orders.outputs.for_day }}"
+    # an entry night for the 31 names is some 1,790 paced requests (about 17 minutes): room for a slow night
+    assert job["timeout-minutes"] == 90
+
+
+def test_a_name_stopped_or_skipped_at_the_retry_turns_the_run_red_after_the_commit():
+    # the other names' orders are written and committed first; only then does the last step fail, for a name stopped
+    # by its own book (stopped=) and for one still not final at the 01:00 retry (skipped=)
+    w, _ = workflow("far-wings-orders.yml")
+    steps = w["jobs"]["orders"]["steps"]
+    names = [s.get("name") for s in steps]
+    last = steps[-1]
+    assert names.index("Commit mkt/open_orders.json and the ledger") == len(steps) - 2
+    assert last["if"] == "steps.orders.outputs.stopped != '' || steps.orders.outputs.skipped != ''"
+    assert last["env"] == {"STOPPED": "${{ steps.orders.outputs.stopped }}",
+                           "SKIPPED": "${{ steps.orders.outputs.skipped }}"}
+    assert last["run"].strip().endswith("exit 1") and last["run"].count("::error::") == 2
+    assert 'if [ -n "${STOPPED}" ]' in last["run"] and 'if [ -n "${SKIPPED}" ]' in last["run"]
 
 
 def test_it_is_the_only_scheduled_writer_and_every_writer_shares_the_group():
