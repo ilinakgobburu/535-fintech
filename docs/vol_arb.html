@@ -264,6 +264,10 @@
   body{font-optical-sizing:none;font-variation-settings:'opsz' 24}
   .lede,.takeaway{font-variation-settings:'opsz' 28;letter-spacing:-.005em}
   h1,h2,h3,h4{font-optical-sizing:auto;font-variation-settings:normal}
+  /* one column: text runs to the same right edge as the panels, tiles and charts (it had stopped at about
+     60% of the width, leaving an empty band down the right) */
+  .wrap{max-width:1000px}
+  .lede,.takeaway,.prose,.cap,.lead-num,details.more{max-width:none}
 </style>
 </head>
 <body data-fill="mid">
@@ -551,6 +555,7 @@ window.addEventListener('DOMContentLoaded', function(){
     });
   });
   if (window.Plotly) draw();
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(function(){ if (window.Plotly) draw(); });
   var w = window.innerWidth;
   window.addEventListener('resize', function(){
     if ((w < 640) !== (window.innerWidth < 640)) { w = window.innerWidth; draw(); }
@@ -832,7 +837,7 @@ window.addEventListener('DOMContentLoaded', function(){
                                    line: {color: C.line, width: 1}}; };
     plot('ch-split', data,
       base({showlegend: data.length > 1, barmode: 'group', bargap: 0.32, bargroupgap: 0.12,
-        shapes: [zeroLine('x'), cut(expl.length), cut(rows.length)], margin: {l: 10, r: 14, t: 30, b: 40},
+        shapes: [zeroLine('x'), cut(expl.length), cut(rows.length)], margin: {l: 22, r: 14, t: 30, b: 40},
         legend: {orientation: 'h', x: 0, xanchor: 'left', y: 1.0, yanchor: 'bottom', font: {size: 12, color: C.text},
                  bgcolor: 'rgba(0,0,0,0)', traceorder: 'normal'},
         xaxis: ax('dollars, summed over the stocks’ books', {range: [-lim, lim], tickvals: tv,
@@ -884,6 +889,8 @@ window.addEventListener('DOMContentLoaded', function(){
   var sentence = document.getElementById('split-sentence');
   var s0 = (D.split[state.rung] || {})[state.fill]; if (sentence && s0) sentence.textContent = s0.sentence;
   if (window.Plotly) all();
+  // once the web fonts have loaded, draw again: the axes size their margins from the labels' measured width
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(function(){ if (window.Plotly) all(); });
   var w = window.innerWidth;
   window.addEventListener('resize', function(){
     if ((w < 640) !== (window.innerWidth < 640)) { w = window.innerWidth; if (window.Plotly) all(); }
