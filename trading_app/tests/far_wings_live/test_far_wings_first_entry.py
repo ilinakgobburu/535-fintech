@@ -365,27 +365,167 @@ def test_the_first_entry_refused_at_10_29_writes_nothing_and_falls_back_to_the_2
     assert "first_entry" not in ledger_file(env)
 
 
-def test_a_late_retry_after_the_22_run_wrote_leaves_its_names_and_their_cycle(env):
-    # AAPL not final at 22:00 (one listed put with no D row), NVDA written; the retry starts at 10:29: NVDA's orders
-    # stand, AAPL began its cycle at 22:00 (tracked then) and gets no wings, not on the 23rd either
+@pytest.mark.parametrize("args", [["--retry"], []])
+def test_a_late_run_after_the_22_run_wrote_leaves_its_names_and_their_cycle(env, args):
+    # AAPL not final at 22:00 (one listed put with no D row), NVDA written; the retry (or the Run button) starts at
+    # 10:29, by when Sanji also tracks BRK B: NVDA's orders stand, AAPL began its cycle at 22:00 (tracked then) and
+    # gets no wings, not on the 23rd either, and BRK B, not tracked by the run that wrote, enters on the 23rd. Before,
+    # a plain run here said the first entry was lost and the cycle fell back to the 23rd for every name
     track(env, "NVDA", "AAPL")
-    fake = FakeBasket(FIRST, ["NVDA", "AAPL"])
+    fake = FakeBasket(FIRST, ["NVDA", "AAPL", "BRK B"])
     ric = next(r["ric"] for r in chain_rows_of("AAPL", FIRST) if r["cp"] == "P")
     fake.options[ric] = fake.options[ric].iloc[:1]
     env["use"](fake, now=TONIGHT)
     assert O.main([]) == 0
     assert list(by_name(orders_file(env))) == ["NVDA"]
     assert ledger_file(env)["first_entry"]["names"] == ["NVDA", "AAPL"]
+    track(env, "NVDA", "AAPL", "BRK B")
     before = files_now(env)
     fake.requests.clear()
     env["use"](fake, now=dt.datetime(2026, 11, 18, 10, 29))
     with pytest.raises(SystemExit) as e:
-        O.main(["--retry"])
+        O.main(args)
     msg = red(e)
-    assert LATE_LINE in msg and "the 22:00 run's orders for NVDA stand as it wrote them" in msg
-    assert ("AAPL, left for this retry by the 22:00 run that found them tracked, began their 2026-12-18 cycle at the "
-            "one-off first entry and get no wings this cycle (not on 2026-11-23 either)") in msg
-    assert "falls back" not in msg and files_now(env) == before and fake.requests == []
+    assert LATE_LINE in msg
+    assert ("the orders already written from 2026-11-17's close for NVDA stand as written "
+            "(data/far_wings_ledger.json)") in msg
+    assert ("the one-off first entry was written and stands (data/far_wings_ledger.json's first_entry: NVDA, AAPL): "
+            "the 2026-12-18 cycle of each of these began on 2026-11-17's close, so none enters it again on "
+            "2026-11-23") in msg
+    assert ("AAPL, found tracked by the run that wrote it but not decided, get no wings this cycle, as a name not "
+            "decided at a regular entry's retry gets none") in msg
+    assert ("BRK B, not tracked by the run that wrote it, enter the 2026-12-18 cycle at the regular entry on "
+            "2026-11-23 (orders for 2026-11-24)") in msg
+    assert "is lost" not in msg and "falls back" not in msg
+    assert files_now(env) == before and fake.requests == [] and env["sessions"][1:] == []
+
+
+def test_the_first_entry_stands_when_the_name_it_wrote_is_no_longer_tracked(env):
+    # NVDA written at 22:00, AAPL not final; by 10:29 Sanji no longer tracks NVDA. No tradable name has a night from
+    # 2026-11-17, but the ledger's first_entry shows the night was written: the first entry stands, it is not lost
+    track(env, "NVDA", "AAPL")
+    fake = FakeBasket(FIRST, ["NVDA", "AAPL"])
+    ric = next(r["ric"] for r in chain_rows_of("AAPL", FIRST) if r["cp"] == "P")
+    fake.options[ric] = fake.options[ric].iloc[:1]
+    env["use"](fake, now=TONIGHT)
+    assert O.main([]) == 0
+    track(env, "AAPL", untracked=["NVDA"])
+    before = files_now(env)
+    fake.requests.clear()
+    env["use"](fake, now=dt.datetime(2026, 11, 18, 10, 29))
+    with pytest.raises(SystemExit) as e:
+        O.main([])
+    msg = red(e)
+    assert "the one-off first entry was written and stands (data/far_wings_ledger.json's first_entry: NVDA, AAPL)" \
+        in msg
+    assert "AAPL, found tracked by the run that wrote it but not decided, get no wings this cycle" in msg
+    assert "is lost" not in msg and "falls back" not in msg and "stand as written" not in msg
+    assert files_now(env) == before and fake.requests == []
+
+
+@pytest.mark.parametrize("first_args, first_now", [
+    (["--retry"], dt.datetime(2026, 11, 18, 1, 0)),     # the 22:00 run failed (or had not started); the retry wrote
+    ([], TONIGHT),                                    # the 22:00 run wrote
+])
+@pytest.mark.parametrize("late_now", [dt.datetime(2026, 11, 18, 10, 29), dt.datetime(2026, 11, 18, 15, 59)])
+def test_a_plain_run_after_the_first_entry_was_written_says_it_stands_and_stays_green(env, capsys, first_args,
+                                                                                      first_now, late_now):
+    # GitHub starts the 03:00 UTC run after the 06:00 retry has written, or she presses the Run button on Wednesday
+    # morning after a good night: the first entry was written, so the run has nothing to do. Before, it went red and
+    # said the early first entry was lost and the cycle fell back to 2026-11-23, while the Dec 18 wings were in the
+    # file and the ledger's first_entry kept NVDA from entering on the 23rd
+    S.write_json(env["root"] / "price_history.json", real_price_history())
+    env["use"](FakeBasket(FIRST, ["NVDA"]), now=first_now)
+    assert O.main(first_args) == 0
+    assert ledger_file(env)["first_entry"]["names"] == ["NVDA"]
+    before = files_now(env)
+    capsys.readouterr()
+    fake = env["use"](FakeBasket(FIRST, ["NVDA"]), now=late_now)
+    sessions = len(env["sessions"])
+    assert O.main([]) == 0
+    out = capsys.readouterr().out
+    assert (f"Late run ({late_now:%Y-%m-%d %H:%M} New York time): the orders for 2026-11-18 from 2026-11-17's close "
+            "were already written (nvda-fw-put-2026-11-17, nvda-fw-call-2026-11-17); nothing to do. The one-off first "
+            "entry stands (data/far_wings_ledger.json's first_entry: NVDA): none of these names enters the 2026-12-18 "
+            "cycle again on 2026-11-23.") in out
+    assert "lost" not in out and "falls back" not in out
+    assert files_now(env) == before and fake.requests == [] and len(env["sessions"]) == sessions
+    # and the retry, run after it, says the same
+    assert O.main(["--retry"]) == 0
+    assert "Retry: the orders for 2026-11-18 from 2026-11-17's close were already written" in capsys.readouterr().out
+    assert files_now(env) == before
+
+
+def test_a_plain_rerun_that_reaches_the_open_after_the_night_was_written_stays_green(env, capsys, monkeypatch):
+    # the retry wrote at 01:00; a plain run starts at 09:29 and decides again (a rerun decides afresh), but the open
+    # comes while it asks LSEG: nothing is written, the retry's orders stand, and the run is green
+    S.write_json(env["root"] / "price_history.json", real_price_history())
+    env["use"](FakeBasket(FIRST, ["NVDA"]), now=dt.datetime(2026, 11, 18, 1, 0))
+    assert O.main(["--retry"]) == 0
+    before = files_now(env)
+    fake = env["use"](FakeBasket(FIRST, ["NVDA"]))
+    clock = iter([dt.datetime(2026, 11, 18, 9, 29), dt.datetime(2026, 11, 18, 9, 30)])
+    monkeypatch.setattr(O, "now_ny", lambda: next(clock))
+    capsys.readouterr()
+    assert O.main([]) == 0
+    out = capsys.readouterr().out
+    assert fake.requests                                            # it asked LSEG before the open came
+    assert ("Late run (2026-11-18 09:30 New York time): the orders for 2026-11-18 from 2026-11-17's close were "
+            "already written (nvda-fw-put-2026-11-17, nvda-fw-call-2026-11-17); nothing to do. The one-off first "
+            "entry stands") in out
+    assert files_now(env) == before
+
+
+@pytest.mark.parametrize("nvda_written", [False, True])
+@pytest.mark.parametrize("tracked", [("NVDA", "AAPL"), ("NVDA",)])
+def test_a_late_regular_entry_night_loses_no_entry_for_a_name_whose_cycle_began_at_the_first_entry(env, tracked,
+                                                                                                   nvda_written):
+    # 2026-11-23's runs late (the Run button Tuesday 10:29), NVDA holding the Dec 18 put of its first entry: its cycle
+    # began on 11-17, so it had no entry to lose, only its band check (unless the 22:00 run wrote its night, which then
+    # stands); AAPL, not tracked on 11-17, loses its entry. Before, the log said every name's entry was lost
+    track(env, *tracked)
+    put = _order("NVDA", "P", FIRST)
+    led = FW.record_first_entry(FW.record_night(FW.read_ledger(None), "NVDA", [put], FIRST, FIRST_FOR), FIRST,
+                                FIRST_FOR, DEC, ["NVDA"])
+    if nvda_written:
+        led = FW.record_night(led, "NVDA", [], S.ENTRY, S.FOR)
+    S.write_json(env["root"] / "data" / "far_wings_ledger.json", led)
+    write_mkt(env, "open_orders.json", [])
+    write_mkt(env, "fills.json", [{"id": put["id"], "status": "filled"}])
+    write_mkt(env, "positions.json", {"cash": 100_000, "positions": legs_of([put])})
+    before = files_now(env)
+    fake = env["use"](FakeBasket(S.ENTRY, list(tracked)), now=dt.datetime(2026, 11, 24, 10, 29))
+    if nvda_written and tracked == ("NVDA",):
+        assert O.main([]) == 0                                     # every name written: nothing to do
+        assert files_now(env) == before and fake.requests == []
+        return
+    with pytest.raises(SystemExit) as e:
+        O.main([])
+    msg = red(e)
+    assert "the session for 2026-11-23's orders (2026-11-24) is already open: nothing written" in msg
+    assert ("2026-11-23 was an entry night, so this cycle's entry is lost for AAPL: its wings" in msg) == \
+        ("AAPL" in tracked)
+    assert "lost for NVDA" not in msg and "NVDA, AAPL" not in msg and "first entry" not in msg
+    band = ("the band check from 2026-11-23's close for NVDA (any hedge, or the close of leftover shares) is not "
+            "written either")
+    assert (band in msg) is not nvda_written
+    assert ("the orders already written from 2026-11-23's close for NVDA stand as written" in msg) is nvda_written
+    if not nvda_written and tracked == ("NVDA",):
+        assert msg.count(". ") == 1                                # the late line and the band check, nothing lost
+    assert files_now(env) == before and fake.requests == []
+
+
+def test_the_first_entry_is_named_only_on_its_own_night():
+    rec = FW.record_first_entry(FW.read_ledger(None), FIRST, FIRST_FOR, DEC, ["NVDA", "AAPL"])
+    assert O.first_of(rec, FIRST) == rec["first_entry"] and O.first_of(rec, S.ENTRY) is None
+    assert O.first_of(FW.read_ledger(None), FIRST) is None
+    done = {"NVDA": "nvda-fw-put-2026-11-17", "AAPL": "no order"}
+    assert O.already_written("Retry", FIRST, FIRST_FOR, done, rec) == (
+        "Retry: the orders for 2026-11-18 from 2026-11-17's close were already written (NVDA: nvda-fw-put-2026-11-17; "
+        "AAPL: no order); nothing to do. The one-off first entry stands (data/far_wings_ledger.json's first_entry: "
+        "NVDA, AAPL): none of these names enters the 2026-12-18 cycle again on 2026-11-23.")
+    assert O.already_written("Retry", S.ENTRY, S.FOR, {"NVDA": "no order"}, rec) == (
+        "Retry: the orders for 2026-11-24 from 2026-11-23's close were already written (no order); nothing to do.")
 
 
 # --------------------------------------------------------------------------- the cycle, 11-17 to 12-21

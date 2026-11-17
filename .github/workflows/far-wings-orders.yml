@@ -18,7 +18,10 @@ on:
                             # nothing if it wrote every name's orders (the entry is one night only)
                             # GitHub can start either hours late (2026-11-17: 11:23 and 15:29 UTC). The orders are
                             # always for the session after the last close; a run that starts (or would write) after
-                            # that session's 09:30 open writes nothing and goes red, and nothing is committed
+                            # that session's 09:30 open writes nothing and goes red, and nothing is committed, unless
+                            # the ledger shows every name already written from that close (then it is green). The
+                            # retry always retries the night of the session before the day it runs on, so a delay
+                            # past that day's close does not make it decide the new close
   workflow_dispatch:
 
 concurrency:

@@ -841,7 +841,10 @@ def test_an_option_listed_past_its_expiry_on_one_name_stops_every_name(env):
         O.main([])
 
 
-def test_a_run_during_the_open_session_writes_nothing_for_any_name(env, capsys):
+@pytest.mark.parametrize("args", [[], ["--retry"]])
+def test_a_run_during_the_open_session_after_every_name_was_written_has_nothing_to_do(env, capsys, args):
+    # the Run button pressed Tuesday noon (or the 03:00 UTC run GitHub starts after the retry), both names written
+    # from Monday's close: they stand, nothing is written, LSEG is not asked, and the run stays green
     env["track"]("NVDA", "BRK B")
     env["use"](FakeBasket(ENTRY, ["NVDA", "BRK B"]))
     assert O.main([]) == 0
@@ -850,17 +853,20 @@ def test_a_run_during_the_open_session_writes_nothing_for_any_name(env, capsys):
     write_mkt(env, "positions.json", {"cash": 0, "positions": []})
     fake = env["use"](FakeBasket(ENTRY, ["NVDA", "BRK B"], chain=False), now=dt.datetime(2026, 11, 24, 12, 0))
     out_before = output(env)
-    with pytest.raises(SystemExit) as e:
-        O.main([])
-    assert e.value.code not in (0, None)
-    assert ("the session for 2026-11-23's orders (2026-11-24) is already open: nothing written (a late run must not "
-            "fill a day late)") in str(e.value.code)
+    capsys.readouterr()
+    assert O.main(args) == 0
+    who = "Retry" if args else "Late run (2026-11-24 12:00 New York time)"
+    assert (f"{who}: the orders for 2026-11-24 from 2026-11-23's close were already written (NVDA: "
+            "nvda-fw-put-2026-11-23, nvda-fw-call-2026-11-23; BRK B: brkb-fw-put-2026-11-23, brkb-fw-call-2026-11-23); "
+            "nothing to do.") in capsys.readouterr().out
     assert orders_file(env) == written and ledger_file(env) == led and output(env) == out_before
-    assert fake.requests == []
+    assert fake.requests == [] and len(env["sessions"]) == 1                # the 22:00 run's alone
 
 
-def test_a_late_retry_keeps_the_22_runs_orders_and_says_which_names_lost_the_night(env, capsys):
-    # AAPL not final at 22:00; GitHub starts the retry at 10:29: NVDA's and BRK B's orders stand, AAPL gets none
+@pytest.mark.parametrize("args", [[], ["--retry"]])
+def test_a_late_run_keeps_the_written_orders_and_says_which_names_lost_the_night(env, capsys, args):
+    # AAPL not final at 22:00; GitHub starts the retry (or the Run button is pressed) at 10:29: NVDA's and BRK B's
+    # orders stand, AAPL's entry is lost, and the run is red. Before, a plain run never looked at the ledger
     env["track"]("NVDA", "AAPL", "BRK B")
     fake = FakeBasket(ENTRY, ["NVDA", "AAPL", "BRK B"])
     stale_strike(fake, "AAPL")
@@ -870,10 +876,14 @@ def test_a_late_retry_keeps_the_22_runs_orders_and_says_which_names_lost_the_nig
     fake.requests.clear()
     env["use"](fake, now=dt.datetime(2026, 11, 24, 10, 29))
     with pytest.raises(SystemExit) as e:
-        O.main(["--retry"])
+        O.main(args)
     msg = str(e.value.code)
+    assert e.value.code not in (0, None)
     assert "the session for 2026-11-23's orders (2026-11-24) is already open: nothing written" in msg
-    assert "the 22:00 run's orders for NVDA, BRK B stand as it wrote them" in msg
+    assert ("the orders already written from 2026-11-23's close for NVDA, BRK B stand as written "
+            "(data/far_wings_ledger.json)") in msg
+    assert ("2026-11-23 was an entry night, so this cycle's entry is lost for AAPL: its wings are placed only from "
+            "2026-11-23's close, for 2026-11-24") in msg
     assert orders_file(env) == written and ledger_file(env) == led and fake.requests == []
 
 

@@ -25,7 +25,9 @@ session's prices: a market order at the open, a limit sell when the bar's high r
 session S before a script plans S+1. GitHub can start a scheduled run hours late (on 2026-11-17 the 03:00 UTC run ran
 at 11:23 UTC, the 06:00 retry at 15:29 UTC), so `for` is never taken from the clock: a run whose `for` has already
 opened (09:30 New York, session_open) writes nothing and ends red, the entry of an entry night lost for that cycle and
-the band check waiting for the next night. (wheel_live.decision_dates, which the vol-arb and the wheel scripts use,
+the band check waiting for the next night, unless the ledger shows D's orders already written (decided_from), which
+then stand. The 01:00 retry's D is the night it retries, the last session before the day it runs on (retry_dates),
+so a retry GitHub delays past that day's close does not decide the new close. (wheel_live.decision_dates, which the vol-arb and the wheel scripts use,
 takes `for` from the clock, the first session opening after the run: run during D+1, it labelled D's decisions for
 D+2, a stale order a day late.)
 
@@ -159,6 +161,19 @@ def run_dates(now: dt.datetime) -> tuple[dt.date, dt.date]:
     days = [d.date() for d in L.sessions(now.date() - dt.timedelta(days=14), now.date())]
     day = max(d for d in days if dt.datetime.combine(d, L.close_time(d)) <= now)
     return day, next_session(day)
+
+
+def retry_dates(now: dt.datetime) -> tuple[dt.date, dt.date]:
+    """
+    (D, for) for the --retry run at `now`: the night it retries, the 22:00 run's. The retry is scheduled after that
+    night's midnight (06:00 UTC: 01:00 New York in winter, 02:00 in summer), so its D is the last session before
+    `now`'s New York date: run_dates at that midnight. Run on time, or delayed to before that day's close, that is
+    run_dates(now). Delayed past that day's close (13:00 on an early close: 12 hours on 2026-11-27 and 2026-12-24; in
+    summer 14 hours reach an ordinary 16:00 close), it is still the night it retries, whose orders' session has then
+    opened (session_open), and never the new close, which a retry would otherwise decide in its lenient mode from
+    quotes minutes old: the new close is that night's 22:00 run's.
+    """
+    return run_dates(dt.datetime.combine(now.date(), dt.time.min))
 
 
 def session_open(for_day, now: dt.datetime) -> bool:

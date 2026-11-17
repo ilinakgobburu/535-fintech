@@ -551,8 +551,12 @@ first_entry:          # her decision of 2026-11-17, about 15:20 New York time: a
     If no run on the first-entry night writes the file (the 22:00 run and the retry both started after 09:30 on
     2026-11-18 and refused as late, or no name could be decided, or the LSEG login or the T-bill failed), the early
     first entry is lost: nothing is ordered for 2026-11-18, and every name falls back to the regular entry on
-    2026-11-23 (orders for 2026-11-24). The late run's log says so. If the 22:00 run wrote and only the retry was late,
-    the names it left for the retry began their cycle that night and get no Dec 18 wings, as at a regular entry.
+    2026-11-23 (orders for 2026-11-24). The late run's log says so. Once one run of that night has written the file
+    (the 22:00 run, or the retry when the 22:00 run failed or GitHub started it after the retry), the first entry
+    stands: a later run that is late, the other scheduled run or the Run button the next morning, finds D's night in
+    data/far_wings_ledger.json and says so, green when every name was written; the names that run left undecided
+    began their cycle that night and get no Dec 18 wings, as at a regular entry, and a name it did not find tracked
+    enters on 2026-11-23.
 
 technical_choices:    # Claude's, each with its reason, for her to scan (the backtest registration lists the same)
   calendar: >-
@@ -607,7 +611,14 @@ technical_choices:    # Claude's, each with its reason, for her to scan (the bac
     and pinned): decision_dates takes `for` from the clock, the first session opening after the run, so a run GitHub
     delayed into D+1 labelled D's decisions for D+2. Refusing a late run outright, rather than writing D's orders for
     D+1 after it opened, keeps every order to the session it was planned for; the 01:00 retry is the margin for a
-    slow night. The retry's "already written" check keys on the night of D alone (far_wings_live.decided_from).
+    slow night. The "already written" check keys on the night of D alone (far_wings_live.decided_from), and both
+    runs make it: a late 22:00 run or Run button that finds every name written from D's close has nothing to do and
+    stays green (review of 2026-11-17: GitHub can start the 03:00 UTC run after the 06:00 retry, and a red run saying
+    the first entry was lost would have been false), one that finds some written says their orders stand. The retry's
+    D is the night it retries, the last session before the day it runs on (far_wings_live.retry_dates, the same as
+    run_dates until a close of that day): a retry GitHub delays past that day's close (13:00 on 2026-11-27 and
+    2026-12-24, 12 hours late; 16:00 in summer at 14 hours) is late for its own night rather than the first decision
+    of the new close in the retry's lenient mode, from quotes minutes old; the new close is the 22:00 run's.
   name_by_name: >-
     one name's trouble never stops the others, except where the whole book is in doubt. A name whose LSEG data is not
     final at 22:00 (its close, its chain, a held leg's quotes, any LSEG error on its requests) is left for the 01:00
@@ -637,8 +648,10 @@ live_rules:
     order on Tuesday"; Sanji resolves session S before a script plans S+1). A run, the 22:00 one or the retry, that
     finds that session already open (09:30 New York) when it would write, writes nothing to mkt/ or the ledger and
     exits non-zero: on an entry night the entry is lost for that cycle, and the band check (a hedge, or closing
-    leftover shares) waits for the next night. A retry that finds every name already written from D's close does
-    nothing and stays green. Holidays and early closes are wheel_live's NYSE calendar.
+    leftover shares) waits for the next night. A run, either one, that finds every name already written from D's
+    close does nothing and stays green; one that finds some written leaves their orders standing. The 01:00 retry
+    always retries the night of the session before the day it runs on, however late GitHub starts it. Holidays and
+    early closes are wheel_live's NYSE calendar.
   - >-
     The one-off first entry (first_entry above, her answer "Tomorrow (Wednesday)"): 2026-11-17's close is an entry
     night once, into the 2026-12-18 expiry, for every tracked name, orders for 2026-11-18; a name tracked by a run of

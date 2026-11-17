@@ -146,6 +146,61 @@ def test_every_half_hour_for_three_months_for_is_the_session_after_d(cached_sess
     assert len(pairs) > 55 and not any(FW.night(d, for_day=f)["late"] for d, f in pairs)
 
 
+# --------------------------------------------------------------------------- the retry's night
+# The retry is scheduled at 06:00 UTC (01:00 New York in winter, 02:00 in summer), after the midnight of the night it
+# retries; GitHub can start it up to 14 hours late (2026-11-17: 15:29 UTC). Its D is the last session before the day
+# it runs on (retry_dates), so a delay past that day's close (13:00 on an early close, 16:00 otherwise) leaves it the
+# night it retries, by then late, and never makes it the first decision of the new close in the retry's lenient mode.
+@pytest.mark.parametrize("now, run, retry", [
+    (dt.datetime(2026, 11, 18, 1, 0), (TUE, WED), (TUE, WED)),                              # on time
+    (utc(2026, 11, 18, 15, 29), (TUE, WED), (TUE, WED)),                                    # 10:29: late, the same D
+    (dt.datetime(2026, 11, 27, 12, 59), (dt.date(2026, 11, 25), dt.date(2026, 11, 27)),
+     (dt.date(2026, 11, 25), dt.date(2026, 11, 27))),                                       # before the early close
+    (dt.datetime(2026, 11, 27, 13, 0), (dt.date(2026, 11, 27), dt.date(2026, 11, 30)),
+     (dt.date(2026, 11, 25), dt.date(2026, 11, 27))),                                       # 12 h late: the close
+    (dt.datetime(2026, 11, 27, 13, 5), (dt.date(2026, 11, 27), dt.date(2026, 11, 30)),
+     (dt.date(2026, 11, 25), dt.date(2026, 11, 27))),
+    (dt.datetime(2026, 12, 24, 13, 5), (dt.date(2026, 12, 24), dt.date(2026, 12, 28)),
+     (dt.date(2026, 12, 23), dt.date(2026, 12, 24))),                                       # Christmas Eve
+    (utc(2027, 7, 14, 19, 59), (dt.date(2027, 7, 13), dt.date(2027, 7, 14)),
+     (dt.date(2027, 7, 13), dt.date(2027, 7, 14))),                                         # 15:59 EDT
+    (utc(2027, 7, 14, 20, 0), (dt.date(2027, 7, 14), dt.date(2027, 7, 15)),
+     (dt.date(2027, 7, 13), dt.date(2027, 7, 14))),                                         # 06:00 UTC + 14 h: 16:00
+    (dt.datetime(2029, 12, 24, 13, 5), (dt.date(2029, 12, 24), dt.date(2029, 12, 26)),
+     (dt.date(2029, 12, 21), dt.date(2029, 12, 24))),                                       # an early-close entry
+    (dt.datetime(2026, 11, 21, 15, 0), (dt.date(2026, 11, 20), dt.date(2026, 11, 23)),
+     (dt.date(2026, 11, 20), dt.date(2026, 11, 23))),                                       # Saturday's, 14 h late
+])
+def test_the_retry_retries_its_own_night_whatever_the_delay(now, run, retry):
+    assert FW.run_dates(now) == run and FW.retry_dates(now) == retry
+    if retry != run:
+        # the new close is the 22:00 run's; the retry's own night is late by then, so it writes nothing new
+        assert run[0] == now.date() and retry[1] == now.date() and FW.session_open(retry[1], now)
+
+
+def test_the_entry_on_2029_12_24_is_an_early_close():
+    assert FW.entry_expiry(dt.date(2029, 12, 24)) is not None and L.close_time(dt.date(2029, 12, 24)) == dt.time(13, 0)
+
+
+@pytest.mark.parametrize("start, end", [
+    (dt.datetime(2026, 11, 16), dt.datetime(2027, 1, 6)),       # Thanksgiving, its early close, Christmas, New Year
+    (dt.datetime(2027, 6, 28), dt.datetime(2027, 7, 20)),       # summer time, July 5 observed
+])
+def test_every_half_hour_the_retry_never_decides_a_close_of_the_day_it_runs(cached_sessions, start, end):
+    now, moved = start, 0
+    while now < end:
+        d, for_day = FW.retry_dates(now)
+        run = FW.run_dates(now)
+        assert d < now.date() and for_day == FW.next_session(d), now
+        if run[0] < now.date():
+            assert (d, for_day) == run, now                        # no close yet today: the same night
+        else:
+            assert for_day == now.date() and FW.session_open(for_day, now), now
+            moved += 1
+        now += dt.timedelta(minutes=30)
+    assert moved > 100
+
+
 def test_the_retry_s_already_written_check_keys_on_d_alone():
     led = FW.record_night(FW.read_ledger(None), "NVDA", [{"id": "nvda-fw-put-2026-11-23"}], dt.date(2026, 11, 23),
                           dt.date(2026, 11, 24))
