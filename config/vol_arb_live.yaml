@@ -9,8 +9,11 @@ underlying:
   ric: NVDA.O         # the stock on LSEG
   conid: 4815747      # Interactive Brokers' id, as in config/wheel_live.yaml (order.html asks for it)
 
-owns_open_orders: true  # this strategy writes mkt/open_orders.json every night; wheel_orders.py refuses to run while
-                        # this is true, unless given --overwrite-vol-arb (wheel-orders.yml's Run button with its box)
+owns_open_orders: false # retired from the nightly schedule (her choice of 2026-11-16, "Yes, switch to far wings"):
+                        # config/far_wings_live.yaml owns mkt/open_orders.json now, and vol_arb_orders.py refuses to
+                        # write while it does, unless given --overwrite-far-wings (vol-arb-orders.yml's Run button
+                        # with its box). While this was true, wheel_orders.py refused to run unless given
+                        # --overwrite-vol-arb (wheel-orders.yml's Run button with its box)
 
 # The rung the development run sends to the test (its choice_for_test). rule_1 is a placeholder until that
 # run records its choice; the script refuses to enter unless the panel below records the same rung.

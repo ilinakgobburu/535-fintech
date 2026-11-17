@@ -1,0 +1,76 @@
+name: Far-wing orders
+
+# Every weeknight: read the book the course server (Sanji) wrote and write the next session's orders for the
+# far-wing trade on NVDA to mkt/open_orders.json: on an entry night (the first session after a monthly expiry) the
+# two short wings, a far put and a far call, as limits at the closing mid; on every night the band check, a stock
+# hedge only when the book's net delta is outside the $5,000 band; or []. The settings are
+# config/far_wings_live.yaml; the decision is lib/far_wings_live.py. This is the one nightly writer of the file:
+# vol-arb-orders.yml and wheel-orders.yml keep only their Run buttons, and their scripts refuse while
+# config/far_wings_live.yaml says owns_open_orders: true.
+on:
+  schedule:
+    - cron: "0 3 * * 2-6"   # 03:00 UTC Tue-Sat = 22:00 New York Mon-Fri in winter (the instructor's 10pm), 23:00 in summer
+    - cron: "0 6 * * 2-6"   # the retry, 01:00 New York in winter (02:00 in summer), before the open: it does nothing if
+                            # the first run wrote tonight's orders, and decides if it failed (the entry is one night only)
+  workflow_dispatch:
+
+concurrency:
+  group: mkt-open-orders      # shared with vol-arb-orders.yml and wheel-orders.yml: one writer at a time
+  cancel-in-progress: false
+
+# The repository's default token can only read, so the commit step needs write access.
+permissions:
+  contents: write
+
+jobs:
+  orders:
+    # Only main: a run started from another branch would rebase that branch onto main and push it.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # scikit-learn only because lib/vol_arb_live.py, whose calendar, book and order helpers the far wings reuse,
+      # imports lib/vol_arb_wf.py
+      - name: Install packages (same versions as requirements.txt, plus vol-arb's scikit-learn)
+        run: pip install lseg-data==2.1.1 pandas==2.2.3 numpy==1.26.4 scipy==1.13.1 pyyaml==6.0.3 scikit-learn==1.5.1
+
+      - name: Decide the next session's orders
+        id: orders
+        env:
+          PYTHONWARNINGS: ignore::FutureWarning   # lseg-data's pandas deprecation notices
+          LSEG_APP_KEY: ${{ secrets.LSEG_APP_KEY }}
+          LSEG_USERNAME: ${{ secrets.LSEG_USERNAME }}
+          LSEG_PASSWORD: ${{ secrets.LSEG_PASSWORD }}
+        run: python far_wings_orders.py ${{ github.event.schedule == '0 6 * * 2-6' && '--retry' || '' }}
+
+      - name: Commit mkt/open_orders.json and the ledger
+        env:
+          FOR_DAY: ${{ steps.orders.outputs.for_day }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add mkt/open_orders.json
+          # the ledger is written on every night that writes orders, but not on a night that kept an order for the
+          # session in progress; before its first night it does not exist yet
+          if [ -f data/far_wings_ledger.json ]; then git add data/far_wings_ledger.json; fi
+          if git diff --cached --quiet; then
+            echo "mkt/open_orders.json and data/far_wings_ledger.json are unchanged"
+            exit 0
+          fi
+          git commit -m "Far-wing open orders for ${FOR_DAY}"
+          # The price job or Sanji may have pushed since the checkout: replay this commit on top and retry.
+          for attempt in 1 2 3; do
+            if git pull --rebase origin main && git push origin HEAD:main; then
+              exit 0
+            fi
+            sleep 10
+          done
+          exit 1

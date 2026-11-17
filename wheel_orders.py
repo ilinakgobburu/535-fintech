@@ -24,6 +24,10 @@ Run it locally (LSEG login from the macOS Keychain):
 While config/vol_arb_live.yaml says owns_open_orders: true, the two-sided variance trade writes
 mkt/open_orders.json every night, and this script refuses to run unless given --overwrite-vol-arb (the
 workflow's Run button passes it only when its overwrite_vol_arb box is ticked).
+
+While config/far_wings_live.yaml says owns_open_orders: true, the far-wing trade writes mkt/open_orders.json
+every night (.github/workflows/far-wings-orders.yml), and this script refuses outright: no flag gets past it.
+To go back to the wheel, set owns_open_orders: false there first.
 """
 
 import argparse
@@ -49,6 +53,7 @@ from trading_app.lib.wheel import CALL, PUT, option_greeks, select  # noqa: E402
 
 CONFIG = ROOT / "config" / "wheel_live.yaml"
 VOL_ARB_CONFIG = ROOT / "config" / "vol_arb_live.yaml"
+FAR_WINGS_CONFIG = ROOT / "config" / "far_wings_live.yaml"
 MKT = ROOT / "mkt"
 NY = ZoneInfo("America/New_York")
 PAUSE = 0.4         # seconds between LSEG requests: the course guideline is at most 3 a second
@@ -124,11 +129,22 @@ def vol_arb_owns_orders() -> bool:
     return (yaml.safe_load(VOL_ARB_CONFIG.read_text()) or {}).get("owns_open_orders") is True
 
 
+def far_wings_own_orders() -> bool:
+    """config/far_wings_live.yaml's owns_open_orders: the far-wing Action writes mkt/open_orders.json every night."""
+    if not FAR_WINGS_CONFIG.exists():
+        return False
+    return (yaml.safe_load(FAR_WINGS_CONFIG.read_text()) or {}).get("owns_open_orders") is True
+
+
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description="tonight's wheel order for the course server")
     ap.add_argument("--overwrite-vol-arb", action="store_true",
                     help="write the wheel's order even though the vol-arb strategy owns mkt/open_orders.json")
     args = ap.parse_args(argv)
+    if far_wings_own_orders():
+        sys.exit("The far-wing trade owns mkt/open_orders.json (config/far_wings_live.yaml owns_open_orders: true): "
+                 "a wheel run would replace its wings or its hedge. Nothing written. To go back to the wheel, set "
+                 "owns_open_orders: false there first.")
     if vol_arb_owns_orders() and not args.overwrite_vol_arb:
         sys.exit("The two-sided variance trade owns mkt/open_orders.json (config/vol_arb_live.yaml owns_open_orders: "
                  "true): a wheel run would replace its legs or its hedge. Nothing written. Pass --overwrite-vol-arb "

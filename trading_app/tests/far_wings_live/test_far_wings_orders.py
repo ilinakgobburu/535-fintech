@@ -1,0 +1,556 @@
+"""
+far_wings_orders.py end to end with LSEG replaced by a fake (no network): what it asks for, what it writes, and that
+every failure stops it before mkt/open_orders.json is touched. The fake serves the synthetic NVDA closes, the T-bill,
+dividends and a Black-76 chain (fw_live_synth); a RIC it does not hold answers as LSEG does for an unlisted contract
+("The universe is not found").
+"""
+
+from __future__ import annotations
+
+import datetime as dt
+import json
+import sys
+
+import pandas as pd
+import pytest
+
+import fw_live_synth as S
+from trading_app.lib import far_wings_live as FW
+from trading_app.lib.ric import build_option_ric
+
+_path = list(sys.path)
+sys.path.insert(0, str(S.REPO))
+import far_wings_orders as O  # noqa: E402
+
+sys.path[:] = _path
+
+ENTRY, FOR, EXP = S.ENTRY, S.FOR, S.EXPIRY
+OLD_ORDERS = [{"id": "nvda-csp-2026-11-16", "for": "2026-11-16", "order_type": "lmt", "action": "SHT", "qty": 6,
+               "underlying": S.NVDA, "contract": "put", "expiry": "2026-12-18", "strike": "155", "ref": "open",
+               "lmt_prc": "7.78"}]
+
+
+class FakeLSEG:
+    """lseg.data's get_history and get_data, from made-up frames. Records every request."""
+
+    def __init__(self, day, chain=True, last=None, missing_close=False, legs=(), chain_day=None):
+        self.day = pd.Timestamp(day)
+        self.closes = S.closes(end=day, last=last)
+        if missing_close:                              # LSEG has not posted D's bar yet
+            self.closes = self.closes[self.closes.index < self.day]
+        self.requests, self.errors, self.options = [], {}, {}
+        if chain:
+            cday = pd.Timestamp(chain_day or day)
+            for r in S.chain_rows(float(S.closes(end=day, last=last).iloc[-1]), day=day):
+                prev = cday - pd.Timedelta(days=3)
+                self.options[r["ric"]] = pd.DataFrame({"BID": [r["bid"] * 3, r["bid"]], "ASK": [r["ask"] * 3, r["ask"]]},
+                                                      index=pd.DatetimeIndex([prev, cday]))
+        for ric, frame in legs:
+            self.options[ric] = frame
+
+    @staticmethod
+    def _window(df, start, end):
+        return df[(df.index >= pd.Timestamp(start)) & (df.index <= pd.Timestamp(end))]
+
+    def get_history(self, universe, fields, interval="daily", start=None, end=None, adjustments=None, count=None):
+        self.requests.append(("history", universe, tuple(fields), adjustments))
+        if universe in self.errors:
+            raise self.errors[universe]
+        if universe == "NVDA.O":
+            return self._window(pd.DataFrame({"TRDPRC_1": self.closes}), start, end)
+        if universe == "US3MT=RR":
+            return self._window(pd.DataFrame({"MID_YLD_1": S.RATE_PCT}, index=self.closes.index), start, end)
+        if universe in self.options:
+            return self._window(self.options[universe], start, end)
+        raise Exception(f"Error code -1 | The universe is not found: {universe}")
+
+    def get_data(self, universe, fields, parameters=None):
+        self.requests.append(("data", universe, tuple(fields), parameters))
+        if fields[0] == "TR.DivExDate":
+            d = S.DIVS
+            return pd.DataFrame({"Instrument": universe, "Dividend Ex Date": [str(x.date()) for x in d.index],
+                                 "Gross Dividend Amount": d.to_numpy(), "Dividend Pay Date": None})
+        raise AssertionError(fields)
+
+    def option_requests(self):
+        return [r for r in self.requests if r[0] == "history" and r[1] not in ("NVDA.O", "US3MT=RR")]
+
+    def lseg_requests(self):
+        return [r for r in self.requests if r[0] != "sleep"]
+
+
+class Session:
+    def __init__(self):
+        self.closed = False
+
+    def close(self):
+        self.closed = True
+
+
+@pytest.fixture
+def env(tmp_path, monkeypatch):
+    """A scratch repo root: mkt/ with the wheel's last order, the repo's config, a fake LSEG."""
+    state = {"sessions": [], "sleeps": []}
+    (tmp_path / "mkt").mkdir()
+    S.write_json(tmp_path / "mkt" / "open_orders.json", OLD_ORDERS)
+    monkeypatch.setattr(O, "ROOT", tmp_path)
+    monkeypatch.setattr(O, "MKT", tmp_path / "mkt")
+    state["config"] = S.write_json(tmp_path / "config.yaml", S.config())          # JSON is YAML
+    monkeypatch.setattr(O, "CONFIG", state["config"])
+
+    def open_lseg():
+        s = Session()
+        state["sessions"].append(s)
+        return s
+
+    monkeypatch.setattr(O, "open_lseg", open_lseg)
+
+    def sleep(s):
+        state["sleeps"].append(s)
+        if state.get("fake") is not None:
+            state["fake"].requests.append(("sleep", s))
+
+    monkeypatch.setattr(O.time, "sleep", sleep)
+    out = tmp_path / "github_output"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(out))
+    state["root"], state["output"] = tmp_path, out
+
+    def use(fake, now=None):
+        state["fake"] = fake
+        monkeypatch.setattr(O, "ld", fake)
+        monkeypatch.setattr(O, "now_ny", lambda: now or dt.datetime(2026, 11, 23, 22, 0))
+        return fake
+
+    state["use"] = use
+    return state
+
+
+def orders_file(env):
+    return json.loads((env["root"] / "mkt" / "open_orders.json").read_text())
+
+
+def ledger_file(env):
+    path = env["root"] / "data" / "far_wings_ledger.json"
+    return json.loads(path.read_text()) if path.exists() else None
+
+
+def write_mkt(env, name, obj):
+    S.write_json(env["root"] / "mkt" / name, obj)
+
+
+def option(cp, strike, qty, expiry="2026-12-18"):
+    return {"underlying": S.NVDA, "contract": "put" if cp == "P" else "call", "expiry": expiry, "strike": strike,
+            "qty": qty}
+
+
+def set_cfg(env, **over):
+    cfg = json.loads(env["config"].read_text())
+    cfg.update(over)
+    S.write_json(env["config"], cfg)
+
+
+def entry_night(env):
+    """The Nov 23 entry, written by the script; then Sanji fills both wings for Nov 24."""
+    env["use"](FakeLSEG(ENTRY))
+    assert O.main([]) == 0
+    written = orders_file(env)
+    write_mkt(env, "fills.json", [{"id": o["id"], "status": "filled"} for o in written])
+    write_mkt(env, "positions.json", {"cash": 100_000, "positions": [
+        option(o["contract"][0].upper(), float(o["strike"]), -o["qty"]) for o in written]})
+    return written
+
+
+def leg_frames(day, legs, last=None):
+    c = S.closes(end=day, last=last)
+    out = []
+    for cp, k, vol in legs:
+        h = S.leg_history(c, cp, EXP, k, vol)
+        out.append((build_option_ric("NVDA", EXP, k, cp, expired=False),
+                    pd.DataFrame({"BID": h["bid"], "ASK": h["ask"]})))
+    return out
+
+
+# --------------------------------------------------------------------------- the entry night
+def test_the_entry_night_writes_the_two_wings(env, capsys):
+    fake = env["use"](FakeLSEG(ENTRY))
+    assert O.main([]) == 0
+    got = orders_file(env)
+    assert [(o["id"], o["action"], o["contract"], o["strike"], o["for"], o["order_type"]) for o in got] == [
+        ("nvda-fw-put-2026-11-23", "SHT", "put", "145", "2026-11-24", "lmt"),
+        ("nvda-fw-call-2026-11-23", "SHT", "call", "220", "2026-11-24", "lmt")]
+    assert all(S.order_problems(o) == [] for o in got)
+    # the same orders the pure plan gives on the same data (the wheel's old order for Nov 16 is dropped)
+    want = FW.plan_night(S.config(), ENTRY, FOR, FW.Book(), entry_expiry=EXP, mkt=S.market())["orders"]
+    assert got == want
+    assert env["output"].read_text() == "for_day=2026-11-24\n"
+    assert len(env["sessions"]) == 1 and env["sessions"][0].closed
+    asked = fake.option_requests()
+    assert all(r[2] == ("BID", "ASK") for r in asked)
+    plan = FW.strike_plan(fake.closes, dt.date(2026, 11, 20), ENTRY, S.config()["chain"]["bands"],
+                          S.config()["chain"]["grid"])
+    assert [r[1] for r in asked] == [build_option_ric("NVDA", EXP, k, cp, expired=False)
+                                     for cp in ("P", "C") for k in plan[cp]]
+    stock = [r for r in fake.requests if r[1] == "NVDA.O" and r[0] == "history"]
+    assert stock == [("history", "NVDA.O", ("TRDPRC_1",), ["exchangeCorrection"])]
+    led = ledger_file(env)
+    assert led["nights"]["2026-11-23"] == {"for": "2026-11-24", "ids": [o["id"] for o in got]}
+    assert led["orders"] == {o["id"]: o for o in got}
+    out = capsys.readouterr().out
+    assert "Dropped nvda-csp-2026-11-16 (for 2026-11-16, not this strategy's)" in out
+    assert "sell 41 145 puts at 0.53" in out and "sell 59 220 calls at 0.24" in out
+
+
+def test_every_lseg_request_is_followed_by_the_pause(env):
+    fake = env["use"](FakeLSEG(ENTRY))
+    assert O.main([]) == 0
+    log = [r[0] for r in fake.requests]
+    assert len(log) > 20 and log[0] != "sleep" and log[-1] == "sleep"
+    assert all((a == "sleep") != (b == "sleep") for a, b in zip(log, log[1:]))
+    assert env["sleeps"] == [O.PAUSE] * len(fake.lseg_requests())
+
+
+def test_the_entrys_limits_are_ds_mids_not_earlier_quotes(env):
+    # the fake's earlier row is three times D's quotes
+    env["use"](FakeLSEG(ENTRY))
+    O.main([])
+    spot = float(S.closes().iloc[-1])
+    rows = {(r["cp"], r["strike"]): r for r in S.chain_rows(spot)}
+    for o in orders_file(env):
+        r = rows[(o["contract"][0].upper(), float(o["strike"]))]
+        assert float(o["lmt_prc"]) == pytest.approx((r["bid"] + r["ask"]) / 2, abs=0.005)
+
+
+@pytest.mark.parametrize("day", [dt.date(2026, 11, 17), dt.date(2026, 11, 24), dt.date(2026, 12, 2),
+                                 dt.date(2026, 12, 18)])
+def test_a_night_that_is_not_an_entry_with_an_empty_book_writes_nothing_new_and_skips_lseg(env, day):
+    env["use"](FakeLSEG(day, chain=False), now=dt.datetime.combine(day, dt.time(22, 0)))
+    assert O.main([]) == 0
+    assert orders_file(env) == [] and env["sessions"] == []
+    nxt = FW.next_session(day)
+    assert env["output"].read_text() == f"for_day={nxt.isoformat()}\n"
+    assert ledger_file(env)["nights"] == {day.isoformat(): {"for": nxt.isoformat(), "ids": []}}
+
+
+def test_the_dry_run_prints_and_writes_nothing(env, capsys):
+    env["use"](FakeLSEG(ENTRY))
+    before = (env["root"] / "mkt" / "open_orders.json").read_bytes()
+    assert O.main(["--dry-run", "--as-of", "2026-11-23"]) == 0
+    assert (env["root"] / "mkt" / "open_orders.json").read_bytes() == before
+    assert not env["output"].exists() and ledger_file(env) is None
+    out = capsys.readouterr().out
+    assert "Dry run, nothing written" in out and '"id": "nvda-fw-put-2026-11-23"' in out
+
+
+def test_force_entry_checks_the_next_entrys_chain_on_the_latest_close(env, capsys):
+    day = dt.date(2026, 11, 16)
+    fake = FakeLSEG(day, chain=False)
+    for r in S.chain_rows(float(S.closes(end=day).iloc[-1]), day=day):
+        fake.options[r["ric"]] = pd.DataFrame({"BID": [r["bid"]], "ASK": [r["ask"]]}, index=pd.DatetimeIndex([day]))
+    env["use"](fake, now=dt.datetime(2026, 11, 16, 22, 0))
+    assert O.main(["--dry-run", "--as-of", "2026-11-16", "--force-entry"]) == 0
+    out = capsys.readouterr().out
+    assert "expiry 2026-12-18 (forced)" in out and '"id": "nvda-fw-put-2026-11-16"' in out
+    assert all("L1826" in r[1] or "X1826" in r[1] for r in fake.option_requests())     # the Dec 18 chain
+
+
+@pytest.mark.parametrize("args", [["--force-entry"], ["--as-of", "2026-11-23"], ["--dry-run", "--as-of", "2026-11-22"]])
+def test_one_off_flags_need_a_dry_run_on_a_session(env, args):
+    env["use"](FakeLSEG(ENTRY))
+    with pytest.raises(SystemExit):
+        O.main(args)
+    assert orders_file(env) == OLD_ORDERS
+
+
+def test_a_late_run_places_no_entry(env, capsys):
+    env["use"](FakeLSEG(ENTRY), now=dt.datetime(2026, 11, 24, 10, 0))
+    assert O.main([]) == 0
+    assert "2026-11-23 was an entry night, but 2026-11-24 has opened since" in capsys.readouterr().out
+    assert orders_file(env) == [] and env["sessions"] == []
+
+
+def test_a_late_run_with_leftover_shares_closes_them_and_still_places_no_wing(env, capsys):
+    # the expiry's leftover -350 shares were not closed; both Monday-night runs failed; the Run button Tuesday 10:00
+    write_mkt(env, "open_orders.json", [])
+    hedge = {"id": "nvda-fw-hedge-2026-11-19", "for": "2026-11-20", "order_type": "mkt", "action": "SHT", "qty": 350,
+             "underlying": S.NVDA, "contract": "underlying", "ref": "open"}
+    S.write_json(env["root"] / "data" / "far_wings_ledger.json",
+                 FW.record_night(FW.read_ledger(None), [hedge], dt.date(2026, 11, 19), dt.date(2026, 11, 20)))
+    write_mkt(env, "fills.json", [{"id": hedge["id"], "status": "filled"}])
+    write_mkt(env, "positions.json", {"cash": 0, "positions": [
+        {"underlying": S.NVDA, "contract": "underlying", "qty": -350}]})
+    fake = env["use"](FakeLSEG(ENTRY), now=dt.datetime(2026, 11, 24, 10, 0))
+    assert O.main([]) == 0
+    assert [(o["id"], o["action"], o["qty"], o["for"]) for o in orders_file(env)] == [
+        ("nvda-fw-hedge-2026-11-23", "BTC", 350, "2026-11-25")]
+    assert fake.option_requests() == []                      # no chain asked for: no wing from Monday's quotes
+    out = capsys.readouterr().out
+    assert "only the band check" in out and "entry 2026-11-23 ->" not in out
+    assert "put wing" not in out and "call wing" not in out
+
+
+# --------------------------------------------------------------------------- the nights after: the band
+def test_the_night_after_the_fill_checks_the_band_and_trades_nothing_inside_it(env, capsys):
+    written = entry_night(env)
+    day = dt.date(2026, 11, 24)
+    fake = env["use"](FakeLSEG(day, chain=False, legs=leg_frames(day, [("P", 145.0, 0.51), ("C", 220.0, 0.42)])),
+                      now=dt.datetime(2026, 11, 24, 22, 0))
+    assert O.main([]) == 0
+    out = capsys.readouterr().out
+    assert "is inside the $5,000 band: no hedge trade (holding 0)" in out
+    assert orders_file(env) == []
+    assert {r[1] for r in fake.option_requests()} == {build_option_ric("NVDA", EXP, float(o["strike"]),
+                                                                       o["contract"][0].upper(), expired=False)
+                                                      for o in written}
+    assert len(env["sessions"]) == 2 and env["sessions"][-1].closed
+
+
+def test_a_move_past_the_band_writes_the_hedge(env, capsys):
+    entry_night(env)
+    day = dt.date(2026, 11, 25)
+    legs = [("P", 145.0, 0.51), ("C", 220.0, 0.42)]
+    env["use"](FakeLSEG(day, chain=False, last=205.0, legs=leg_frames(day, legs, last=205.0)),
+               now=dt.datetime(2026, 11, 25, 22, 0))
+    assert O.main([]) == 0
+    got = orders_file(env)
+    assert [(o["id"], o["action"], o["order_type"], o["for"]) for o in got] == [
+        ("nvda-fw-hedge-2026-11-25", "BUY", "mkt", "2026-11-27")]
+    # the same order the pure plan gives on the same book and quotes
+    c = S.closes(end=day, last=205.0)
+    hist = {(cp, EXP, k): S.leg_history(c, cp, EXP, k, v) for cp, k, v in legs}
+    book = FW.Book(cash=100_000, options=[{"cp": "P", "expiry": EXP, "strike": 145.0, "qty": -41},
+                                          {"cp": "C", "expiry": EXP, "strike": 220.0, "qty": -59}])
+    want = FW.plan_night(S.config(), day, dt.date(2026, 11, 27), book, mkt=S.market(day, c=c, chain=False),
+                         leg_history=hist)
+    assert got == want["orders"] and want["hedge"]["breached"] is True
+    assert S.order_problems(got[0]) == []
+    assert "is outside the $5,000 band: hedge to" in capsys.readouterr().out
+
+
+def test_the_night_of_the_expiry_closes_the_leftover_shares_from_the_close_alone(env):
+    write_mkt(env, "open_orders.json", [])
+    hedge = {"id": "nvda-fw-hedge-2026-12-10", "for": "2026-12-11", "order_type": "mkt", "action": "SHT", "qty": 350,
+             "underlying": S.NVDA, "contract": "underlying", "ref": "open"}
+    S.write_json(env["root"] / "data" / "far_wings_ledger.json",
+                 FW.record_night(FW.read_ledger(None), [hedge], dt.date(2026, 12, 10), dt.date(2026, 12, 11)))
+    write_mkt(env, "fills.json", [{"id": hedge["id"], "status": "filled"}])
+    write_mkt(env, "positions.json", {"cash": 0, "positions": [
+        {"underlying": S.NVDA, "contract": "underlying", "qty": -350}]})
+    fake = env["use"](FakeLSEG(EXP, chain=False), now=dt.datetime(2026, 12, 18, 22, 0))
+    assert O.main([]) == 0
+    assert [(o["id"], o["action"], o["qty"], o["for"]) for o in orders_file(env)] == [
+        ("nvda-fw-hedge-2026-12-18", "BTC", 350, "2026-12-21")]
+    assert [r[1] for r in fake.lseg_requests()] == ["NVDA.O"]              # only the close, for the shares' limit
+
+
+def test_an_expired_option_still_in_the_book_stops(env):
+    written = entry_night(env)
+    env["use"](FakeLSEG(EXP, chain=False), now=dt.datetime(2026, 12, 18, 22, 0))
+    with pytest.raises(SystemExit, match="still lists options that expired by 2026-12-18"):
+        O.main([])
+    assert orders_file(env) == written
+
+
+def test_huge_shares_held_stop_before_any_order(env):
+    hedge = {"id": "nvda-fw-hedge-2026-12-10", "for": "2026-12-11", "order_type": "mkt", "action": "BUY", "qty": 120,
+             "underlying": S.NVDA, "contract": "underlying", "ref": "open"}
+    S.write_json(env["root"] / "data" / "far_wings_ledger.json",
+                 FW.record_night(FW.read_ledger(None), [hedge], dt.date(2026, 12, 10), dt.date(2026, 12, 11)))
+    write_mkt(env, "fills.json", [{"id": hedge["id"], "status": "filled"}])
+    write_mkt(env, "positions.json", {"cash": 0, "positions": [
+        {"underlying": S.NVDA, "contract": "underlying", "qty": 120 * 100}]})           # read a hundred times over
+    write_mkt(env, "open_orders.json", [])
+    day = dt.date(2026, 12, 14)
+    env["use"](FakeLSEG(day, chain=False, last=400.0), now=dt.datetime(2026, 12, 14, 22, 0))
+    with pytest.raises(SystemExit, match="the shares held, \\+12000 NVDA shares .* more than 40 x"):
+        O.main([])
+    assert orders_file(env) == []
+
+
+# --------------------------------------------------------------------------- the guards and the book
+def test_the_wheels_filled_put_stops_the_first_far_wing_night(env):
+    write_mkt(env, "fills.json", [{"id": OLD_ORDERS[0]["id"], "status": "filled"}])
+    write_mkt(env, "positions.json", {"cash": 0, "positions": [option("P", 155, -6)]})
+    env["use"](FakeLSEG(ENTRY))
+    with pytest.raises(SystemExit, match="the book holds -6 2026-12-18 155 put, which no filled nvda-fw-\\* order"):
+        O.main([])
+    assert orders_file(env) == OLD_ORDERS and env["sessions"] == []
+
+
+def test_a_rejected_wing_stops_until_acknowledged(env, capsys):
+    written = entry_night(env)
+    write_mkt(env, "fills.json", [{"id": written[0]["id"], "status": "rejected"},
+                                  {"id": written[1]["id"], "status": "filled"}])
+    write_mkt(env, "positions.json", {"cash": 0, "positions": [option("C", 220.0, -written[1]["qty"])]})
+    day = dt.date(2026, 11, 24)
+    env["use"](FakeLSEG(day, chain=False, legs=leg_frames(day, [("C", 220.0, 0.42)])),
+               now=dt.datetime(2026, 11, 24, 22, 0))
+    for _ in range(2):
+        with pytest.raises(SystemExit, match="Sanji rejected nvda-fw-put-2026-11-23"):
+            O.main([])
+        assert orders_file(env) == written
+    set_cfg(env, acknowledged={written[0]["id"]: "rejected; the call filled alone"})
+    assert O.main([]) == 0
+    assert "acknowledged in config/far_wings_live.yaml: rejected; the call filled alone" in capsys.readouterr().out
+    # the call alone is far outside the band (some -195 shares of delta): hedged as it stands
+    assert [(o["id"], o["action"]) for o in orders_file(env)] == [("nvda-fw-hedge-2026-11-24", "BUY")]
+
+
+def test_an_unanswered_wing_stops(env):
+    written = entry_night(env)
+    write_mkt(env, "fills.json", [{"id": written[1]["id"], "status": "filled"}])
+    env["use"](FakeLSEG(dt.date(2026, 11, 24), chain=False), now=dt.datetime(2026, 11, 24, 22, 0))
+    with pytest.raises(SystemExit, match="no result yet for nvda-fw-put-2026-11-23"):
+        O.main([])
+
+
+def test_a_book_without_a_fills_file_stops(env):
+    write_mkt(env, "positions.json", {"cash": 0, "positions": [option("P", 145.0, -41)]})
+    env["use"](FakeLSEG(dt.date(2026, 11, 24), chain=False), now=dt.datetime(2026, 11, 24, 22, 0))
+    with pytest.raises(SystemExit, match="Can't read the book|there is no mkt/fills.json"):
+        O.main([])
+
+
+def test_a_bad_ledger_stops(env):
+    S.write_json(env["root"] / "data" / "far_wings_ledger.json", {"format": "vol_arb_ledger/1", "orders": {},
+                                                                  "nights": {}})
+    env["use"](FakeLSEG(ENTRY))
+    with pytest.raises(SystemExit, match="is not a far_wings_ledger/1 file"):
+        O.main([])
+    assert orders_file(env) == OLD_ORDERS
+
+
+def test_a_run_while_the_session_is_open_keeps_its_order_and_records_nothing(env, capsys):
+    written = entry_night(env)                                     # for Nov 24
+    led = ledger_file(env)
+    # Tuesday noon, Sanji not yet through Tuesday: D is Monday, the orders for Wednesday; Tuesday's are kept
+    env["use"](FakeLSEG(dt.date(2026, 11, 23), chain=False), now=dt.datetime(2026, 11, 24, 12, 0))
+    write_mkt(env, "fills.json", [])
+    write_mkt(env, "positions.json", {"cash": 100_000, "positions": []})
+    assert O.main([]) == 0
+    out = capsys.readouterr().out
+    assert "kept nvda-fw-put-2026-11-23, nvda-fw-call-2026-11-23: its session has not been resolved yet" in out
+    assert orders_file(env) == written and ledger_file(env) == led
+
+
+# --------------------------------------------------------------------------- the retry, the chain, LSEG
+def test_the_retry_does_nothing_once_tonights_orders_are_written(env, capsys):
+    env["use"](FakeLSEG(ENTRY))
+    assert O.main([]) == 0
+    before = (env["root"] / "mkt" / "open_orders.json").read_bytes()
+    fake = env["use"](FakeLSEG(ENTRY), now=dt.datetime(2026, 11, 24, 1, 0))       # 01:00: the same D and for
+    env["sessions"].clear()
+    assert O.main(["--retry"]) == 0
+    assert "already written (nvda-fw-put-2026-11-23, nvda-fw-call-2026-11-23); nothing to do" in \
+        capsys.readouterr().out
+    assert (env["root"] / "mkt" / "open_orders.json").read_bytes() == before
+    assert fake.requests == [] and env["sessions"] == []
+
+
+def test_the_retry_chooses_without_a_hole_the_first_run_stopped_on(env, capsys):
+    fake = FakeLSEG(ENTRY)
+    ric = build_option_ric("NVDA", EXP, 150.0, "P", expired=False)
+    fake.options[ric] = fake.options[ric].iloc[:1]                 # no D quote for the 150 put
+    env["use"](fake)
+    with pytest.raises(SystemExit, match="1 listed 2026-12-18 option\\(s\\) have earlier rows but none for "
+                                         "2026-11-23"):
+        O.main([])
+    assert orders_file(env) == OLD_ORDERS and not env["output"].exists()
+    env["use"](fake, now=dt.datetime(2026, 11, 24, 1, 0))
+    assert O.main(["--retry"]) == 0
+    assert f"Note: chose without 1 listed contract(s) with no 2026-11-23 quote ({ric})" in capsys.readouterr().out
+    assert [o["id"] for o in orders_file(env)] == ["nvda-fw-put-2026-11-23", "nvda-fw-call-2026-11-23"]
+
+
+def test_a_chain_with_no_row_for_d_stops(env):
+    env["use"](FakeLSEG(ENTRY, chain_day="2026-11-20"))
+    with pytest.raises(SystemExit, match="data not final"):
+        O.main([])
+    assert orders_file(env) == OLD_ORDERS
+
+
+def test_unlisted_strikes_are_skipped_but_any_other_error_stops(env):
+    fake = FakeLSEG(ENTRY)
+    bad = build_option_ric("NVDA", EXP, 165.0, "P", expired=False)
+    fake.errors[bad] = Exception("Error code 404 | Not Found")
+    env["use"](fake)
+    with pytest.raises(SystemExit, match="LSEG error on NVDA.*404 \\| Not Found"):
+        O.main([])
+    assert orders_file(env) == OLD_ORDERS and env["sessions"][0].closed
+    assert [r[1] for r in fake.option_requests()][-1] == bad
+
+
+def test_stale_stock_data_stops(env):
+    env["use"](FakeLSEG(ENTRY, missing_close=True))
+    with pytest.raises(SystemExit, match="LSEG's last close for NVDA.O is 2026-11-20, not 2026-11-23: data not final"):
+        O.main([])
+    assert orders_file(env) == OLD_ORDERS and env["sessions"][0].closed
+
+
+def test_a_held_leg_lseg_does_not_know_stops(env):
+    entry_night(env)
+    env["use"](FakeLSEG(dt.date(2026, 11, 24), chain=False), now=dt.datetime(2026, 11, 24, 22, 0))
+    with pytest.raises(SystemExit, match="LSEG does not know NVDA[LX]1826\\d{5}.U, a contract the book holds"):
+        O.main([])
+
+
+def test_an_entry_night_failure_says_the_hedge_was_not_written_either(env):
+    hedge = {"id": "nvda-fw-hedge-2026-11-19", "for": "2026-11-20", "order_type": "mkt", "action": "SHT", "qty": 350,
+             "underlying": S.NVDA, "contract": "underlying", "ref": "open"}
+    S.write_json(env["root"] / "data" / "far_wings_ledger.json",
+                 FW.record_night(FW.read_ledger(None), [hedge], dt.date(2026, 11, 19), dt.date(2026, 11, 20)))
+    write_mkt(env, "fills.json", [{"id": hedge["id"], "status": "filled"}, {"id": OLD_ORDERS[0]["id"],
+                                                                             "status": "filled"}])
+    write_mkt(env, "positions.json", {"cash": 0, "positions": [
+        {"underlying": S.NVDA, "contract": "underlying", "qty": -350}]})
+    env["use"](FakeLSEG(ENTRY, chain_day="2026-11-20"))
+    with pytest.raises(SystemExit, match="data not final.*Tonight's hedge was not written either: the book's -350"):
+        O.main([])
+
+
+# --------------------------------------------------------------------------- the config and the lib
+def test_a_retired_far_wings_writes_nothing(env, capsys):
+    set_cfg(env, owns_open_orders=False)
+    env["use"](FakeLSEG(ENTRY))
+    with pytest.raises(SystemExit, match="owns_open_orders: false"):
+        O.main([])
+    assert orders_file(env) == OLD_ORDERS and env["sessions"] == []
+    assert O.main(["--dry-run"]) == 0                              # a dry run still shows what it would do
+    assert orders_file(env) == OLD_ORDERS
+
+
+def test_a_config_that_disagrees_stops_before_anything(env):
+    cfg = json.loads(env["config"].read_text())
+    cfg["registered"]["band_share_of_book"] = 0.10
+    S.write_json(env["config"], cfg)
+    env["use"](FakeLSEG(ENTRY))
+    with pytest.raises(SystemExit, match="disagrees with lib/far_wings_live.py: band_share_of_book"):
+        O.main([])
+    assert env["sessions"] == [] and orders_file(env) == OLD_ORDERS
+
+
+@pytest.mark.parametrize("module, old, new", [
+    ("wheel", "    F, D = spot * np.exp((r - q) * T), np.exp(-r * T)\n    iv = implied_vol(",
+     "    F, D = spot * np.exp((r - q) * T), np.exp(-r * T)\n    _ = read_splits\n    iv = implied_vol("),
+    ("vol_arb_live", "FALLBACK_SESSIONS = 30", "FALLBACK_SESSIONS = 5"),
+    ("vol_arb", "c = c[c[\"mid\"].notna() & (c[\"mid\"] > 0)]", "c = c[c[\"mid\"].notna() & (c[\"mid\"] >= 0)]"),
+])
+def test_a_changed_lib_function_stops(env, tmp_path, monkeypatch, module, old, new):
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    for f in O.LIB.glob("*.py"):
+        (lib / f.name).write_text(f.read_text())
+    text = (lib / f"{module}.py").read_text()
+    assert text.count(old) == 1
+    (lib / f"{module}.py").write_text(text.replace(old, new))
+    monkeypatch.setattr(O, "LIB", lib)
+    env["use"](FakeLSEG(ENTRY))
+    with pytest.raises(SystemExit, match="lib functions lib/far_wings_live.py uses are not the recorded ones"):
+        O.main([])
+    assert env["sessions"] == [] and orders_file(env) == OLD_ORDERS
+
+
+def test_print_lib_functions_prints_the_recorded_lines(capsys):
+    assert O.main(["--print-lib-functions"]) == 0
+    out = capsys.readouterr().out.splitlines()
+    assert out[0] == "lib_functions:"
+    assert dict(line.strip().split(": ") for line in out[1:]) == S.config()["lib_functions"]

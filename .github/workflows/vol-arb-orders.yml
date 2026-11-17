@@ -1,18 +1,24 @@
 name: Vol-arb orders
 
-# Every weeknight: read the book the course server (Sanji) wrote and write the next session's orders for the
-# two-sided variance trade on NVDA to mkt/open_orders.json: on an entry night (the first session after a
-# monthly expiry) the two option legs, on every night the stock hedge, or []. The settings are
-# config/vol_arb_live.yaml; the decision is lib/vol_arb_live.py on the backtest's own lib/vol_arb*.py.
+# When run: read the book the course server (Sanji) wrote and write the next session's orders for the two-sided
+# variance trade on NVDA to mkt/open_orders.json: on an entry night (the first session after a monthly expiry) the
+# two option legs, on every night the stock hedge, or []. The settings are config/vol_arb_live.yaml; the decision is
+# lib/vol_arb_live.py on the backtest's own lib/vol_arb*.py.
+# Its nightly schedule is retired: .github/workflows/far-wings-orders.yml now writes mkt/open_orders.json every
+# weeknight (her choice of 2026-11-16, "Yes, switch to far wings"). Only the Run workflow button is left, and it does
+# nothing unless its box is ticked, since a run replaces the far wings' orders in that file (vol_arb_orders.py also
+# refuses to write while config/far_wings_live.yaml says owns_open_orders: true, unless given --overwrite-far-wings).
+# All three order workflows share one concurrency group, so they never write the file at the same time.
 on:
-  schedule:
-    - cron: "0 3 * * 2-6"   # 03:00 UTC Tue-Sat = 22:00 New York Mon-Fri in winter (the instructor's 10pm), 23:00 in summer
-    - cron: "0 6 * * 2-6"   # the retry, 01:00 New York in winter (02:00 in summer), before the open: it does nothing if
-                            # the first run wrote tonight's orders, and decides if it failed (the entry is one night only)
   workflow_dispatch:
+    inputs:
+      overwrite_far_wings:
+        description: "Replace the far-wing strategy's orders in mkt/open_orders.json with the vol-arb's"
+        type: boolean
+        default: false
 
 concurrency:
-  group: mkt-open-orders      # shared with wheel-orders.yml: one writer of mkt/open_orders.json at a time
+  group: mkt-open-orders      # shared with far-wings-orders.yml and wheel-orders.yml: one writer at a time
   cancel-in-progress: false
 
 # The repository's default token can only read, so the commit step needs write access.
@@ -22,7 +28,7 @@ permissions:
 jobs:
   orders:
     # Only main: a run started from another branch would rebase that branch onto main and push it.
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && inputs.overwrite_far_wings
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -44,7 +50,7 @@ jobs:
           LSEG_APP_KEY: ${{ secrets.LSEG_APP_KEY }}
           LSEG_USERNAME: ${{ secrets.LSEG_USERNAME }}
           LSEG_PASSWORD: ${{ secrets.LSEG_PASSWORD }}
-        run: python vol_arb_orders.py ${{ github.event.schedule == '0 6 * * 2-6' && '--retry' || '' }}
+        run: python vol_arb_orders.py --overwrite-far-wings
 
       - name: Commit mkt/open_orders.json and the ledger
         env:

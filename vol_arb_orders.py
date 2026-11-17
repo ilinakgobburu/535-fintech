@@ -2,9 +2,11 @@
 """
 Tonight's two-sided variance trade orders for the course server (Sanji), from LSEG and Cboe.
 
-Run by .github/workflows/vol-arb-orders.yml every weeknight at 22:00 New York time (03:00 UTC), again with
---retry at 01:00 (06:00 UTC; it does nothing if the first run wrote tonight's orders, so a failed first run is
-retried before the open), and from its Run workflow button:
+Retired from the nightly schedule (her choice of 2026-11-16, "Yes, switch to far wings"): far_wings_orders.py now
+writes mkt/open_orders.json every weeknight, and while config/far_wings_live.yaml says owns_open_orders: true this
+script refuses to write unless given --overwrite-far-wings (vol-arb-orders.yml's Run button with its box ticked);
+a --dry-run writes nothing and still runs. It ran (and with the flag still runs) at 22:00 New York time and with
+--retry at 01:00 (it does nothing if the first run wrote tonight's orders):
   1. read config/vol_arb_live.yaml, check lib/vol_arb.py and lib/vol_arb_wf.py, and each lib/wheel.py, lib/vol.py
      and lib/pmcc_daily.py function they use, against its hashes, and read the book (mkt/positions.json and
      mkt/fills.json, which Sanji writes). Stop if the book is not up to date with the orders already written, or
@@ -68,6 +70,7 @@ except ImportError:          # the tests replace it; the Action installs lseg-da
 CONFIG = ROOT / "config" / "vol_arb_live.yaml"
 MKT = ROOT / "mkt"
 LEDGER = Path("data") / "vol_arb_ledger.json"       # under ROOT: every order this script has written, by id
+FAR_WINGS_CONFIG = Path("config") / "far_wings_live.yaml"   # under ROOT: owns_open_orders, the far wings' claim
 NY = ZoneInfo("America/New_York")
 PAUSE = 0.4         # seconds after every LSEG request (_paced): the course guideline is at most 3 a second
 LIBS = {"trading_app/trading_app/lib/vol_arb.py": VA, "trading_app/trading_app/lib/vol_arb_wf.py": WF}
@@ -87,6 +90,14 @@ def now_ny() -> dt.datetime:
 
 def read_json(path: Path):
     return json.loads(path.read_text()) if path.exists() else None
+
+
+def far_wings_own_orders() -> bool:
+    """config/far_wings_live.yaml's owns_open_orders: the far-wing Action writes mkt/open_orders.json every night."""
+    path = ROOT / FAR_WINGS_CONFIG
+    if not path.exists():
+        return False
+    return (yaml.safe_load(path.read_text()) or {}).get("owns_open_orders") is True
 
 
 def check_libs(cfg: dict) -> None:
@@ -374,7 +385,13 @@ def main(argv=None) -> int:
     ap.add_argument("--panel", type=Path, help="another development panel file (default: the config's)")
     ap.add_argument("--retry", action="store_true",
                     help="the second nightly run: do nothing if tonight's orders were already written")
+    ap.add_argument("--overwrite-far-wings", action="store_true",
+                    help="write the vol-arb's orders even though the far-wing strategy owns mkt/open_orders.json")
     args = ap.parse_args(argv)
+    if not args.dry_run and not args.overwrite_far_wings and far_wings_own_orders():
+        sys.exit("The far-wing trade owns mkt/open_orders.json (config/far_wings_live.yaml owns_open_orders: true): a "
+                 "vol-arb run would replace its wings or its hedge. Nothing written. Pass --overwrite-far-wings (the "
+                 "Run button's box) only to retire the far wings; a --dry-run still runs.")
     if (args.as_of or args.force_entry) and not args.dry_run:
         sys.exit("--as-of and --force-entry are for a one-off check: add --dry-run.")
 

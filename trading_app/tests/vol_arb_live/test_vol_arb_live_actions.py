@@ -1,7 +1,8 @@
 """
-The two Actions: the vol-arb one runs every weeknight at 03:00 UTC (22:00 New York in winter) on main, with the
-wheel's pinned packages plus scikit-learn, and commits mkt/open_orders.json with the rebase-and-retry step; the
-wheel's keeps only its Run button, so one nightly job writes the orders file.
+The order Actions: the vol-arb one keeps only its Run button (the far wings' Action writes mkt/open_orders.json every
+night now), which does nothing unless its overwrite box is ticked; it runs on main with the wheel's pinned packages
+plus scikit-learn and commits mkt/open_orders.json with the rebase-and-retry step. The wheel's keeps only its Run
+button too, so one nightly job writes the orders file.
 """
 
 from __future__ import annotations
@@ -20,11 +21,13 @@ def workflow(name):
 
 def test_the_vol_arb_action():
     w, on = workflow("vol-arb-orders.yml")
-    # 22:00 New York in winter, and the retry at 01:00, before the open
-    assert on["schedule"] == [{"cron": "0 3 * * 2-6"}, {"cron": "0 6 * * 2-6"}] and "workflow_dispatch" in on
+    # retired from the schedule; its Run button needs its box, which passes the flag past the far wings' claim
+    assert "schedule" not in on and "workflow_dispatch" in on
+    box = on["workflow_dispatch"]["inputs"]["overwrite_far_wings"]
+    assert box["type"] == "boolean" and box["default"] is False
     assert w["permissions"] == {"contents": "write"}
     job = w["jobs"]["orders"]
-    assert job["if"] == "github.ref == 'refs/heads/main'"
+    assert job["if"] == "github.ref == 'refs/heads/main' && inputs.overwrite_far_wings"
     steps = {s["name"]: s for s in job["steps"]}
     py = next(s for s in job["steps"] if s.get("uses", "").startswith("actions/setup-python"))
     assert py["with"]["python-version"] == "3.11"
@@ -33,8 +36,7 @@ def test_the_vol_arb_action():
                      if "pip install" in s.get("run", ""))
     assert set(pip.split()) == set(wheel_pip.split()) | {"scikit-learn==1.5.1"}
     run = next(s for s in job["steps"] if s.get("id") == "orders")
-    # only the second schedule passes --retry; the first and the Run button decide afresh
-    assert run["run"] == "python vol_arb_orders.py ${{ github.event.schedule == '0 6 * * 2-6' && '--retry' || '' }}"
+    assert run["run"] == "python vol_arb_orders.py --overwrite-far-wings"
     assert set(run["env"]) == {"PYTHONWARNINGS", "LSEG_APP_KEY", "LSEG_USERNAME", "LSEG_PASSWORD"}
     commit = steps["Commit mkt/open_orders.json and the ledger"]["run"]
     assert "git add mkt/open_orders.json data/vol_arb_ledger.json" in commit       # the ledger the book check reads
@@ -46,8 +48,9 @@ def test_the_vol_arb_action():
 def test_the_wheel_action_keeps_only_its_run_button():
     w, on = workflow("wheel-orders.yml")
     assert "schedule" not in on and "workflow_dispatch" in on
-    scheduled = [n for n in ("vol-arb-orders.yml", "wheel-orders.yml") if "schedule" in workflow(n)[1]]
-    assert scheduled == ["vol-arb-orders.yml"]          # one nightly writer of mkt/open_orders.json
+    names = ("far-wings-orders.yml", "vol-arb-orders.yml", "wheel-orders.yml")
+    scheduled = [n for n in names if "schedule" in workflow(n)[1]]
+    assert scheduled == ["far-wings-orders.yml"]        # one nightly writer of mkt/open_orders.json
 
 
 def test_the_wheels_run_button_does_nothing_unless_its_box_is_ticked():
@@ -58,7 +61,7 @@ def test_the_wheels_run_button_does_nothing_unless_its_box_is_ticked():
     assert job["if"] == "github.ref == 'refs/heads/main' && inputs.overwrite_vol_arb"
     run = next(s for s in job["steps"] if s.get("id") == "orders")
     assert run["run"] == "python wheel_orders.py --overwrite-vol-arb"
-    # one concurrency group for both writers of mkt/open_orders.json, never cancelled mid-run
-    groups = {n: workflow(n)[0]["concurrency"] for n in ("vol-arb-orders.yml", "wheel-orders.yml")}
-    assert groups["vol-arb-orders.yml"] == groups["wheel-orders.yml"] == {"group": "mkt-open-orders",
-                                                                         "cancel-in-progress": False}
+    # one concurrency group for every writer of mkt/open_orders.json, never cancelled mid-run
+    groups = {n: workflow(n)[0]["concurrency"] for n in ("far-wings-orders.yml", "vol-arb-orders.yml",
+                                                         "wheel-orders.yml")}
+    assert all(g == {"group": "mkt-open-orders", "cancel-in-progress": False} for g in groups.values())

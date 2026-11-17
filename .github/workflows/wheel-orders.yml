@@ -3,11 +3,11 @@ name: Wheel orders
 # When run: read the book the course server (Sanji) wrote, ask LSEG for that session's
 # closing quotes, and write the next session's wheel order to mkt/open_orders.json (one order,
 # or []). The rules are config/wheel_live.yaml; the decision is lib/wheel_live.py.
-# Its nightly schedule is retired: .github/workflows/vol-arb-orders.yml now writes mkt/open_orders.json every
-# weeknight. Only the Run workflow button is left, and it does nothing unless its box is ticked, since a run
-# replaces the vol-arb's legs or hedge in that file (wheel_orders.py also refuses while config/vol_arb_live.yaml
-# says owns_open_orders: true, unless given --overwrite-vol-arb). Both workflows share one concurrency group, so
-# they never write the file at the same time.
+# Its nightly schedule is retired: .github/workflows/far-wings-orders.yml now writes mkt/open_orders.json every
+# weeknight (before it, vol-arb-orders.yml did). Only the Run workflow button is left, and it does nothing unless its
+# box is ticked; even then wheel_orders.py refuses while config/far_wings_live.yaml says owns_open_orders: true (no
+# flag gets past that), and while config/vol_arb_live.yaml says so, unless given --overwrite-vol-arb. All three
+# order workflows share one concurrency group, so they never write the file at the same time.
 on:
   workflow_dispatch:
     inputs:

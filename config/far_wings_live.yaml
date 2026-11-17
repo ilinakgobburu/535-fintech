@@ -1,0 +1,206 @@
+# The far-wing trade, live: what far_wings_orders.py trades through the course server (Sanji).
+# Her choices (2026-11-16): sell far puts (|delta| under 0.10) and far calls (|delta| under 0.05), delta-hedged with
+# the stock only when the book's net delta leaves a band ("Hedge less often (delta bands)"), no crash cap ("Hedge
+# only"), limits at the mid ("Yes, limits at the mid"), and this becomes the class algorithm ("Yes, switch to far
+# wings"): the nightly script switches from the vol-arb. The rules are lib/far_wings_live.py; the numbers below are
+# checked against it before anything runs.
+
+underlying:
+  root: NVDA          # option RIC root
+  ric: NVDA.O         # the stock on LSEG
+  conid: 4815747      # Interactive Brokers' id, as in config/wheel_live.yaml (order.html asks for it)
+
+owns_open_orders: true  # this strategy writes mkt/open_orders.json every night (.github/workflows/far-wings-orders.yml).
+                        # While this is true, vol_arb_orders.py refuses to write unless given --overwrite-far-wings
+                        # (vol-arb-orders.yml's Run button with its box ticked) and wheel_orders.py refuses outright.
+                        # Set it to false to retire the far wings: far_wings_orders.py then writes nothing
+
+registered:           # lib/far_wings_live.py's numbers; the script stops if the two disagree
+  put_max_abs_delta: 0.10       # the put wing: two-sided puts with |delta| strictly under 0.10 ...
+  put_target_abs_delta: 0.05    # ... the one closest to 0.05 (a tie to the lower strike)
+  call_max_abs_delta: 0.05      # the call wing: two-sided calls with |delta| strictly under 0.05 ...
+  call_target_abs_delta: 0.03   # ... the one closest to 0.03 (a tie to the higher strike)
+  vega_dollars: 200             # each wing: round(200 / Black-76 vega per vol point per contract), at least 1
+  capital: 100000               # the book the $200 a vol point and the band are sized on (the P&L is an overlay)
+  band_share_of_book: 0.05      # re-hedge to zero shares-delta when |net delta x close| > 5% of the book ($5,000)
+  lot: 100                      # shares per NVDA contract
+
+limits:
+  max_hedge_x_capital: 40     # the hedge's target shares, and the shares held, times D's close, may not pass 40 x
+                              # the book. Far wings at $200 a vol point are many contracts (about 20,000 / (spot x
+                              # pdf(d1) x sqrt(T)) shares a wing: some 3,500 put and 5,500 call shares at $180): a
+                              # 0.03-delta call deep in the money after a 50% rise needs a hedge of about 15 x the
+                              # book, so vol-arb's 5 would stop the run exactly then; a book misread 100 times is far
+                              # past 40
+
+chain:                # the strikes asked for on an entry night, banded as the backtest's caches were
+                      # (scripts/fetch_wheel_raw.py, the same bands as config/vol_arb_live.yaml), so the live wing is
+                      # chosen from the strikes the backtest could choose from. In a high-vol month the 0.05 put or
+                      # the 0.03 call can lie outside the band; then, as in the backtest, the wing is the eligible
+                      # strike nearest the target that the band holds
+  bands:
+    P: [0.70, 1.02]   # times the closes over the 7 days either side of the previous monthly expiry (up to D)
+    C: [0.97, 1.40]
+  grid:               # [price below which it applies, increment]: NVDA_2024's, from the 2026-11-11 probe
+    - [150, 1.0]
+    - [300, 2.5]
+    - [null, 10.0]
+  history_days: 14    # each option's daily BID/ASK asked for over the 14 days up to D; only D's row is used
+  min_dated_share: 0.9  # stop (data not final) unless this share of the listed contracts has a D row. At 22:00 any
+                        # listed contract with earlier rows but none for D stops the run too (LSEG part-way through
+                        # D); the 01:00 retry chooses without such contracts. Only LSEG's "The universe is not found"
+                        # counts as not listed
+
+data:
+  closes_days: 70             # NVDA.O TRDPRC_1, unadjusted (exchangeCorrection), 70 calendar days up to D: the
+                              # strike band's window and the closes of each held leg's 45 days of quotes
+  dividends_days: 400         # TR.DivExDate / TR.DivUnadjustedGross: the trailing year's yield (wheel.carry)
+  rate_ric: US3MT=RR          # 3-month T-bill, MID_YLD_1, as in the backtest
+  leg_history_days: 45        # a held leg's daily BID/ASK, for its last usable mid (at most 30 sessions back)
+
+lib_functions:        # sha256 of the source lines of every lib function and constant lib/far_wings_live.py uses
+                      # from another lib module (vol_arb_live, vol_arb, wheel_live, wheel, vol, pmcc_daily, ric), and
+                      # of everything those use in turn (far_wings_live.lib_functions). far_wings_orders.py stops if
+                      # any changes or a new one joins; after an intended change, re-record them with
+                      #   python3 far_wings_orders.py --print-lib-functions
+  pmcc_daily.carry: 8ca3aed48c598e373a280aac6f3740aafdcf8effb0659796b76b093bab5bc7c4
+  pmcc_daily.monthly_expiries: 0dd52ab32a68d1262c002502d38b27e200d938a65df1dd85011f7ec6eba10667
+  pmcc_daily.third_friday: 14f39e6c74c3b3ce15429982476cd1cc5d65b09ea32a08840bb5df9c8aef09df
+  ric.CALL_CODES: 9323fd277da2a38c55aad80b0982b4ff935ce3aa8358ab6b5dccf5086e6c6e80
+  ric.MONTH_TO_CODE: 2ec8ca1f6cf59ca3b040421496f4d3f0a43c582735bdf6543336dcb07ae8548f
+  ric.PUT_CODES: 14def6de0d9a1071a84a500ab670a814d42f8c91fc81040a82cc85fdeaa6bd30
+  ric.build_option_ric: 6943f082ad58057f1b83e9f6724bb6c418aaf09f9480e7eb97568f32c27db680
+  ric.expired_suffix_code: 283711da6e56d68605d20c7af4aea763f3d3529284f691866d1a09c36934ffea
+  vol.DAYS_PER_YEAR: cea20a3cf9fe5686981e1ef5ef5f1548cb932760f330734817bba1e7347130a6
+  vol.GREEKS: 0b690f0028ae89ac60e863aed13fa3bfa745a485db130b4e96ddc0fbb5820402
+  vol.MIN_T: 7cd326255e9fd56eea4b5285a77be982483169bd6d0be066a4f95d716c4aebf7
+  vol.VOL_HI: 1e4f06fea651e45cb41e306d516dd6a01ee2713260753969a8895579bceb8fad
+  vol.VOL_LO: 1e4f06fea651e45cb41e306d516dd6a01ee2713260753969a8895579bceb8fad
+  vol.bs_greeks: cb53aeccf626f01c7f2ceb4d2f9af865be5c75c3cefef30e5698a9389be8afac
+  vol.bs_price: 3b8da14b55dc16967a9c53167bd702e8b51fba229a8a68ad0980d3650ee23b74
+  vol.implied_vol: 3ce83a2cfa8afb9e5488ba8bcff73dbd3d1da2bde7f5c04527907b2701ba0eab
+  vol_arb.CALL: dc8d34840a53bc191bb401ba80fc8f51365952c3abcfb106a6a5c4de8f0be041
+  vol_arb.DAYS_PER_YEAR: cea20a3cf9fe5686981e1ef5ef5f1548cb932760f330734817bba1e7347130a6
+  vol_arb.PUT: dc8d34840a53bc191bb401ba80fc8f51365952c3abcfb106a6a5c4de8f0be041
+  vol_arb.VEGA_DOLLARS: 724bca75b7448dc8d2a243913103cd3b4c26a2cd6f42e0a00934eb095e43091c
+  vol_arb.contracts_for: 0c88f86902004595848d7f02523420b8c9353f6d4e4390789f570952920bc8ba
+  vol_arb.greeks_at: 088793da6e51191530661ae411ae7bf205ac8941b2b34057b892f399e2beda31
+  vol_arb.leg_vega: f0dead1e41ec68ea1d80f31e3fff5ecea7522b313dc1d8fa7523189d7b1ef186
+  vol_arb.two_sided: 5f2e9548ab72a5d5843de18f7544c048aba64a5709b05b856ed3c65f7a9e559d
+  vol_arb_live.Book: 94ef8cad088696284a73e6e60588a7387ab2de4807dd4ff057fb486283127dc1
+  vol_arb_live.CALL: dc8d34840a53bc191bb401ba80fc8f51365952c3abcfb106a6a5c4de8f0be041
+  vol_arb_live.CONTRACT: 2656bbcb10be8333b18d840f46ee3a75e12fb4974408cd2cf74d99be497fb64b
+  vol_arb_live.FALLBACK_SESSIONS: 7464223ce416566b2c56ded276664b272d2a97711fc914f9021fdceed7ec4efb
+  vol_arb_live.PUT: dc8d34840a53bc191bb401ba80fc8f51365952c3abcfb106a6a5c4de8f0be041
+  vol_arb_live.SIGNS: 4d32885c7302bc1573281425c74dcbc3e2e97a716ec605595a1da2d406077093
+  vol_arb_live._NUMBER: 5ddd7298a8e792018d1143da1d903ad237a7849b6942ea3cf6dff5a7dfb1d20d
+  vol_arb_live._d: 4200c573aa85df6f4e18c292ccbc449d6a998ad54be011e28aa2756fc5828080
+  vol_arb_live._strike: ce8f3f2d2302488dafa380c0c3f05224fab4de5fa5a9abf7f38574b48183f938
+  vol_arb_live.chain_problem: dbca6eaa01fc30fd470cf831ee0f2e9c12080b59542e465663584af3006db2bf
+  vol_arb_live.decided: c63e4fc4d7dcc9fd4f57366b4bc0fa6db4478ef61b6e591de2bdccaaf7b09133
+  vol_arb_live.entry_calendar: fc26278d58ddf6e09029b2e9f811cc2c568c7af2776f664bde88d0f8e81dad32
+  vol_arb_live.entry_expiry: ca78b54afddda38a9dcb4f405062e1948572822f7280d8304f98ddc7002f3a46
+  vol_arb_live.entry_sessions: a92edadd9449daa4e519fac18d7abb48de347f863efd25f1e9c2167c7f7dc792
+  vol_arb_live.expired_legs: 2079ef165507d6875ff39ecc86927510c154608f8d323094d7245ce2f103b32d
+  vol_arb_live.hash_differences: 2f1a35ffcb94c0c5b3c17f2ea69dadd1cf798215f9b8ca9441336130d8142f48
+  vol_arb_live.held_contracts: ba0cf71c8db367e78daafd0ac72bb360c71a0f00959074cc301cd97a464991cc
+  vol_arb_live.is_session: 94b2494d91d274ef64983cd5062877f7e278286592f295082d4297cb92d00865
+  vol_arb_live.leg_delta: 8813f2a18f2b641d4fa33834ca54a28ea99a1ab003f98cc845d99cf1b9cd8c9c
+  vol_arb_live.market: 0950d2d61f0f9adf3bb2d430d0d24264b9d18bc62f27e4624018636a21cc4b01
+  vol_arb_live.mid_of: 45b22980d539f69c0c7208e3cd3b27c3661c9504a83a75ba5e3ad92bdfde584a
+  vol_arb_live.next_entry: 2f76be8c70436030905b84c6958b8c82c14eedfb69883f42d8dd65bc01c03360
+  vol_arb_live.next_session: b2ad467b0af587022645aa1f806f7cb6cf0299778dab891ae0b23edabd561a13
+  vol_arb_live.night: 69b66cfa8ec5e171b80d705bbb1a4b48c284a85e726a1e51850e4c75f3d70128
+  vol_arb_live.previous_expiry: f96a7f3da48c62ba51116f0fa2838f9ba136a38420a37afdbc834200491862c9
+  vol_arb_live.quote_frame: 29630f3d7ace03e5aaad756a956b75ad8002a74ad62e84fdad5498a4fc4a21f8
+  vol_arb_live.read_book: 2beeda59df123645a09d2f8146c6d13c71cf0036fc011f2c9b70a5f7f5a0eae3
+  vol_arb_live.sha256_hex: 4110290344992d97a486c9b6d151d333e0ed83d6021f31be2fbac32582547f95
+  vol_arb_live.strike_plan: 2fdb3fe4304961d75ccdea0062e69322328e378d9a78590ec7da65b58193ad26
+  vol_arb_live.transition: 32b12c4d92f26174378c87f941d881d5247f224ca84dcfd532550daf22043441
+  wheel.CALL: 7b5a9cd2daa7f6c11f79ab186987ad7b17fc21f4e28f2ba822edcd35dd3dc252
+  wheel.CONTRACT: 77bc132d1762ae8ef5eb736a742c254841bdb1708c68d3879cecb8686beee4df
+  wheel.DAYS_PER_YEAR: cea20a3cf9fe5686981e1ef5ef5f1548cb932760f330734817bba1e7347130a6
+  wheel.PUT: 7b5a9cd2daa7f6c11f79ab186987ad7b17fc21f4e28f2ba822edcd35dd3dc252
+  wheel._num: 6e016b8d67492885f78987fd297f27ad1d7c593108e765d482d30e8e40ac187d
+  wheel.option_greeks: 16da0fb1cfabf70e2a4fb54e86862ead21a0f28c88c1f8eb9be392e3cdb12956
+  wheel_live.BookFormatError: 5b7282a644ca1e49b81ea740f800c8ed62413b34f1aa2b3fe1d470fe5ce91485
+  wheel_live.CLOSE: 109b9ff5f2c1eead909b828a4005ce574d3c054cefaf8dd6eba03e40e6391f2b
+  wheel_live.EARLY_CLOSE: 109b9ff5f2c1eead909b828a4005ce574d3c054cefaf8dd6eba03e40e6391f2b
+  wheel_live.NYSEHolidays: d1789eb9a2a74982cb4bef6011abf0ed92ad58c3e66250ac3e57d9fc57e92004
+  wheel_live.OPEN: 109b9ff5f2c1eead909b828a4005ce574d3c054cefaf8dd6eba03e40e6391f2b
+  wheel_live.ORDER_FIELDS: a9383474228e1bb7124f2b8960496ca761b1ea2420ad1beb90fb848890334bbe
+  wheel_live._DATE: b4bf88e672e33d317736861f764068d025df16ab04e4cb279b013f5ba696f273
+  wheel_live._NUMBER: 5ddd7298a8e792018d1143da1d903ad237a7849b6942ea3cf6dff5a7dfb1d20d
+  wheel_live.close_time: ccc9219a7679cc67acdb2404826dd3f70c2814e3f49a06e8499d38b1c07189a3
+  wheel_live.decision_dates: 682c31bcf5689bfcb2aeef0075d8f70c6a45758da22a4f1abfc6edaee7014808
+  wheel_live.merge_orders: 3a2cf98ae82a92783d10beef1284f4278b34dc987f31d4b57b287cf787e49d1a
+  wheel_live.number_token: 90f02a651f21b8169b7e904b54e059bfc18e869205eb5e8ee66c70eda102f986
+  wheel_live.rejected_orders: 33aea99dabc63e77da9ca86aea4f98d98b3532b980ac4ba61a209725a8bc8f97
+  wheel_live.sessions: 3e75ce233fcf9b170617b0cf99cddf10670e83052b50c8ec8de74afe566e12b2
+  wheel_live.unresolved_orders: 35b45be6310d32e234bcf1c4a0bcd78949d1df01acdf65ec5715c1ad18d98227
+  wheel_live.validate_order: 2329f1568f10d7dfddc7bfef5e1757d5024092fc9b3c59215eb17d7712e0077a
+
+acknowledged: {}      # order id: why Sanji's rejection of it, or his missing result for it, no longer stops the run.
+                      # This strategy's rejected or unanswered orders stop every night until the id is here (after
+                      # fixing what was wrong); the next run notes it and rewrites mkt/open_orders.json without it.
+                      #   e.g.  nvda-fw-put-2026-11-23: rejected, strike token fixed in 1a2b3c4; the call filled alone
+
+technical_choices:    # Claude's, each with its reason, for her to scan (the backtest registration lists the same)
+  calendar: >-
+    vol-arb's entries: the first session after each monthly expiry, each position held to the next monthly expiry's
+    close. Same monthly cycle as the evidence.
+  wings: >-
+    one strike per wing: the two-sided put with |delta| under 0.10 closest to 0.05 (tie to the lower strike), the
+    two-sided call with |delta| under 0.05 closest to 0.03 (tie to the higher strike), deltas from each option's own
+    closing mid (wheel.option_greeks). No eligible strike: no position in that wing that cycle. One strike per wing
+    keeps orders and spread costs low; 0.05 lies between the two far-put zones that earned most before costs, 0.03
+    inside the far-call zone.
+  size: >-
+    each wing round(200 / its Black-76 vega per vol point per contract, with the entry's lot), at least 1, on a
+    $100,000 book: the scale of the earlier studies, about $200 per vol point per wing.
+  fills: >-
+    each wing SHT with a limit at the entry close's mid (to the cent), for the next session: her limit-at-mid choice.
+  hedge: >-
+    each night options are held, the net delta in shares (options from their closing mids, carried IV when a mid is
+    missing, plus shares); when |net delta x close| is above $5,000 (5% of the book), a market order re-hedges to zero
+    shares-delta at the next open, otherwise no hedge trade. Hedging less often cuts share-trading costs; 5% of the
+    book is a plain, explainable band.
+  hedge_limit: >-
+    40 x the book (limits above), not vol-arb's 5: the far wings' hedge can legitimately reach about 15 x after a
+    large rise, and the limit is there to catch a misread book, not to cap the hedge.
+
+live_rules:
+  - >-
+    Entry nights are the backtest's: the first session after each monthly expiry, selling that cycle's two wings of
+    the next monthly expiry from that session's closing quotes. The orders are for the next session, which Sanji
+    fills at its prices (a limit sell fills when the bar's high reaches it), not at the close. The backtest's headline
+    fill takes the next session's closing mid instead (filled when it is at least the limit). A run after that next
+    session's open (the Run button on Tuesday morning) places no entry, only the band check.
+  - >-
+    An unfilled wing is not placed again that cycle (the backtest enters only once a cycle); the other wing trades
+    and is hedged as it stands.
+  - >-
+    The band is checked every night options are held, from D's closing deltas, the first time on the night the new
+    wings appear in the book; a breach is a market order for the next open, as the backtest re-hedges at the next
+    open. At exactly $5,000 nothing is done.
+  - >-
+    Sanji assigns a short option on any close through its strike (order.html section 11); the backtest has no early
+    exercise. Delivered shares are hedged with the rest; with no options left the shares are closed at the next open.
+  - >-
+    After an expiry the leftover shares are closed at the next open (the backtest closes them at the expiry's close).
+  - >-
+    Every NVDA option in the book must be exactly what this strategy's filled orders add up to (its nvda-fw ids in
+    mkt/fills.json, looked up in data/far_wings_ledger.json, where the script records every order it writes; the
+    Action commits both files), except a short leg Sanji has assigned; NVDA shares need at least one fill of its own.
+    Anything else stops the run: another strategy's position (the wheel's last put, a vol-arb leg) must be closed by
+    hand (her own BTC or SEL order in mkt/open_orders.json) first. With positions but no mkt/fills.json the book
+    can't be checked, and the run stops too.
+  - >-
+    A stale book is never traded on: once mkt/fills.json exists, every order of this strategy's written for a session
+    up to D needs a result there; a rejected order or an option listed on or after its expiry stops the run; an order
+    for a session not yet resolved is kept and nothing is added. A rejected or unanswered order stops every night
+    until she adds its id to `acknowledged` with the reason; another strategy's orders are only noted.
+  - >-
+    The vol-arb Action keeps only its Run button, which does nothing unless its overwrite box is ticked, and
+    vol_arb_orders.py refuses to write while owns_open_orders is true here; wheel_orders.py refuses outright. All
+    three workflows share one concurrency group (mkt-open-orders).
