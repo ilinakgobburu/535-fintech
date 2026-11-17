@@ -1,0 +1,10 @@
+{
+ "format": "vol_arb_ledger/1",
+ "orders": {},
+ "nights": {
+  "2026-11-16": {
+   "for": "2026-11-17",
+   "ids": []
+  }
+ }
+}
