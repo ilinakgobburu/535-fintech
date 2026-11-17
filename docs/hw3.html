@@ -61,6 +61,7 @@
   nav a:hover{color:var(--accent);background:var(--tint)}
   nav a.on{color:var(--accent);background:var(--tint)}
   nav .ticker-link{margin-left:auto;border:1px solid var(--tint-line);color:var(--accent)}
+  nav .gh{margin-left:0}
   header{padding-top:34px}
   h2{scroll-margin-top:78px}
 
@@ -216,6 +217,9 @@
     :root{--fs-base:16px;--fs-lede:17px;--fs-h1:28px;--fs-h2:22px;--fs-sub:18px}
     .wrap{padding:0 16px 64px}
     nav{margin:0 -16px;padding:10px 16px}
+    nav:has(> .gh) .brand{order:-2}
+    nav .gh{order:-1;margin-left:auto}
+    nav:has(> .gh)::after{content:"";order:-1;flex-basis:100%;height:0}
   }
 
   .wrap{max-width:1440px}

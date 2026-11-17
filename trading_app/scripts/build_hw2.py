@@ -361,6 +361,7 @@ def render_data_page(css: str, meta: dict) -> str:
   <a class="on" href="data.html">Data</a>
   <a class="ticker-link" href="index.html">\u2190 Assignment 1.1 \u00b7 Surface Lab</a>
   <a class="ticker-link" href="hw4.html" style="margin-left:0">Wheel strategy \u2192</a>
+  <a class="ticker-link gh" href="https://github.com/ilinakgobburu/535-fintech">GitHub \u2197</a>
 </nav>
 <header>
   <div class="eyebrow">MEng FinTech \u00b7 Algorithmic Trading II \u00b7 Assignment 1.2</div>
