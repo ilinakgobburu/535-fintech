@@ -9,21 +9,23 @@ name: NVDA marks
 # as it is.
 on:
   schedule:
-    # Both off the hour and well clear of the far-wing orders' 03:00 and 06:00 UTC runs (see concurrency below).
+    # Both off the hour and well clear of the far-wing orders' 03:00 and 06:00 UTC runs, so the two rarely want
+    # LSEG at once (see concurrency below).
     - cron: "45 4 * * 2-6"  # 04:45 UTC Tue-Sat = 23:45 New York Mon-Fri in winter (00:45 in summer)
     - cron: "15 9 * * 2-6"  # the retry, 04:15 New York in winter (05:15 in summer), before the open: nothing to do if
                             # the first run marked tonight's close; if it failed (LSEG not final yet), it marks with
                             # what LSEG has and says so
   workflow_dispatch:
 
-# Shared with the order workflows for two reasons: their pushes to main never race this one's, and lseg_login.py
-# logs in with signon_control=True, which takes over any other session on the same login, so two jobs pulling LSEG
-# at once would break one of them. GitHub keeps at most one running and one pending run per group, and a newly
-# queued run cancels the one already pending: with an orders run in progress and a marks run pending, a Run-button
-# press or a badly delayed scheduled run replaces the pending one (an orders run, or this one). The schedules leave
-# more than an hour between this workflow's runs and the orders', and both have their retry.
+# Its own group, not the order workflows' mkt-open-orders: GitHub keeps at most one running and one pending run per
+# group, and a newly queued run cancels the one already pending, so in a shared group a marks run could cancel a
+# pending orders run. Here it never waits behind, cancels or is cancelled by an orders run. Two jobs cannot hold
+# the one LSEG login at once: nvda_marks.py logs in with lseg_login.open_session(take_over=False)
+# (signon_control=False), so while an orders run holds the login the mark's login fails and nothing is written
+# (the retry, or the next night, marks), and an orders run that starts during a mark takes the login over and the
+# mark fails the same way. A mark never signs out an orders run. Both push with a rebase and retry.
 concurrency:
-  group: mkt-open-orders
+  group: nvda-marks
   cancel-in-progress: false
 
 # The repository's default token can only read, so the commit step needs write access.

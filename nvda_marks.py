@@ -9,7 +9,7 @@ button:
      model's p and direction; lib/nvda_marks.cycle_spec checks it, nothing is decided again), and check that
      lib/vol_arb.py and lib/vol_arb_wf.py, and every lib function they use, are the frozen backtest code
      config/vol_arb_live.yaml pins;
-  2. log in to LSEG (lseg_login.py) for NVDA's unadjusted closes and opens from a week before the entry to D, the
+  2. log in to LSEG (lseg_login.py, never taking over another session) for NVDA's unadjusted closes and opens from a week before the entry to D, the
      3-month T-bill, dividends, and both legs' daily closing bid and ask, one RIC per request, each request paced;
   3. mark the cycle with trading_app/trading_app/lib/nvda_marks.py (no I/O; tested in trading_app/tests/nvda_marks/),
      which runs lib/vol_arb.py's own cycle_path and run_trade on the market lib/vol_arb_live.market builds from the
@@ -79,9 +79,10 @@ class NotFinal(Exception):
 
 
 def open_lseg():
-    """The LSEG platform session (lseg_login.py: GitHub secrets, or the macOS Keychain)."""
+    """The LSEG platform session (lseg_login.py: GitHub secrets, or the macOS Keychain). It never signs out another
+    session on the login (take_over=False): while an orders run holds it, the login fails and nothing is marked."""
     from lseg_login import open_session
-    return open_session()
+    return open_session(take_over=False)
 
 
 def now_ny() -> dt.datetime:

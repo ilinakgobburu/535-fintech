@@ -1,8 +1,10 @@
 """
-The nightly-mark Action and the page script. The Action runs at 03:30 UTC Tue-Sat and with --retry at 07:30, on main
-only, in the order workflows' concurrency group (their pushes and its push never race), with the far wings' Python
-and packages and LSEG secrets passed only as the mark step's environment, never echoed and never under `set -x`; its
-commit step stages nothing but docs/data/*.json, refuses if anything else is staged, and rebases and retries its push.
+The nightly-mark Action and the page script. The Action runs at 04:45 UTC Tue-Sat and with --retry at 09:15, on main
+only, more than an hour from every orders run, in its own concurrency group (in the orders' group it could cancel a
+pending orders run), logging in to LSEG without taking over another session (so it never signs out an orders run),
+with the far wings' Python and packages and LSEG secrets passed only as the mark step's environment, never echoed
+and never under `set -x`; its commit step stages nothing but docs/data/*.json, refuses if anything else is staged,
+and rebases and retries its push.
 The commit step's own shell is run against a temporary repository to show that. docs/assets/nvda_marks.js fetches its
 file relative to the page without the cache, keeps the baked figures when it cannot, and is plain ES5 (its behavior
 in a browser: test_nvda_marks_page.py).
@@ -49,9 +51,9 @@ def utc_minutes(cron: str) -> tuple[int, str]:
     return int(hour) * 60 + int(minute), dow
 
 
-def test_its_runs_keep_well_clear_of_every_order_run_in_the_shared_group():
-    """A run queued while one in the group runs and another is pending cancels the pending one (GitHub's rule), so
-    the marks keep more than an hour from each orders run, and off the top of the hour, when GitHub delays most."""
+def test_its_runs_keep_well_clear_of_every_order_run():
+    """The marks keep more than an hour from each scheduled orders run, so the two rarely want the one LSEG login at
+    once, and off the top of the hour, when GitHub delays most."""
     _, on = workflow("nvda-marks.yml")
     mine = [utc_minutes(s["cron"]) for s in on["schedule"]]
     theirs = []
@@ -64,14 +66,90 @@ def test_its_runs_keep_well_clear_of_every_order_run_in_the_shared_group():
         assert m % 60 != 0
         for t, their_dow in theirs:
             assert dow == their_dow and min(abs(m - t), 24 * 60 - abs(m - t)) > 60
+
+
+def test_it_has_its_own_group_so_it_can_never_cancel_an_orders_run():
+    """GitHub cancels a group's pending run when another is queued: in the orders' group a marks run queued while an
+    orders run waited would cancel it. Its own group, which no other workflow uses, never waits for, cancels or is
+    cancelled by an orders run."""
+    w, _ = workflow("nvda-marks.yml")
+    assert w["concurrency"] == {"group": "nvda-marks", "cancel-in-progress": False}
+    for f in sorted(WORKFLOWS.glob("*.yml")):
+        if f.name != "nvda-marks.yml":
+            assert (workflow(f.name)[0].get("concurrency") or {}).get("group") != "nvda-marks", f.name
+    for name in ("far-wings-orders.yml", "vol-arb-orders.yml", "wheel-orders.yml"):
+        assert workflow(name)[0]["concurrency"] == {"group": "mkt-open-orders", "cancel-in-progress": False}
     text = (WORKFLOWS / "nvda-marks.yml").read_text()
-    assert "signon_control=True" in text and "a newly\n# queued run cancels the one already pending" in text
+    assert "open_session(take_over=False)" in text and "A mark never signs out an orders run." in text
 
 
-def test_it_shares_the_order_workflows_group_python_and_packages():
+def test_the_marks_log_in_without_taking_over_another_session(monkeypatch):
+    """nvda_marks.py opens its LSEG session with take_over=False: an orders run holding the login is never signed
+    out, the mark's login fails instead."""
+    import importlib.util
+    import sys
+    import types
+    calls = []
+    fake = types.ModuleType("lseg_login")
+    fake.open_session = lambda **kw: calls.append(kw) or "session"
+    monkeypatch.setitem(sys.modules, "lseg_login", fake)
+    spec = importlib.util.spec_from_file_location("nvda_marks_for_login", S.REPO / "nvda_marks.py")
+    mod = importlib.util.module_from_spec(spec)
+    saved = list(sys.path)
+    try:
+        spec.loader.exec_module(mod)
+    finally:
+        sys.path[:] = saved
+    assert mod.open_lseg() == "session" and calls == [{"take_over": False}]
+
+
+@pytest.mark.parametrize("kwargs, signon", [({}, True), ({"take_over": True}, True), ({"take_over": False}, False)])
+def test_the_shared_login_takes_over_only_when_asked(monkeypatch, kwargs, signon):
+    """lseg_login.open_session passes take_over to LSEG as signon_control (default True, as the order scripts and the
+    plot have always logged in); with False a failed login says another session may hold the login."""
+    import importlib.util
+    import sys
+    import types
+    seen = {}
+
+    class Sess:
+        open_state = "opened"
+
+        def open(self):
+            pass
+
+    class Definition:
+        def __init__(self, **kw):
+            seen.update(kw)
+
+        def get_session(self):
+            return Sess()
+
+    ld = types.ModuleType("lseg.data")
+    ld.OpenState = types.SimpleNamespace(Opened="opened")
+    ld.session = types.SimpleNamespace(platform=types.SimpleNamespace(Definition=Definition,
+                                                                      GrantPassword=lambda **kw: kw),
+                                       set_default=lambda s: None)
+    lseg = types.ModuleType("lseg")
+    lseg.data = ld
+    monkeypatch.setitem(sys.modules, "lseg", lseg)
+    monkeypatch.setitem(sys.modules, "lseg.data", ld)
+    for k in ("LSEG_APP_KEY", "LSEG_USERNAME", "LSEG_PASSWORD"):
+        monkeypatch.setenv(k, "x")
+    spec = importlib.util.spec_from_file_location("lseg_login_for_test", S.REPO / "lseg_login.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    mod.open_session(**kwargs)
+    assert seen["signon_control"] is signon
+    Sess.open_state = "closed"
+    with pytest.raises(SystemExit) as exc:
+        mod.open_session(**kwargs)
+    assert ("another session holds this login" in str(exc.value)) is (not signon)
+
+
+def test_it_uses_the_order_workflows_python_and_packages():
     w, _ = workflow("nvda-marks.yml")
     fw, _ = workflow("far-wings-orders.yml")
-    assert w["concurrency"] == fw["concurrency"] == {"group": "mkt-open-orders", "cancel-in-progress": False}
     assert w["permissions"] == {"contents": "write"}
     job = w["jobs"]["mark"]
     assert job["if"] == "github.ref == 'refs/heads/main'"

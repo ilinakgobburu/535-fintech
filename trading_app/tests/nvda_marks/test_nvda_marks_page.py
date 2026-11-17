@@ -113,9 +113,14 @@ def open_page(browser, doc, width=1280, attrs="", fail=False, touch=False):
 
 
 def money(x: float) -> str:
-    """nvda_marks.js's money(): whole dollars, a sign, a word joiner after it."""
-    n = int(math.floor(abs(x) + 0.5))
-    return "$0" if n == 0 else (MINUS if x < 0 else "+") + JOIN + f"${n:,}"
+    """nvda_marks.js's money(): dollars and cents, a sign, a word joiner after it."""
+    c = int(math.floor(abs(x) * 100 + 0.5))
+    return "$0.00" if c == 0 else (MINUS if x < 0 else "+") + JOIN + f"${c // 100:,}.{c % 100:02d}"
+
+
+def price(x: float) -> str:
+    """nvda_marks.js's price(): dollars and cents, no sign."""
+    return f"${x:,.2f}"
 
 
 # --------------------------------------------------------------------------- the chart's end labels
@@ -157,7 +162,7 @@ def test_crosses_itself():
     assert not crosses(((-5, 20), (15, 20)), b) and not crosses(((12, -5), (30, 40)), b)
 
 
-@pytest.mark.parametrize("width", [1280, 390])
+@pytest.mark.parametrize("width", [1280, 390, 320])
 @pytest.mark.parametrize("as_of", ["2026-10-19", "2026-10-20", "2026-11-05", "2026-11-16", "2026-11-19", "2026-11-20",
                                    "swung-open", "swung-settled", "peak-early"])
 def test_the_end_labels_never_cross_a_line_and_stay_in_the_chart(browser, docs, width, as_of):
@@ -169,11 +174,19 @@ def test_the_end_labels_never_cross_a_line_and_stay_in_the_chart(browser, docs, 
         ctx.close()
     ends = [t for t in g["texts"] if t["end"]]
     assert len(ends) == 2
-    assert g["plot"] >= 0.5 * g["width"]                # the labels' room never takes the chart's place
+    # the labels' room never takes the chart's place: at least half the width, 45% at the narrowest chart (260 px,
+    # a 320 px phone), where the value alone ("+$1,434.30") needs about a third once the cycle reaches its expiry
+    assert g["plot"] >= (0.45 if width == 320 else 0.5) * g["width"]
     want = {money(docs[as_of]["pnl"][d]["mid"]) for d in ("put_rich", "call_rich")}
     assert {t["text"].split(" ")[-1] for t in ends} == want
-    if width == 1280:
-        assert sorted(t["text"].rsplit(" ", 1)[0] for t in ends) == ["Call side rich", "Put side rich"]
+    # each label names its side at every width: in full on a wide screen, in full or as "Put side" on a phone, and
+    # as "Put side" on a narrow one, where the full name over the value would leave the plot under half the width
+    names = sorted(t["text"].rsplit(" ", 1)[0] for t in ends)
+    short = ["Call side", "Put side"]
+    assert names == (short if width == 320 else ["Call side rich", "Put side rich"]) or \
+        (width == 390 and names == short)
+    if width == 1280:                                    # one line when it fits, the name over the value when not
+        assert all(t["y1"] - t["y0"] < 20 for t in ends)
     for t in ends:
         assert 0 <= t["x0"] and t["x1"] <= g["width"] and 0 <= t["y0"] and t["y1"] <= g["height"], t
         for pts in g["lines"]:
@@ -308,9 +321,10 @@ TABLE = """() => {
 }"""
 
 
+@pytest.mark.parametrize("width", [390, 330])         # 330 here leaves the box a 320 px phone leaves on the real page
 @pytest.mark.parametrize("as_of", ["2026-11-16", "2026-11-20"])
-def test_on_a_phone_the_pnl_table_fits_with_the_choosers_under_each_side(browser, docs, as_of):
-    ctx, pg = open_page(browser, docs[as_of], width=390)
+def test_on_a_phone_the_pnl_table_fits_with_the_choosers_under_each_side(browser, docs, as_of, width):
+    ctx, pg = open_page(browser, docs[as_of], width=width)
     try:
         got = pg.evaluate(TABLE)
     finally:
@@ -319,7 +333,7 @@ def test_on_a_phone_the_pnl_table_fits_with_the_choosers_under_each_side(browser
     assert set(got["wide"]) == {"none"} and len(got["wide"]) == 2 + 2 * 3       # the header's two and each row's
     put_side, call_side, idle = got["who"]
     assert "CHOSEN, F7 = 0" in put_side.upper() and "Rule 1" in put_side and "Rule 0" in put_side
-    assert "Logistic, refit (p 0.44996)" in call_side and "Logistic, fit once (p 0.458)" in idle
+    assert "Logistic, refit (p 0.44996)" in call_side and "Logistic, fit once (p 0.45794)" in idle
 
 
 def test_on_a_wide_screen_the_choosers_are_columns(browser, docs):
@@ -330,3 +344,142 @@ def test_on_a_wide_screen_the_choosers_are_columns(browser, docs):
         ctx.close()
     assert got["scroll"] <= got["client"]
     assert "none" not in got["wide"] and got["who"] == [None, None, None]
+
+
+# --------------------------------------------------------------------------- the axis, the figures, the models' p
+AXIS = """() => {
+  const svg = document.querySelector('.nm-chart svg');
+  const box = t => { const b = t.getBBox(); return {x0: b.x, x1: b.x + b.width, y0: b.y, y1: b.y + b.height,
+                                                     text: t.textContent}; };
+  return {width: svg.viewBox.baseVal.width, ticks: [...svg.querySelectorAll('text.nm-tick')].map(box),
+          left: Math.min(...[...svg.querySelectorAll('line')].filter(l => l.y1.baseVal.value === l.y2.baseVal.value
+                                                                      && l.x2.baseVal.value > l.x1.baseVal.value)
+                                                              .map(l => l.x1.baseVal.value)),    // the grid's left end
+          rules: [...svg.querySelectorAll('text.nm-rule')].map(t => t.textContent),
+          texts: [...svg.querySelectorAll('text')].map(box)};
+}"""
+
+
+@pytest.mark.parametrize("width", [1280, 390])
+@pytest.mark.parametrize("as_of", ["2026-10-19", "2026-10-20", "2026-11-05", "2026-11-16", "2026-11-19", "2026-11-20"])
+def test_the_axis_always_dates_the_latest_close_and_the_expiry_rule_names_its_day(browser, docs, width, as_of):
+    ctx, pg = open_page(browser, docs[as_of], width)
+    try:
+        g = pg.evaluate(AXIS)
+        assert pg.errors == []
+    finally:
+        ctx.close()
+    ticks = [t["text"] for t in g["ticks"]]
+    assert NM._day(as_of)[:3] + " " + str(int(as_of[-2:])) in ticks          # "Nov 16", on a phone too
+    assert "expiry Nov 20" in g["rules"]
+    if width == 1280 and as_of >= "2026-11-05":
+        assert ticks[-1] == "Oct 19"                                            # the entry, when there is room
+    for t in g["ticks"]:                                                        # under the plot, not the y labels
+        assert g["left"] - 0.5 <= t["x0"] and t["x1"] <= g["width"]
+    for i, a in enumerate(g["texts"]):                                          # no two of the chart's texts meet
+        for b in g["texts"][i + 1:]:
+            assert not (a["x0"] < b["x1"] and b["x0"] < a["x1"] and a["y0"] < b["y1"] and b["y0"] < a["y1"]), (a, b)
+
+
+FIGURES = """() => {
+  const w = document.querySelector('.nm-tblwrap');
+  return {rows: [...w.querySelectorAll('tbody tr.nm-has-who')].map(r => [...r.cells].slice(1, 3).map(c => c.textContent)),
+          costs: (document.querySelector('.nm-costs') || {}).textContent || null,
+          ps: [...w.querySelectorAll('.nm-who span')].map(s => s.textContent).filter(s => s.includes('(p '))};
+}"""
+
+
+def test_the_pnl_is_shown_to_the_cent_with_the_stress_costs(browser, docs):
+    doc = docs["2026-11-16"]
+    ctx, pg = open_page(browser, doc)
+    try:
+        got = pg.evaluate(FIGURES)
+    finally:
+        ctx.close()
+    want = []
+    for side in ("put_rich", "call_rich"):
+        st = doc["marks"][side]["stress"]
+        want.append([money(doc["pnl"][side]["mid"]), money(doc["pnl"][side]["stress"]) +
+                     f"after {price(-st['split']['costs'])} costs"])
+    assert got["rows"][:2] == want
+    assert got["rows"][2] == ["$0.00", "$0.00"]                                 # no trade
+    st = doc["marks"]["put_rich"]["stress"]
+    text = (f"Stress costs each side {price(-st['split']['costs'])}: {price(st['spread_cost'])} for the legs' bid and "
+            f"ask at entry and {price(st['hedge_costs'])} for the hedge trades.")
+    # the rounding note only when a side's figures, as shown, do not differ by its costs as shown
+    off = [d for d in ("put_rich", "call_rich")
+           if shown(doc["pnl"][d]["mid"]) - shown(doc["pnl"][d]["stress"])
+           != shown(-doc["marks"][d]["stress"]["split"]["costs"])]
+    if off:
+        text += (" Each figure is rounded to the cent on its own, so mid minus stress as shown can be a cent off the "
+                 "costs (" + " and ".join(d.replace("_", " side ") for d in off) + ").")
+    assert got["costs"] == text
+
+
+def shown(x: float) -> int:
+    """A figure as money() shows it, in signed cents."""
+    return (-1 if x < 0 else 1) * int(math.floor(abs(x) * 100 + 0.5))
+
+
+@pytest.mark.parametrize("path", [("split", "costs"), ("spread_cost",), ("hedge_costs",)])
+def test_a_file_without_the_stress_costs_keeps_the_baked_figures(browser, docs, path):
+    doc = json.loads(json.dumps(docs["2026-11-16"]))
+    st = doc["marks"]["call_rich"]["stress"]
+    del (st[path[0]] if len(path) == 2 else st)[path[-1]]   # without split.costs the page would print "$NaN"
+    ctx, pg = open_page(browser, doc)
+    try:
+        state = pg.evaluate("() => document.querySelector('[data-nvda-mark]').getAttribute('data-nm-state')")
+    finally:
+        ctx.close()
+    assert state == "fallback"
+
+
+def cent_off(doc: dict) -> dict:
+    """The file with the 2026-11-16 close's own figures: mid and stress each rounded to the cent on their own differ
+    by $279.03, the costs by $279.02."""
+    out = json.loads(json.dumps(doc))
+    for side, mid, stress in (("put_rich", -995.20, -1274.22), ("call_rich", 995.20, 716.17)):
+        m = out["marks"][side]
+        m["mid"]["pnl"] = out["pnl"][side]["mid"] = mid
+        m["stress"]["pnl"] = out["pnl"][side]["stress"] = stress
+        m["stress"]["split"]["costs"], m["stress"]["spread_cost"], m["stress"]["hedge_costs"] = -279.02, 150.0, 129.02
+    return out
+
+
+def test_a_cent_between_the_rounded_figures_and_the_costs_is_explained(browser, docs):
+    doc = cent_off(docs["2026-11-16"])
+    ctx, pg = open_page(browser, doc)
+    try:
+        got = pg.evaluate(FIGURES)
+    finally:
+        ctx.close()
+    assert got["rows"][:2] == [[MINUS + JOIN + "$995.20", MINUS + JOIN + "$1,274.22after $279.02 costs"],
+                               ["+" + JOIN + "$995.20", "+" + JOIN + "$716.17after $279.02 costs"]]
+    assert got["costs"] == ("Stress costs each side $279.02: $150.00 for the legs' bid and ask at entry and $129.02 "
+                            "for the hedge trades. Each figure is rounded to the cent on its own, so mid minus stress "
+                            "as shown can be a cent off the costs (call side rich).")
+
+
+def test_no_rounding_note_when_the_figures_as_shown_differ_by_the_costs(browser, docs):
+    doc = cent_off(docs["2026-11-16"])
+    doc["marks"]["call_rich"]["stress"]["pnl"] = doc["pnl"]["call_rich"]["stress"] = 716.18
+    ctx, pg = open_page(browser, doc)
+    try:
+        got = pg.evaluate(FIGURES)
+    finally:
+        ctx.close()
+    assert got["costs"] == ("Stress costs each side $279.02: $150.00 for the legs' bid and ask at entry and $129.02 "
+                            "for the hedge trades.")
+
+
+def test_every_models_p_is_shown_to_five_decimals(browser, docs):
+    doc = docs["2026-11-16"]
+    ctx, pg = open_page(browser, doc)
+    try:
+        got = pg.evaluate(FIGURES)
+    finally:
+        ctx.close()
+    want = sorted(f"(p {v['p']:.5f})" for r in ("f7_0", "f7_1") for v in doc["cycle"]["decisions"][r].values()
+                  if v["p"] is not None)
+    assert sorted(s[s.index("(p "):] for s in got["ps"]) == want and len(want) == 6
+    assert all(len(s[s.index("(p ") + 3:-1]) == 7 for s in got["ps"])          # 0.xxxxx, never 0.458 beside 0.44996

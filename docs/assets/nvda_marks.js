@@ -67,6 +67,8 @@
     ".nm-tbl .nm-who{font-size:13px;color:var(--text,#1C2430);min-width:9.5em}",
     ".nm-tbl .nm-who span{display:block;white-space:nowrap}",
     ".nm-tbl .nm-none{color:var(--faint,#5F6878)}",
+    ".nm-tbl td .nm-cost{white-space:nowrap}",
+    ".nm-cap.nm-costs{margin:-6px 0 16px}",
     // below 640px the two "Chosen" columns move into a row of their own under each side (nm-who-row)
     ".nm-tbl tr.nm-who-row{display:none}",
     ".nm-who-row td{padding-top:0}",
@@ -106,26 +108,28 @@
       ".nm-tbl th,.nm-tbl td{padding:7px 9px;font-size:13px}" +
       ".nm-tbl tbody th{white-space:normal;min-width:8.5em}.nm-tbl thead th{white-space:normal}" +
       ".nm-tbl .nm-wide{display:none}.nm-tbl tr.nm-who-row{display:table-row}" +
-      ".nm-tbl tr.nm-has-who th,.nm-tbl tr.nm-has-who td{border-bottom:none}}"
+      ".nm-tbl tr.nm-has-who th,.nm-tbl tr.nm-has-who td{border-bottom:none}.nm-tbl td .nm-cost{white-space:normal}}",
+    // the narrowest phones: the side's name wraps freely so the figures to the cent keep their columns
+    "@media (max-width:360px){.nm-tbl tbody th{min-width:0}.nm-tbl th,.nm-tbl td{padding:7px 6px}}"
   ].join("\n");
 
   // ------------------------------------------------------------------ formatting
+  // P&L in dollars and cents (the file's own precision), signed, a word joiner after the sign so it never wraps
+  function cents(x) { return Math.round(Math.abs(x) * 100); }
+  function shownCents(x) { return (x < 0 ? -1 : 1) * cents(x); }     // the figure money() shows, in signed cents
   function money(x) {
-    var n = Math.round(Math.abs(x));
-    var s = String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-    if (n === 0) { return "$0"; }
+    var c = cents(x);
+    var s = String(Math.floor(c / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, ",") + "." + String(100 + c % 100).slice(1);
+    if (c === 0) { return "$0.00"; }
     return (x < 0 ? MINUS : "+") + JOIN + "$" + s;
   }
   function price(x) { return "$" + x.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ","); }
   function strike(x) { return "$" + (Math.round(x) === x ? String(x) : x.toFixed(2)); }
   function pct(x, digits) { return (x < 0 ? MINUS : "+") + Math.abs(x).toFixed(digits) + "%"; }
   function vol(x) { return (100 * x).toFixed(1) + "%"; }
-  // a model's p: three decimals, or five when three would land on the band's edge (0.44996 is not 0.450)
-  function prob(p) {
-    var t = p.toFixed(3);
-    return t === "0.450" || t === "0.550" ? p.toFixed(5) : t;
-  }
-  function cls(x) { return Math.round(x) > 0 ? "nm-pos" : (Math.round(x) < 0 ? "nm-neg" : ""); }
+  // a model's p, always to five decimals (the file's precision): fewer would put 0.44996 on the band's edge as 0.450
+  function prob(p) { return p.toFixed(5); }
+  function cls(x) { return cents(x) === 0 ? "" : (x > 0 ? "nm-pos" : "nm-neg"); }
   function parts(iso) { var p = iso.split("-"); return [+p[0], +p[1], +p[2]]; }
   function dayName(iso) { var p = parts(iso); return MONTHS[p[1] - 1] + " " + p[2]; }
   function shortDay(iso) { var p = parts(iso); return MONTHS[p[1] - 1].slice(0, 3) + " " + p[2]; }
@@ -190,6 +194,7 @@
           if (!isDate(m.daily[k].date) || !isNum(m.daily[k].pnl_to_date)) { fail("daily row"); }
         }
         if (m.daily[m.daily.length - 1].date !== d.as_of) { fail("the last row is not the mark's"); }
+        if (!isNum(m.spread_cost) || !isNum(m.hedge_costs) || !m.split || !isNum(m.split.costs)) { fail("costs"); }
       }
     }
     if (!(d.notes instanceof Array)) { fail("notes"); }
@@ -238,11 +243,43 @@
     var cells = [h("th", {scope: "row", "class": "l"}, [SIDE_NAMES[side], h("span", {"class": "nm-sub"}, sub)])];
     for (var j = 0; j < FILLS.length; j++) {
       var x = doc.marks[side][FILLS[j]].pnl;
-      cells.push(h("td", {"class": cls(x)}, money(x)));
+      cells.push(h("td", {"class": cls(x)}, FILLS[j] === "stress"
+        ? [money(x), h("span", {"class": "nm-sub nm-cost"}, "after " + price(costs(doc, side).total) + " costs")]
+        : money(x)));
     }
     cells.push(whoCell(doc, "f7_0", side));
     cells.push(whoCell(doc, "f7_1", side));
     return [h("tr", {"class": "nm-has-who"}, cells), whoRow(doc, side)];
+  }
+
+  // the stress fill's costs, in dollars (> 0): the entry legs' distance from mid and 5 bp of each hedge trade
+  function costs(doc, side) {
+    var m = doc.marks[side].stress;
+    return {total: -m.split.costs, spread: m.spread_cost, hedge: m.hedge_costs};
+  }
+
+  // what the stress figures paid, under the table; and, when the rounded figures do not show it exactly, why
+  function costLine(doc) {
+    var a = costs(doc, "put_rich"), b = costs(doc, "call_rich"), parts = [];
+    var one = function (c) {
+      return price(c.total) + ": " + price(c.spread) + " for the legs' bid and ask at entry and " + price(c.hedge) +
+        " for the hedge trades";
+    };
+    var text = cents(a.total) === cents(b.total) && cents(a.spread) === cents(b.spread) &&
+               cents(a.hedge) === cents(b.hedge)
+      ? "Stress costs each side " + one(a) + "."
+      : "Stress costs: put side rich " + one(a) + "; call side rich " + one(b) + ".";
+    for (var i = 0; i < SIDES.length; i++) {
+      var m = doc.marks[SIDES[i]];
+      if (shownCents(m.mid.pnl) - shownCents(m.stress.pnl) !== cents(costs(doc, SIDES[i]).total)) {
+        parts.push(SIDE_NAMES[SIDES[i]].toLowerCase());
+      }
+    }
+    if (parts.length) {
+      text += " Each figure is rounded to the cent on its own, so mid minus stress as shown can be a cent off the " +
+              "costs (" + parts.join(" and ") + ").";
+    }
+    return h("p", {"class": "nm-cap nm-costs"}, text);
   }
 
   function table(doc) {
@@ -251,7 +288,7 @@
     if (idle) {
       rows.push(h("tr", {"class": "nm-has-who"}, [h("th", {scope: "row", "class": "l"}, ["No trade",
                                  h("span", {"class": "nm-sub"}, "p inside the 0.45 to 0.55 band")]),
-                               h("td", null, "$0"), h("td", null, "$0"),
+                               h("td", null, money(0)), h("td", null, money(0)),
                                whoCell(doc, "f7_0", null), whoCell(doc, "f7_1", null)]));
       rows.push(whoRow(doc, null));
     }
@@ -262,7 +299,7 @@
                                       h("th", {scope: "col"}, "Mid"), h("th", {scope: "col"}, "Stress"),
                                       h("th", {scope: "col", "class": "l nm-wide"}, "Chosen, f7 = 0"),
                                       h("th", {scope: "col", "class": "l nm-wide"}, "Chosen, f7 = 1")])),
-      h("tbody", null, rows)]))]);
+      h("tbody", null, rows)])), costLine(doc)]);
   }
 
   function stat(k, v, d) {
@@ -340,22 +377,30 @@
     var step = niceStep(hi - lo, 4);
     lo = Math.floor(lo / step) * step;
     hi = Math.ceil(hi / step) * step;
-    var series = [{rows: put, color: "var(--series-1,#2A5FA5)", name: "Put side rich", key: "put_rich"},
-                  {rows: call, color: "var(--series-2,#C26B1D)", name: "Call side rich", key: "call_rich"}];
+    var series = [{rows: put, color: "var(--series-1,#2A5FA5)", name: "Put side rich", short: "Put side",
+                   key: "put_rich"},
+                  {rows: call, color: "var(--series-2,#C26B1D)", name: "Call side rich", short: "Call side",
+                   key: "call_rich"}];
 
     // The end labels sit right of the last close, where no line runs, in a gutter past the plot when the last
-    // close is at (or near) the expiry. The side's name and value when that fits in under a third of the width,
-    // else the value after a swatch of the side's color (the legend names the colors).
-    var LABEL = 12, GAP = 10, SWATCH = 14;
+    // close is at (or near) the expiry. Each names its side: on one line ("Put side rich +$995.20") when that
+    // leaves the plot at least 55% of the width even with the last close at the expiry, else on two lines, the
+    // name over the value, shortened to "Put side" when the full name would not leave that much.
+    var LABEL = 12, NAME = 11, GAP = 10, LEAD = 14;
     var family = (window.getComputedStyle && window.getComputedStyle(box).fontFamily) || "system-ui, sans-serif";
-    var fullW = 0, shortW = 0;
-    for (i = 0; i < series.length; i++) {
-      var v = series[i].rows[series[i].rows.length - 1].pnl_to_date;
-      fullW = Math.max(fullW, 1.08 * textWidth(series[i].name + " " + money(v), LABEL, family) + 4);
-      shortW = Math.max(shortW, 1.08 * textWidth(money(v), LABEL, family) + 4);
+    function wide(text, size) { return 1.08 * textWidth(text, size, family) + 4; }
+    var forms = [{lines: 1, key: "name"}, {lines: 2, key: "name"}, {lines: 2, key: "short"}], form = null;
+    for (var f = 0; f < forms.length && !form; f++) {
+      var w = 0;
+      for (i = 0; i < series.length; i++) {
+        var v = money(series[i].rows[series[i].rows.length - 1].pnl_to_date), nm = series[i][forms[f].key];
+        w = Math.max(w, forms[f].lines === 1 ? wide(nm + " " + v, LABEL) : Math.max(wide(nm, NAME), wide(v, LABEL)));
+      }
+      forms[f].w = w;
+      if (width - 4 - GAP - w - pad.l >= 0.55 * width || f === forms.length - 1) { form = forms[f]; }
     }
-    var named = fullW + GAP <= width / 3;
-    var labelW = named ? fullW : SWATCH + shortW;
+    var labelW = form.w;
+    var up = form.lines === 1 ? 12 : LEAD + 11;              // a label's box: from `up` above its last baseline to 3 below
     var at = (dayNumber(doc.as_of) - x0) / (x1 - x0);        // 0 at the entry, 1 at the expiry
     var right = width - 14;
     if (at > 0) { right = Math.min(right, pad.l + (width - 4 - GAP - labelW - pad.l) / at); }
@@ -380,37 +425,39 @@
       add(svg, s("text", {x: pad.l - 8, y: y + 4, "text-anchor": "end", "font-size": 11,
                           style: "fill:var(--faint,#5F6878)"}, kLabel(Math.round(g))));
     }
-    // the expiry and any event inside the cycle, as thin dashed rules
-    var rules = [{date: doc.cycle.expiry, label: "expiry"}];
+    // the expiry (named with its date, which the axis below leaves out) and any event inside the cycle, as thin
+    // dashed rules; each label ends just left of its rule, on the top row, or one row lower when the top row's
+    // place is taken by a label already drawn
+    var rules = [{date: doc.cycle.expiry, label: "expiry " + shortDay(doc.cycle.expiry)}];
     for (i = 0; i < (doc.events || []).length; i++) {
       var e = doc.events[i];
       if (isDate(e.date) && e.date > doc.cycle.entry && e.date < doc.cycle.expiry) {
         rules.push({date: e.date, label: "report", after: e.timing === "after_close"});
       }
     }
-    var prevX = null, taken = [];
+    var taken = [];
     for (i = 0; i < rules.length; i++) {
       var mx = X(rules[i].date) + (rules[i].after ? 0.5 * (width - pad.l - pad.r) / (x1 - x0) : 0);
       add(svg, s("line", {x1: mx, x2: mx, y1: pad.t - 4, y2: height - pad.b, style: "stroke:var(--zero,#A4ABB7)",
                           "stroke-width": 1, "stroke-dasharray": "3 3"}));
-      // the expiry's label ends at its rule; an event's sits left of its rule, one line lower when it is close
-      var near = prevX !== null && prevX - mx < 70;
-      var lx = i === 0 ? mx : mx - 4, ly = near ? pad.t + 8 : pad.t - 8;
-      add(svg, s("text", {x: lx, y: ly, "text-anchor": "end", "font-size": 11, "class": "nm-halo",
+      var lx = i === 0 ? mx : mx - 4, rw = 1.08 * textWidth(rules[i].label, 11, family);
+      var spot = {x0: lx - rw - 2, x1: lx + 2, y0: pad.t - 19, y1: pad.t - 5};
+      for (var q = 0; q < taken.length; q++) {
+        if (overlaps(spot, taken[q])) { spot.y0 = pad.t - 3; spot.y1 = pad.t + 11; }
+      }
+      add(svg, s("text", {x: lx, y: spot.y1 - 3, "text-anchor": "end", "font-size": 11, "class": "nm-halo nm-rule",
                           style: "fill:var(--faint,#5F6878)"}, rules[i].label));
-      var rw = 1.08 * textWidth(rules[i].label, 11, family);
-      taken.push({x0: lx - rw - 2, x1: lx + 2, y0: ly - 11, y1: ly + 3});
-      if (i === 0) { prevX = mx; }
+      taken.push(spot);
     }
-    // x labels: the entry, the mark, the expiry (the mark's only when it has room)
+    // x labels: the latest close, under its point (kept inside the chart), and the entry when the two do not meet
     var base = height - pad.b + 17;
-    add(svg, s("text", {x: pad.l, y: base, "font-size": 11, style: "fill:var(--faint,#5F6878)"}, shortDay(doc.cycle.entry)));
-    add(svg, s("text", {x: width - pad.r, y: base, "text-anchor": "end", "font-size": 11,
-                        style: "fill:var(--faint,#5F6878)"}, shortDay(doc.cycle.expiry)));
-    var ax = X(doc.as_of);
-    if (ax - pad.l > 56 && width - pad.r - ax > 56) {
-      add(svg, s("text", {x: ax, y: base, "text-anchor": "middle", "font-size": 11, style: "fill:var(--faint,#5F6878)"},
-                 shortDay(doc.as_of)));
+    var axText = shortDay(doc.as_of), axW = wide(axText, 11) - 4;
+    var axLeft = Math.max(pad.l, Math.min(width - axW, X(doc.as_of) - axW / 2));
+    add(svg, s("text", {x: axLeft, y: base, "font-size": 11, "class": "nm-tick", style: "fill:var(--faint,#5F6878)"},
+               axText));
+    if (doc.as_of !== doc.cycle.entry && pad.l + wide(shortDay(doc.cycle.entry), 11) + 6 <= axLeft) {
+      add(svg, s("text", {x: pad.l, y: base, "font-size": 11, "class": "nm-tick", style: "fill:var(--faint,#5F6878)"},
+                 shortDay(doc.cycle.entry)));
     }
     for (i = 0; i < series.length; i++) {
       var pts = [];
@@ -428,14 +475,15 @@
       ends.push({x: X(last.date), y: Y(last.pnl_to_date), v: last.pnl_to_date, s: series[i]});
     }
     ends.sort(function (a, b) { return a.y - b.y; });
-    // baselines at each point's height, 15px apart, inside the plot, below any rule's label they would cross
-    var top = pad.t + 12, bottom = height - pad.b - 3;
+    // each label centered on its point's height where it can be: one clear of the other, inside the plot, below
+    // any rule's label it would cross (`base` is a label's last baseline)
+    var mid = (up - 3) / 2, top = pad.t + up, bottom = height - pad.b - 3;
     for (i = 0; i < ends.length; i++) {
-      var b0 = Math.max(top, Math.min(bottom, ends[i].y + 4));
-      if (i && b0 < ends[i - 1].base + 15) { b0 = ends[i - 1].base + 15; }
-      var bx = {x0: ends[i].x + GAP - 2, x1: ends[i].x + GAP + labelW, y0: b0 - 12, y1: b0 + 3};
+      var b0 = Math.max(top, Math.min(bottom, ends[i].y + mid));
+      if (i && b0 < ends[i - 1].base + up + 3) { b0 = ends[i - 1].base + up + 3; }
+      var bx = {x0: ends[i].x + GAP - 2, x1: ends[i].x + GAP + labelW, y0: b0 - up, y1: b0 + 3};
       for (var t = 0; t < taken.length; t++) {
-        if (overlaps(bx, taken[t])) { b0 = taken[t].y1 + 13; bx.y0 = b0 - 12; bx.y1 = b0 + 3; }
+        if (overlaps(bx, taken[t])) { b0 = taken[t].y1 + up + 1; bx.y0 = b0 - up; bx.y1 = b0 + 3; }
       }
       ends[i].base = b0;
     }
@@ -444,21 +492,22 @@
       for (i = 0; i < ends.length; i++) { ends[i].base -= lift; }
     }
     for (i = 0; i < ends.length; i++) {
-      var en = ends[i], tx = en.x + GAP;
+      var en = ends[i], tx = en.x + GAP, center = en.base - mid;
       add(svg, s("circle", {cx: en.x, cy: en.y, r: 4, style: "fill:" + en.s.color + ";stroke:var(--panel,#fff)",
                             "stroke-width": 2}));
-      if (Math.abs(en.base - 4 - en.y) > 6) {            // a label moved off its point's height: a leader to it
-        add(svg, s("line", {x1: en.x + 5, y1: en.y, x2: tx - 2, y2: en.base - 4, style: "stroke:" + en.s.color,
+      if (Math.abs(center - en.y) > 6) {                 // a label moved off its point's height: a leader to it
+        add(svg, s("line", {x1: en.x + 5, y1: en.y, x2: tx - 2, y2: center, style: "stroke:" + en.s.color,
                             "stroke-width": 1}));
       }
-      if (!named) {
-        add(svg, s("line", {x1: tx, x2: tx + SWATCH - 4, y1: en.base - 4, y2: en.base - 4, style: "stroke:" +
-                            en.s.color, "stroke-width": 2.5, "stroke-linecap": "round"}));
-        tx += SWATCH;
+      var label = s("text", {x: tx, y: en.base, "font-size": LABEL, "font-weight": 600, "class": "nm-halo nm-end",
+                             "data-side": en.s.key, style: "fill:var(--text,#1C2430)"});
+      if (form.lines === 1) {
+        add(label, en.s.name + " " + money(en.v));
+      } else {                                           // the name over the value, the space kept for textContent
+        add(label, [s("tspan", {x: tx, y: en.base - LEAD, "font-size": NAME}, en.s[form.key] + " "),
+                    s("tspan", {x: tx, y: en.base}, money(en.v))]);
       }
-      add(svg, s("text", {x: tx, y: en.base, "font-size": LABEL, "font-weight": 600, "class": "nm-halo nm-end",
-                          "data-side": en.s.key, style: "fill:var(--text,#1C2430)"},
-                 (named ? en.s.name + " " : "") + money(en.v)));
+      add(svg, label);
     }
     // the nearest close's figures: on hover, on touch (following a drag), and from the keyboard
     var tip = h("div", {"class": "nm-tip", "aria-hidden": "true"});
