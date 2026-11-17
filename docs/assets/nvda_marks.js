@@ -11,6 +11,9 @@
  *
  *   <div data-nvda-mark="vol_arb" data-baked="2026-11-16"> ...the baked figures... </div>
  *   <script src="assets/nvda_marks.js" defer></script>
+ *
+ * The widget's own title is an h4, for an element placed inside a section headed h3 (the vol-arb page's panels);
+ * data-heading-level="2".."6" picks another level.
  */
 (function () {
   "use strict";
@@ -43,8 +46,14 @@
     ".nm-v{font:600 22px/1.2 var(--font,system-ui,sans-serif);color:var(--heading,#16263F);margin-top:5px;" +
       "font-variant-numeric:tabular-nums}",
     ".nm-d{font-size:13px;line-height:1.45;color:var(--muted,#4E5868);margin-top:4px}",
+    // the site's .tbl-wrap edge shadows: a table wider than its box shows which side has more
     ".nm-tblwrap{overflow-x:auto;max-width:100%;-webkit-overflow-scrolling:touch;border:1px solid " +
-      "var(--line-soft,#EBEEF2);border-radius:8px;margin:0 0 16px}",
+      "var(--line-soft,#EBEEF2);border-radius:8px;margin:0 0 16px;" +
+      "background:linear-gradient(to right,var(--panel,#fff) 30%,rgba(255,255,255,0)) left center/28px 100% " +
+      "no-repeat local,linear-gradient(to left,var(--panel,#fff) 30%,rgba(255,255,255,0)) right center/28px 100% " +
+      "no-repeat local,radial-gradient(farthest-side at 0 50%,rgba(22,38,63,.18),rgba(22,38,63,0)) left center/12px " +
+      "100% no-repeat scroll,radial-gradient(farthest-side at 100% 50%,rgba(22,38,63,.18),rgba(22,38,63,0)) right " +
+      "center/12px 100% no-repeat scroll}",
     ".nm-tbl{border-collapse:collapse;width:100%;font-size:14px;font-variant-numeric:tabular-nums}",
     ".nm-tbl caption{text-align:left;font-size:13px;color:var(--muted,#4E5868);padding:9px 12px 0;caption-side:top}",
     ".nm-tbl th,.nm-tbl td{padding:8px 12px;border-bottom:1px solid var(--line-soft,#EBEEF2);text-align:right;" +
@@ -58,11 +67,20 @@
     ".nm-tbl .nm-who{font-size:13px;color:var(--text,#1C2430);min-width:9.5em}",
     ".nm-tbl .nm-who span{display:block;white-space:nowrap}",
     ".nm-tbl .nm-none{color:var(--faint,#5F6878)}",
+    // below 640px the two "Chosen" columns move into a row of their own under each side (nm-who-row)
+    ".nm-tbl tr.nm-who-row{display:none}",
+    ".nm-who-row td{padding-top:0}",
+    ".nm-who-row .nm-wb{display:inline-block;vertical-align:top;margin:0 18px 2px 0;min-width:9em}",
+    ".nm-who-row .nm-wk{display:block;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;" +
+      "color:var(--faint,#5F6878);margin:0 0 2px}",
+    ".nm-who-row .nm-wb span{display:block}",
     ".nm-pos{color:var(--up,#1E7A46)} .nm-neg{color:var(--down,#B42318)}",
     ".nm-chart{position:relative;margin:0 0 6px;min-width:0}",
     ".nm-legend{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:13px;color:var(--muted,#4E5868);margin:0 0 4px}",
     ".nm-legend i{display:inline-block;width:14px;height:2px;border-radius:1px;vertical-align:middle;margin-right:6px}",
-    ".nm-chart svg{display:block;width:100%;overflow:visible}",
+    ".nm-chart svg{display:block;width:100%;overflow:visible;touch-action:pan-y}",
+    ".nm-chart svg:focus{outline:none}",
+    ".nm-chart svg:focus-visible{outline:2px solid var(--accent,#2F5D8A);outline-offset:3px;border-radius:4px}",
     ".nm-chart text{font-family:var(--font,system-ui,sans-serif)}",
     ".nm-chart text.nm-halo{paint-order:stroke;stroke:var(--panel,#fff);stroke-width:4px;stroke-linejoin:round}",
     ".nm-sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);border:0}",
@@ -76,9 +94,19 @@
     ".nm-sub-h{font-size:11.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;" +
       "color:var(--faint,#5F6878);margin:14px 0 6px}",
     ".nm-fail{font-family:var(--font,system-ui,sans-serif);font-size:13px;color:var(--faint,#5F6878);margin:10px 0 0}",
+    ".nm-nums{margin:2px 0 12px}",
+    ".nm-nums summary{cursor:pointer;color:var(--accent,#2F5D8A);font-size:14px;font-weight:500;list-style:none;" +
+      "display:inline-block;padding:2px 0}",
+    ".nm-nums summary::-webkit-details-marker{display:none}",
+    ".nm-nums summary::before{content:\"+\";display:inline-block;width:16px}",
+    ".nm-nums[open] > summary::before{content:\"\\2212\"}",
+    ".nm-nums summary:hover{color:var(--accent-hover,#244B70)}",
+    ".nm-nums .nm-tblwrap{max-height:460px;overflow-y:auto;margin:6px 0 0}",
     "@media (max-width:640px){.nm-stats{grid-template-columns:minmax(0,1fr)}.nm-v{font-size:20px}" +
       ".nm-tbl th,.nm-tbl td{padding:7px 9px;font-size:13px}" +
-      ".nm-tbl tbody th{white-space:normal;min-width:8.5em}.nm-tbl thead th{white-space:normal}}"
+      ".nm-tbl tbody th{white-space:normal;min-width:8.5em}.nm-tbl thead th{white-space:normal}" +
+      ".nm-tbl .nm-wide{display:none}.nm-tbl tr.nm-who-row{display:table-row}" +
+      ".nm-tbl tr.nm-has-who th,.nm-tbl tr.nm-has-who td{border-bottom:none}}"
   ].join("\n");
 
   // ------------------------------------------------------------------ formatting
@@ -177,16 +205,27 @@
     return names;
   }
 
-  function whoCell(doc, reading, side) {
-    var names = chooserList(doc.cycle.decisions[reading], side);
-    var td = h("td", {"class": "l nm-who"});
-    if (!names.length) { add(td, h("span", {"class": "nm-none"}, "none")); return td; }
+  function whoNames(doc, reading, side) {
+    var names = chooserList(doc.cycle.decisions[reading], side), out = [];
+    if (!names.length) { return [h("span", {"class": "nm-none"}, "none")]; }
     for (var i = 0; i < names.length; i++) {
       var m = doc.cycle.decisions[reading][names[i]];
       var label = (doc.cycle.models && doc.cycle.models[names[i]]) || names[i];
-      add(td, h("span", null, label + (isNum(m.p) ? " (p " + prob(m.p) + ")" : "")));
+      out.push(h("span", null, label + (isNum(m.p) ? " (p " + prob(m.p) + ")" : "")));
     }
-    return td;
+    return out;
+  }
+
+  function whoCell(doc, reading, side) {
+    return h("td", {"class": "l nm-who nm-wide"}, whoNames(doc, reading, side));
+  }
+
+  // the same choosers as one row under the side's, shown instead of the two columns below 640px
+  function whoRow(doc, side) {
+    return h("tr", {"class": "nm-who-row"}, h("td", {colspan: "3", "class": "l"}, [
+      h("div", {"class": "nm-wb"}, [h("span", {"class": "nm-wk"}, "Chosen, f7 = 0")].concat(whoNames(doc, "f7_0", side))),
+      h("div", {"class": "nm-wb"}, [h("span", {"class": "nm-wk"}, "Chosen, f7 = 1")].concat(whoNames(doc, "f7_1", side)))
+    ]));
   }
 
   function sideRow(doc, side) {
@@ -203,25 +242,26 @@
     }
     cells.push(whoCell(doc, "f7_0", side));
     cells.push(whoCell(doc, "f7_1", side));
-    return h("tr", null, cells);
+    return [h("tr", {"class": "nm-has-who"}, cells), whoRow(doc, side)];
   }
 
   function table(doc) {
-    var rows = [sideRow(doc, "put_rich"), sideRow(doc, "call_rich")];
+    var rows = sideRow(doc, "put_rich").concat(sideRow(doc, "call_rich"));
     var idle = chooserList(doc.cycle.decisions.f7_0, null).length + chooserList(doc.cycle.decisions.f7_1, null).length;
     if (idle) {
-      rows.push(h("tr", null, [h("th", {scope: "row", "class": "l"}, ["No trade",
+      rows.push(h("tr", {"class": "nm-has-who"}, [h("th", {scope: "row", "class": "l"}, ["No trade",
                                  h("span", {"class": "nm-sub"}, "p inside the 0.45 to 0.55 band")]),
                                h("td", null, "$0"), h("td", null, "$0"),
                                whoCell(doc, "f7_0", null), whoCell(doc, "f7_1", null)]));
+      rows.push(whoRow(doc, null));
     }
     return h("div", null, [h("div", {"class": "nm-sub-h"}, "P&L to date, by the side traded"),
       h("div", {"class": "nm-tblwrap"}, h("table", {"class": "nm-tbl"}, [
       h("caption", {"class": "nm-sr"}, "P&L to date in dollars, by the side traded, and the models that chose each side"),
       h("thead", null, h("tr", null, [h("th", {scope: "col", "class": "l"}, "Side"),
                                       h("th", {scope: "col"}, "Mid"), h("th", {scope: "col"}, "Stress"),
-                                      h("th", {scope: "col", "class": "l"}, "Chosen, f7 = 0"),
-                                      h("th", {scope: "col", "class": "l"}, "Chosen, f7 = 1")])),
+                                      h("th", {scope: "col", "class": "l nm-wide"}, "Chosen, f7 = 0"),
+                                      h("th", {scope: "col", "class": "l nm-wide"}, "Chosen, f7 = 1")])),
       h("tbody", null, rows)]))]);
   }
 
@@ -269,6 +309,22 @@
     return (v < 0 ? MINUS : "+") + "$" + t;
   }
 
+  // a label's width in the chart's font: a canvas measures it, an estimate stands in when it cannot
+  var measurer = null;
+  function textWidth(text, size, family) {
+    try {
+      measurer = measurer || document.createElement("canvas").getContext("2d");
+      if (measurer) {
+        measurer.font = "600 " + size + "px " + family;
+        var w = measurer.measureText(text).width;
+        if (w > 0) { return w; }
+      }
+    } catch (e) { measurer = null; }
+    return text.length * size * 0.62;
+  }
+
+  function overlaps(a, b) { return a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1; }
+
   function drawChart(box, doc) {
     var width = Math.max(260, Math.floor(box.getBoundingClientRect().width || 600));
     var height = width < 480 ? 210 : 240;
@@ -284,42 +340,66 @@
     var step = niceStep(hi - lo, 4);
     lo = Math.floor(lo / step) * step;
     hi = Math.ceil(hi / step) * step;
+    var series = [{rows: put, color: "var(--series-1,#2A5FA5)", name: "Put side rich", key: "put_rich"},
+                  {rows: call, color: "var(--series-2,#C26B1D)", name: "Call side rich", key: "call_rich"}];
+
+    // The end labels sit right of the last close, where no line runs, in a gutter past the plot when the last
+    // close is at (or near) the expiry. The side's name and value when that fits in under a third of the width,
+    // else the value after a swatch of the side's color (the legend names the colors).
+    var LABEL = 12, GAP = 10, SWATCH = 14;
+    var family = (window.getComputedStyle && window.getComputedStyle(box).fontFamily) || "system-ui, sans-serif";
+    var fullW = 0, shortW = 0;
+    for (i = 0; i < series.length; i++) {
+      var v = series[i].rows[series[i].rows.length - 1].pnl_to_date;
+      fullW = Math.max(fullW, 1.08 * textWidth(series[i].name + " " + money(v), LABEL, family) + 4);
+      shortW = Math.max(shortW, 1.08 * textWidth(money(v), LABEL, family) + 4);
+    }
+    var named = fullW + GAP <= width / 3;
+    var labelW = named ? fullW : SWATCH + shortW;
+    var at = (dayNumber(doc.as_of) - x0) / (x1 - x0);        // 0 at the entry, 1 at the expiry
+    var right = width - 14;
+    if (at > 0) { right = Math.min(right, pad.l + (width - 4 - GAP - labelW - pad.l) / at); }
+    pad.r = width - right;
     function X(iso) { return pad.l + (dayNumber(iso) - x0) / (x1 - x0) * (width - pad.l - pad.r); }
     function Y(v) { return pad.t + (hi - v) / (hi - lo) * (height - pad.t - pad.b); }
 
     var id = "nm-svg-" + (++uid);
     var svg = s("svg", {viewBox: "0 0 " + width + " " + height, width: width, height: height, role: "img",
-                        "aria-labelledby": id + "-t " + id + "-d"});
+                        tabindex: "0", "aria-labelledby": id + "-t " + id + "-d"});
     add(svg, s("title", {id: id + "-t"}, "Daily P&L to date at mid, both sides"));
     add(svg, s("desc", {id: id + "-d"},
                "From the " + dayName(doc.cycle.entry) + " entry to the " + dayName(doc.as_of) + " close: put side " +
                "rich " + money(doc.marks.put_rich.mid.pnl) + ", call side rich " + money(doc.marks.call_rich.mid.pnl) +
-               ". The table above has the figures."));
-    for (var v = lo; v <= hi + step / 2; v += step) {
-      var y = Y(v);
+               ". Every close's figures are in the daily table under the chart; with the chart focused, the arrow " +
+               "keys step through the closes."));
+    for (var g = lo; g <= hi + step / 2; g += step) {
+      var y = Y(g);
       add(svg, s("line", {x1: pad.l, x2: width - pad.r, y1: y, y2: y,
-                          style: "stroke:" + (v === 0 ? "var(--zero,#A4ABB7)" : "var(--line-soft,#EBEEF2)"),
-                          "stroke-width": v === 0 ? 1.25 : 1}));
+                          style: "stroke:" + (g === 0 ? "var(--zero,#A4ABB7)" : "var(--line-soft,#EBEEF2)"),
+                          "stroke-width": g === 0 ? 1.25 : 1}));
       add(svg, s("text", {x: pad.l - 8, y: y + 4, "text-anchor": "end", "font-size": 11,
-                          style: "fill:var(--faint,#5F6878)"}, kLabel(Math.round(v))));
+                          style: "fill:var(--faint,#5F6878)"}, kLabel(Math.round(g))));
     }
     // the expiry and any event inside the cycle, as thin dashed rules
-    var marks = [{date: doc.cycle.expiry, label: "expiry"}];
+    var rules = [{date: doc.cycle.expiry, label: "expiry"}];
     for (i = 0; i < (doc.events || []).length; i++) {
       var e = doc.events[i];
       if (isDate(e.date) && e.date > doc.cycle.entry && e.date < doc.cycle.expiry) {
-        marks.push({date: e.date, label: "report", after: e.timing === "after_close"});
+        rules.push({date: e.date, label: "report", after: e.timing === "after_close"});
       }
     }
-    var prevX = null;
-    for (i = 0; i < marks.length; i++) {
-      var mx = X(marks[i].date) + (marks[i].after ? 0.5 * (width - pad.l - pad.r) / (x1 - x0) : 0);
+    var prevX = null, taken = [];
+    for (i = 0; i < rules.length; i++) {
+      var mx = X(rules[i].date) + (rules[i].after ? 0.5 * (width - pad.l - pad.r) / (x1 - x0) : 0);
       add(svg, s("line", {x1: mx, x2: mx, y1: pad.t - 4, y2: height - pad.b, style: "stroke:var(--zero,#A4ABB7)",
                           "stroke-width": 1, "stroke-dasharray": "3 3"}));
       // the expiry's label ends at its rule; an event's sits left of its rule, one line lower when it is close
       var near = prevX !== null && prevX - mx < 70;
-      add(svg, s("text", {x: i === 0 ? mx : mx - 4, y: near ? pad.t + 8 : pad.t - 8, "text-anchor": "end",
-                          "font-size": 11, "class": "nm-halo", style: "fill:var(--faint,#5F6878)"}, marks[i].label));
+      var lx = i === 0 ? mx : mx - 4, ly = near ? pad.t + 8 : pad.t - 8;
+      add(svg, s("text", {x: lx, y: ly, "text-anchor": "end", "font-size": 11, "class": "nm-halo",
+                          style: "fill:var(--faint,#5F6878)"}, rules[i].label));
+      var rw = 1.08 * textWidth(rules[i].label, 11, family);
+      taken.push({x0: lx - rw - 2, x1: lx + 2, y0: ly - 11, y1: ly + 3});
       if (i === 0) { prevX = mx; }
     }
     // x labels: the entry, the mark, the expiry (the mark's only when it has room)
@@ -332,15 +412,14 @@
       add(svg, s("text", {x: ax, y: base, "text-anchor": "middle", "font-size": 11, style: "fill:var(--faint,#5F6878)"},
                  shortDay(doc.as_of)));
     }
-    var series = [{rows: put, color: "var(--series-1,#2A5FA5)", name: "Put side rich", key: "put_rich"},
-                  {rows: call, color: "var(--series-2,#C26B1D)", name: "Call side rich", key: "call_rich"}];
     for (i = 0; i < series.length; i++) {
       var pts = [];
       for (var k = 0; k < series[i].rows.length; k++) {
         pts.push(X(series[i].rows[k].date).toFixed(1) + "," + Y(series[i].rows[k].pnl_to_date).toFixed(1));
       }
       add(svg, s("polyline", {points: pts.join(" "), fill: "none", style: "stroke:" + series[i].color, "stroke-width": 2,
-                              "stroke-linejoin": "round", "stroke-linecap": "round"}));
+                              "stroke-linejoin": "round", "stroke-linecap": "round", "class": "nm-line",
+                              "data-side": series[i].key}));
     }
     // the end points, ringed in the surface color, each labeled with its side and value
     var ends = [];
@@ -349,26 +428,57 @@
       ends.push({x: X(last.date), y: Y(last.pnl_to_date), v: last.pnl_to_date, s: series[i]});
     }
     ends.sort(function (a, b) { return a.y - b.y; });
+    // baselines at each point's height, 15px apart, inside the plot, below any rule's label they would cross
+    var top = pad.t + 12, bottom = height - pad.b - 3;
     for (i = 0; i < ends.length; i++) {
-      add(svg, s("circle", {cx: ends[i].x, cy: ends[i].y, r: 4, style: "fill:" + ends[i].s.color + ";stroke:var(--panel,#fff)", "stroke-width": 2}));
-      var above = i === 0;
-      add(svg, s("text", {x: ends[i].x - 8, y: ends[i].y + (above ? -9 : 17), "text-anchor": "end", "font-size": 12,
-                          "font-weight": 600, "class": "nm-halo", style: "fill:var(--text,#1C2430)"},
-                 ends[i].s.name + " " + money(ends[i].v)));
+      var b0 = Math.max(top, Math.min(bottom, ends[i].y + 4));
+      if (i && b0 < ends[i - 1].base + 15) { b0 = ends[i - 1].base + 15; }
+      var bx = {x0: ends[i].x + GAP - 2, x1: ends[i].x + GAP + labelW, y0: b0 - 12, y1: b0 + 3};
+      for (var t = 0; t < taken.length; t++) {
+        if (overlaps(bx, taken[t])) { b0 = taken[t].y1 + 13; bx.y0 = b0 - 12; bx.y1 = b0 + 3; }
+      }
+      ends[i].base = b0;
     }
-    // hover: the nearest close's figures
-    var tip = h("div", {"class": "nm-tip", role: "presentation"});
+    if (ends[ends.length - 1].base > bottom) {           // pushed past the bottom: lift both, keeping the gap
+      var lift = ends[ends.length - 1].base - bottom;
+      for (i = 0; i < ends.length; i++) { ends[i].base -= lift; }
+    }
+    for (i = 0; i < ends.length; i++) {
+      var en = ends[i], tx = en.x + GAP;
+      add(svg, s("circle", {cx: en.x, cy: en.y, r: 4, style: "fill:" + en.s.color + ";stroke:var(--panel,#fff)",
+                            "stroke-width": 2}));
+      if (Math.abs(en.base - 4 - en.y) > 6) {            // a label moved off its point's height: a leader to it
+        add(svg, s("line", {x1: en.x + 5, y1: en.y, x2: tx - 2, y2: en.base - 4, style: "stroke:" + en.s.color,
+                            "stroke-width": 1}));
+      }
+      if (!named) {
+        add(svg, s("line", {x1: tx, x2: tx + SWATCH - 4, y1: en.base - 4, y2: en.base - 4, style: "stroke:" +
+                            en.s.color, "stroke-width": 2.5, "stroke-linecap": "round"}));
+        tx += SWATCH;
+      }
+      add(svg, s("text", {x: tx, y: en.base, "font-size": LABEL, "font-weight": 600, "class": "nm-halo nm-end",
+                          "data-side": en.s.key, style: "fill:var(--text,#1C2430)"},
+                 (named ? en.s.name + " " : "") + money(en.v)));
+    }
+    // the nearest close's figures: on hover, on touch (following a drag), and from the keyboard
+    var tip = h("div", {"class": "nm-tip", "aria-hidden": "true"});
     var cross = s("line", {x1: 0, x2: 0, y1: pad.t, y2: height - pad.b, style: "stroke:var(--faint,#5F6878)",
                            "stroke-width": 1, visibility: "hidden"});
     add(svg, cross);
     var hit = s("rect", {x: pad.l, y: 0, width: width - pad.l - pad.r, height: height, fill: "transparent"});
     add(svg, hit);
-    function show(evt) {
-      var r = svg.getBoundingClientRect(), px = (evt.clientX - r.left) * width / r.width, best = 0, bd = 1e9;
+    var current = -1;
+    function nearest(clientX) {
+      var r = svg.getBoundingClientRect(), px = (clientX - r.left) * width / r.width, best = 0, bd = 1e9;
       for (var q = 0; q < put.length; q++) {
         var dd = Math.abs(X(put[q].date) - px);
         if (dd < bd) { bd = dd; best = q; }
       }
+      return best;
+    }
+    function show(best) {
+      current = best;
+      var r = svg.getBoundingClientRect();
       var cx = X(put[best].date);
       cross.setAttribute("x1", cx); cross.setAttribute("x2", cx); cross.setAttribute("visibility", "visible");
       tip.innerHTML = "";
@@ -377,19 +487,58 @@
                 "Call side rich " + money(call[best].pnl_to_date), h("br"),
                 "NVDA " + price(put[best].close)]);
       tip.style.display = "block";
+      tip.setAttribute("data-date", put[best].date);
       var left = cx * r.width / width + 12;
       if (left + tip.offsetWidth > r.width) { left = cx * r.width / width - tip.offsetWidth - 12; }
       tip.style.left = Math.max(0, left) + "px";
       tip.style.top = (pad.t + 4) + "px";
     }
     function hide() { tip.style.display = "none"; cross.setAttribute("visibility", "hidden"); }
-    hit.addEventListener("mousemove", show);
+    function touch(e) { if (e.touches && e.touches[0]) { show(nearest(e.touches[0].clientX)); } }
+    hit.addEventListener("mousemove", function (e) { show(nearest(e.clientX)); });
     hit.addEventListener("mouseleave", hide);
-    hit.addEventListener("touchstart", function (e) { if (e.touches && e.touches[0]) { show(e.touches[0]); } },
-                         {passive: true});
+    hit.addEventListener("touchstart", touch, {passive: true});
+    hit.addEventListener("touchmove", touch, {passive: true});
+    hit.addEventListener("touchend", hide);
+    hit.addEventListener("touchcancel", hide);
+    svg.addEventListener("focus", function () { show(current >= 0 ? current : put.length - 1); });
+    svg.addEventListener("blur", hide);
+    svg.addEventListener("keydown", function (e) {
+      var key = e.key, n = current >= 0 ? current : put.length - 1;
+      if (key === "ArrowLeft" || key === "Left" || key === "ArrowDown" || key === "Down") { n = Math.max(0, n - 1); }
+      else if (key === "ArrowRight" || key === "Right" || key === "ArrowUp" || key === "Up") {
+        n = Math.min(put.length - 1, n + 1);
+      }
+      else if (key === "Home") { n = 0; }
+      else if (key === "End") { n = put.length - 1; }
+      else if (key === "Escape" || key === "Esc") { hide(); return; }
+      else { return; }
+      e.preventDefault();
+      show(n);
+    });
     box.innerHTML = "";
     add(box, [svg, tip]);
     box.setAttribute("data-width", String(width));
+  }
+
+  // every close's figures, for anyone who cannot hover the chart (screen readers, keyboards, touch)
+  function dailyTable(doc) {
+    var put = doc.marks.put_rich.mid.daily, call = doc.marks.call_rich.mid.daily, rows = [];
+    for (var i = 0; i < put.length; i++) {
+      rows.push(h("tr", null, [h("th", {scope: "row", "class": "l"}, dayName(put[i].date)),
+                               h("td", null, isNum(put[i].close) ? price(put[i].close) : ""),
+                               h("td", {"class": cls(put[i].pnl_to_date)}, money(put[i].pnl_to_date)),
+                               h("td", {"class": cls(call[i].pnl_to_date)}, money(call[i].pnl_to_date))]));
+    }
+    return h("details", {"class": "nm-nums"}, [
+      h("summary", null, "Show the daily figures (" + put.length + " close" + (put.length === 1 ? "" : "s") + ")"),
+      h("div", {"class": "nm-tblwrap"}, h("table", {"class": "nm-tbl nm-daily"}, [
+        h("caption", {"class": "nm-sr"}, "P&L to date at mid at each close, both sides, and NVDA's close"),
+        h("thead", null, h("tr", null, [h("th", {scope: "col", "class": "l"}, "Close"),
+                                        h("th", {scope: "col"}, "NVDA"),
+                                        h("th", {scope: "col"}, "Put side rich"),
+                                        h("th", {scope: "col"}, "Call side rich")])),
+        h("tbody", null, rows)]))]);
   }
 
   function chart(doc) {
@@ -397,11 +546,12 @@
       h("span", null, [h("i", {style: "background:var(--series-1,#2A5FA5)"}), "Put side rich"]),
       h("span", null, [h("i", {style: "background:var(--series-2,#C26B1D)"}), "Call side rich"])]);
     var box = h("div", {"class": "nm-chart"});
-    var wrap = h("div", null, [h("div", {"class": "nm-sub-h"}, "P&L to date at mid, each close"), legend, box]);
+    var wrap = h("div", null, [h("div", {"class": "nm-sub-h"}, "P&L to date at mid, each close"), legend, box,
+                               dailyTable(doc)]);
     wrap.nmDraw = function () {
       try {
         drawChart(box, doc);
-      } catch (e) {                  // the table above has every figure: leave the chart out rather than break
+      } catch (e) {                  // the tables have every figure: leave the chart out rather than break
         box.innerHTML = "";
       }
     };
@@ -416,17 +566,21 @@
     return h("div", null, [h("div", {"class": "nm-sub-h"}, "Data notes"), ul]);
   }
 
-  function renderVolArb(doc, now) {
+  function renderVolArb(doc, now, level) {
+    var settled = doc.status === "settled";
     var badges = [];
-    if (doc.status === "settled") {
+    if (settled) {
       badges.push(h("span", {"class": "nm-badge nm-settled"}, "Settled at expiry"));
     } else if (todayNumber(now) - dayNumber(doc.as_of) > STALE_DAYS) {
       badges.push(h("span", {"class": "nm-badge nm-stale"}, "stale: last mark " + dayName(doc.as_of)));
     }
     var c = chart(doc);
     var root = h("div", {"class": "nm", "data-as-of": doc.as_of, "data-status": doc.status}, [
-      h("div", {"class": "nm-head"}, [h("h3", {"class": "nm-title"}, "Latest mark, updated nightly"),
-                                      h("span", {"class": "nm-asof"}, "as of the " + dayName(doc.as_of) + " close")]
+      // a settled cycle is not marked again: its title says it is the final mark
+      h("div", {"class": "nm-head"}, [h("h" + level, {"class": "nm-title"},
+                                        settled ? "Final mark" : "Latest mark, updated nightly"),
+                                      h("span", {"class": "nm-asof"},
+                                        (settled ? "at the " : "as of the ") + dayName(doc.as_of) + " close")]
         .concat(badges)),
       stats(doc),
       table(doc),
@@ -453,9 +607,15 @@
     if (el.querySelector(".nm-fail")) { return; }
     var baked = el.getAttribute("data-baked");
     add(el, h("p", {"class": "nm-fail"},
-              "Couldn't load tonight's mark; showing the figures as of " +
+              "Couldn't load the latest mark; showing the figures as of " +
               (isDate(baked) ? dayName(baked) : "the last build") + "."));
     el.setAttribute("data-nm-state", "fallback");
+  }
+
+  // the widget's title level: data-heading-level 2 to 6, else 4 (under a section headed h3)
+  function headingLevel(el) {
+    var n = parseInt(el.getAttribute("data-heading-level"), 10);
+    return n >= 2 && n <= 6 ? n : 4;
   }
 
   function load(el) {
@@ -463,12 +623,15 @@
     if (!r) { return; }
     var done = function (doc) {
       r.check(doc);
-      var node = r.render(doc, new Date());     // built whole before the baked content is touched
+      var node = r.render(doc, new Date(), headingLevel(el));     // built whole before the baked content is touched
       el.innerHTML = "";
       el.appendChild(node);
       el.setAttribute("data-nm-state", "live");
       if (node.nmChart) {
         node.nmChart.nmDraw();
+        if (document.fonts && document.fonts.ready) {    // the labels are measured: again once the web fonts are in
+          document.fonts.ready.then(function () { node.nmChart.nmDraw(); }, function () {});
+        }
         var timer = null;
         window.addEventListener("resize", function () {
           clearTimeout(timer);

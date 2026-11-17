@@ -5,16 +5,25 @@ name: NVDA marks
 # nvda_marks.py pulls LSEG and marks the cycle with lib/vol_arb.py's own cycle_path and run_trade
 # (lib/nvda_marks.py); config/nvda_marks.yaml holds the cycle as decided on its entry night, never decided again.
 # This workflow commits nothing but docs/data/*.json: a failed mark leaves the orders, the book, the far-wing files
-# and the old mark as they were. Once the cycle is settled at its expiry, the runs leave the file as it is.
+# and the old mark as they were. Once the cycle is settled at its expiry from complete data, the runs leave the file
+# as it is.
 on:
   schedule:
-    - cron: "30 3 * * 2-6"  # 03:30 UTC Tue-Sat = 22:30 New York Mon-Fri in winter (23:30 in summer), after the orders
-    - cron: "30 7 * * 2-6"  # the retry, 02:30 New York in winter: nothing to do if the first run marked tonight's
-                            # close; if it failed (LSEG not final yet), it marks with what LSEG has and says so
+    # Both off the hour and well clear of the far-wing orders' 03:00 and 06:00 UTC runs (see concurrency below).
+    - cron: "45 4 * * 2-6"  # 04:45 UTC Tue-Sat = 23:45 New York Mon-Fri in winter (00:45 in summer)
+    - cron: "15 9 * * 2-6"  # the retry, 04:15 New York in winter (05:15 in summer), before the open: nothing to do if
+                            # the first run marked tonight's close; if it failed (LSEG not final yet), it marks with
+                            # what LSEG has and says so
   workflow_dispatch:
 
+# Shared with the order workflows for two reasons: their pushes to main never race this one's, and lseg_login.py
+# logs in with signon_control=True, which takes over any other session on the same login, so two jobs pulling LSEG
+# at once would break one of them. GitHub keeps at most one running and one pending run per group, and a newly
+# queued run cancels the one already pending: with an orders run in progress and a marks run pending, a Run-button
+# press or a badly delayed scheduled run replaces the pending one (an orders run, or this one). The schedules leave
+# more than an hour between this workflow's runs and the orders', and both have their retry.
 concurrency:
-  group: mkt-open-orders      # shared with the order workflows, so their pushes to main never race this one's
+  group: mkt-open-orders
   cancel-in-progress: false
 
 # The repository's default token can only read, so the commit step needs write access.
@@ -47,7 +56,7 @@ jobs:
           LSEG_APP_KEY: ${{ secrets.LSEG_APP_KEY }}
           LSEG_USERNAME: ${{ secrets.LSEG_USERNAME }}
           LSEG_PASSWORD: ${{ secrets.LSEG_PASSWORD }}
-        run: python nvda_marks.py ${{ github.event.schedule == '30 7 * * 2-6' && '--retry' || '' }}
+        run: python nvda_marks.py ${{ github.event.schedule == '15 9 * * 2-6' && '--retry' || '' }}
 
       - name: Commit docs/data
         env:

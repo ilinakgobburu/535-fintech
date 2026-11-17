@@ -361,6 +361,97 @@ def test_data_problems_and_the_last_complete_session(full):
     assert NM.last_complete_session(mk, S.ENTRY, "2026-10-16") is None
 
 
+def without_quotes(mk: dict, keep) -> dict:
+    """The market with only the quote rows `keep(row ric, row date)` says to keep."""
+    m = dict(mk)
+    q = mk["quotes"]
+    m["quotes"] = q[[keep(r, pd.Timestamp(d)) for r, d in zip(q["ric"], q["date"])]].reset_index(drop=True)
+    return m
+
+
+def test_at_the_expiry_a_leg_needs_its_row_on_the_session_before(full):
+    mk, spec, _, _ = full
+    put, call = spec["legs"]["P"]["ric"], spec["legs"]["C"]["ric"]
+    nov19 = pd.Timestamp("2026-11-19")
+    assert list(NM.quoted_closes(mk, spec, S.EXPIRY))[-1] == nov19
+    assert list(NM.quoted_closes(mk, spec, "2026-11-23")) == list(NM.quoted_closes(mk, spec, S.EXPIRY))
+    assert NM.quoted_closes(mk, spec, "2026-11-16")[-1] == pd.Timestamp("2026-11-16")
+    assert NM.quoted_closes(mk, spec, S.ENTRY).tolist() == [S.ENTRY]
+    assert NM.data_problems(mk, spec, S.EXPIRY) == [] and NM.history_problems(mk, spec, S.EXPIRY) == []
+    m = without_quotes(mk, lambda r, d: not (r == put and d == nov19))
+    assert NM.data_problems(m, spec, S.EXPIRY) == [
+        f"LSEG has no 2026-11-19 quote for the put ({put}), the last close before the expiry"]
+    assert NM.history_problems(m, spec, S.EXPIRY) == []                 # one close: the retry may carry it
+    # the expiry's own rows are not read (the legs settle at intrinsic)
+    assert NM.data_problems(without_quotes(mk, lambda r, d: d != S.EXPIRY), spec, S.EXPIRY) == []
+    # the review's case: every leg quote before the expiry gone, which settled as if marked from the entry
+    gone = without_quotes(mk, lambda r, d: d >= S.EXPIRY)
+    assert NM.history_problems(gone, spec, S.EXPIRY) == [
+        f"LSEG gave no quotes for the put ({put}) from 2026-10-19 to 2026-11-19",
+        f"LSEG gave no quotes for the call ({call}) from 2026-10-19 to 2026-11-19"]
+    assert len(NM.data_problems(gone, spec, S.EXPIRY)) == 2
+
+
+@pytest.mark.parametrize("day", ["2026-11-16", "2026-11-20"])
+def test_a_history_that_is_empty_starts_late_or_stops_early_is_never_marked(full, day):
+    mk, spec, _, _ = full
+    put, call = spec["legs"]["P"]["ric"], spec["legs"]["C"]["ric"]
+    reads = NM.quoted_closes(mk, spec, day)
+    last, before = reads[-1], reads[-2]
+    assert NM.history_problems(mk, spec, day) == []
+    assert NM.history_problems(without_quotes(mk, lambda r, d: r != call), spec, day) == [
+        f"LSEG gave no quotes for the call ({call}) from 2026-10-19 to {last.date()}"]
+    late = without_quotes(mk, lambda r, d: r != put or d > S.ENTRY)
+    assert NM.history_problems(late, spec, day) == [
+        f"LSEG has no quote for the put ({put}) on the entry close, 2026-10-19: its history starts 2026-10-20"]
+    cut = without_quotes(mk, lambda r, d: r != put or d <= pd.Timestamp("2026-11-12"))
+    assert NM.history_problems(cut, spec, day) == [
+        f"LSEG's last quote for the put ({put}) is from 2026-11-12, before both {before.date()} and {last.date()}"]
+    # the last close alone missing is not final data (data_problems), which the retry may carry; not a broken history
+    one = without_quotes(mk, lambda r, d: not (r == call and d == last))
+    assert NM.history_problems(one, spec, day) == [] and len(NM.data_problems(one, spec, day)) == 1
+    two = without_quotes(mk, lambda r, d: not (r == call and d in (last, before)))
+    assert len(NM.history_problems(two, spec, day)) == 1
+    # a hole further back is LSEG's data as it is, carried with a note (the made-up call has none on Oct 29)
+    assert pd.Timestamp("2026-10-29") not in set(mk["quotes"].loc[mk["quotes"]["ric"] == call, "date"])
+    assert NM.history_problems(mk, spec, "2026-10-29") == [] and NM.history_problems(mk, spec, "2026-10-30") == []
+    assert NM.history_problems(mk, spec, "2026-10-16") == []                 # before the entry: nothing read
+
+
+def test_legs_now_is_each_legs_mark_and_iv_at_the_mark(full):
+    mk, spec, path, _ = full
+    days = list(path["days"])
+    # (the mark, then each leg's mark_from and iv_from there), from the made-up quotes: the put's mid is under its
+    # intrinsic value on Nov 5, 12, 13, 16 and 19 (no IV), it has no bid on Nov 2; the call has no row on Oct 29 and
+    # no bid from Nov 2 on
+    for as_of, froms in (("2026-11-05", ("2026-11-05", "2026-11-04", "2026-10-30", "2026-10-30")),
+                         ("2026-11-19", ("2026-11-19", "2026-11-18", "2026-10-30", "2026-10-30")),
+                         ("2026-11-16", ("2026-11-16", "2026-11-11", "2026-10-30", "2026-10-30")),
+                         ("2026-11-02", ("2026-10-30", "2026-10-30", "2026-10-30", "2026-10-30")),
+                         ("2026-10-29", ("2026-10-29", "2026-10-29", "2026-10-28", "2026-10-28")),
+                         ("2026-11-10", ("2026-11-10", "2026-11-10", "2026-10-30", "2026-10-30"))):
+        doc = doc_of(mk, spec, as_of)
+        k = days.index(pd.Timestamp(as_of))
+        spot = float(mk["stock"].at[pd.Timestamp(as_of), "close"])
+        for cp, leg in (("P", "put"), ("C", "call")):
+            now = doc["legs_now"][leg]
+            assert now["mark"] == round(float(path["legs"][cp]["mark"][k]), 4)
+            assert now["iv"] == round(float(path["legs"][cp]["iv"][k]), 6)
+            assert now["iv_at_entry"] == round(spec["legs"][cp]["iv"], 6)
+            K = spec["legs"][cp]["strike"]
+            assert now["intrinsic"] == round(max(K - spot, 0.0) if cp == "P" else max(spot - K, 0.0), 4)
+        now = doc["legs_now"]
+        assert (now["put"]["mark_from"], now["put"]["iv_from"], now["call"]["mark_from"], now["call"]["iv_from"]) == froms
+        # a carried IV is the one of the close it is carried from
+        assert now["put"]["iv"] == round(float(path["legs"]["P"]["iv"][days.index(pd.Timestamp(froms[1]))]), 6)
+    # the entry close: the spec's own mid and IV
+    doc = doc_of(mk, spec, S.ENTRY)
+    assert doc["legs_now"]["put"] == {"mark": spec["legs"]["P"]["mid"], "iv": round(spec["legs"]["P"]["iv"], 6),
+                                      "iv_from": "2026-10-19", "mark_from": "2026-10-19",
+                                      "intrinsic": round(max(spec["legs"]["P"]["strike"] - spec["spot_at_entry"], 0), 4),
+                                      "iv_at_entry": round(spec["legs"]["P"]["iv"], 6)}
+
+
 def test_a_revised_entry_close_or_quote_is_noted(full):
     mk, spec, _, _ = full
     assert NM.entry_differences(mk, spec) == []
@@ -376,6 +467,20 @@ def test_a_revised_entry_close_or_quote_is_noted(full):
     assert len(notes) == 2
     assert notes[0].startswith("LSEG's October 19 NVDA close is now")
     assert notes[1].startswith("LSEG's October 19 quote for the put is now") and "which the mark keeps" in notes[1]
+
+
+@pytest.mark.parametrize("side, change", [("ask", 0.05), ("ask", -0.01), ("bid", float("nan")), ("ask", float("nan"))])
+def test_a_revision_of_either_side_of_an_entry_quote_is_noted(full, side, change):
+    mk, spec, _, _ = full
+    call = spec["legs"]["C"]
+    q = mk["quotes"].copy()
+    hit = (q["ric"] == call["ric"]) & (q["date"] == S.ENTRY)
+    q.loc[hit, side] = q.loc[hit, side] + change
+    m = dict(mk, quotes=q)
+    b, a = (call["bid"] + (change if side == "bid" else 0.0)), (call["ask"] + (change if side == "ask" else 0.0))
+    assert NM.entry_differences(m, spec) == [
+        f"LSEG's October 19 quote for the call is now {NM._px(b)} / {NM._px(a)}; the cycle was entered at "
+        f"{NM._px(call['bid'])} / {NM._px(call['ask'])} (mid {NM._px(call['mid'])}), which the mark keeps"]
 
 
 # --------------------------------------------------------------------------- the file
@@ -395,6 +500,13 @@ def test_the_document_is_well_formed_rounded_and_repeatable(full):
     again = NM.document(NM.mark_open_cycle(mk, spec, "2026-11-16"), spec, S.config(mk), generated_at=GEN)
     assert S.dumps(again) == S.dumps(doc)
     assert NM._r(-1e-9, 2) == 0.0 and str(NM._r(-1e-9, 2)) == "0.0" and NM._r(float("nan"), 2) is None
+    assert doc["data_complete"] is True
+    partial = NM.document(mark, spec, S.config(mk), generated_at=GEN, data_complete=False)
+    assert partial["data_complete"] is False and S.schema_problems(partial) == []
+    assert {k: v for k, v in partial.items() if k != "data_complete"} == \
+        {k: v for k, v in doc.items() if k != "data_complete"}
+    with pytest.raises(TypeError):
+        NM.document(mark, spec, S.config(mk), generated_at=GEN, data_complete="yes")
 
 
 def test_the_schema_check_itself_catches_what_it_should(full):
@@ -409,3 +521,9 @@ def test_the_schema_check_itself_catches_what_it_should(full):
     bad = json.loads(json.dumps(doc))
     del bad["notes"]
     assert S.schema_problems(bad)
+    bad = json.loads(json.dumps(doc))
+    bad["legs_now"]["put"]["iv_from"] = "2026-11-17"                  # after the mark
+    assert S.schema_problems(bad) == ["legs_now.put dates on or before as_of"]
+    bad = json.loads(json.dumps(doc))
+    bad["data_complete"] = 1
+    assert S.schema_problems(bad) == ["data_complete is true or false"]

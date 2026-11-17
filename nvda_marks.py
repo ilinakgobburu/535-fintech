@@ -2,8 +2,9 @@
 """
 Tonight's mark of the two-sided variance trade's open NVDA cycle, from LSEG, for the vol-arb page.
 
-Run by .github/workflows/nvda-marks.yml every weeknight at 22:30 New York time (03:30 UTC), again with --retry at
-02:30 (07:30 UTC; it does nothing if the first run marked tonight's close), and from its Run workflow button:
+Run by .github/workflows/nvda-marks.yml every weeknight at 23:45 New York time in winter (04:45 UTC), again with
+--retry at 04:15 (09:15 UTC; it does nothing if the first run marked tonight's close), and from its Run workflow
+button:
   1. read config/nvda_marks.yaml (the cycle as decided on its entry night: entry, expiry, legs, contracts, each
      model's p and direction; lib/nvda_marks.cycle_spec checks it, nothing is decided again), and check that
      lib/vol_arb.py and lib/vol_arb_wf.py, and every lib function they use, are the frozen backtest code
@@ -17,15 +18,19 @@ Run by .github/workflows/nvda-marks.yml every weeknight at 22:30 New York time (
      leaves the old file as it was.
 
 D is the last NYSE session whose close has passed (--as-of to pick another). When D's NVDA close or open, or a leg's
-D row, is not on LSEG yet, the data is not final: the run exits non-zero and the file keeps what it had. The retry
-(--retry) marks with what LSEG has, a leg's missing quote carried as the backtest carries it (its last mark and IV),
-or the last complete session when D's close is still missing, and says so in the file's notes. A leg whose D row has
-no bid (nobody bidding) is final data, carried the same way with a note, on either run. Once the file holds the
-settled cycle, later runs leave it as it is.
+D row (at the expiry: its row on the session before, the expiry's close settling at intrinsic), is not on LSEG yet,
+the data is not final: the run exits non-zero and the file keeps what it had. The retry (--retry) marks with what
+LSEG has, a leg's missing quote carried as the backtest carries it (its last mark and IV), or the last complete
+session when D's close is still missing, and says so in the file's notes and with data_complete: false. A leg whose
+D row has no bid (nobody bidding) is final data, carried the same way with a note, on either run. A leg LSEG gives
+no quotes for, or whose quotes start after the entry or stop before the last two closes the mark reads, stops every
+run, the retry too (lib/nvda_marks.history_problems): marked over, its whole history would be carried. Once the file
+holds the cycle settled with data_complete: true, later runs leave it as it is; one the retry settled is settled
+again by the next run.
 
     python3 nvda_marks.py                         # tonight, as the Action runs it (LSEG from the Keychain)
     python3 nvda_marks.py --dry-run               # print tonight's mark, write nothing
-    python3 nvda_marks.py --retry                 # the 02:30 run: only if tonight's close is not marked yet
+    python3 nvda_marks.py --retry                 # the 04:15 run: only if tonight's close is not marked yet
     python3 nvda_marks.py --as-of 2026-11-16 --dry-run
 """
 
@@ -180,15 +185,18 @@ def leg_quotes(root: str, leg: dict, cp: str, expiry: dt.date, start: dt.date, e
     """
     A leg's quotes from `start` to `end` under its live RIC, or, once LSEG has renamed it after the expiry, under the
     expired RIC (with ^ and the expiry's month and year), in load_market's frame with the live RIC, as the cycle
-    names it.
+    names it. After the expiry an empty answer for the live RIC is taken as the rename too, and the expired RIC is
+    asked; when that is not known either, the empty answer stands, and history_problems() stops the run.
     """
     q = _quotes(leg["ric"], start, end)
-    if q is None:
+    if q is None or (q.empty and end >= expiry):
         expired = build_option_ric(root, expiry, leg["strike"], cp, expired=True)
-        q = _quotes(expired, start, end)
-        if q is None:
+        old = _quotes(expired, start, end)
+        if old is None and q is None:
             sys.exit(f"LSEG knows neither {leg['ric']} nor {expired}, the cycle's {NM.LEG[cp]}: nothing marked.")
-        print(f"  {leg['ric']} is listed as {expired} now (expired)")
+        if old is not None:
+            q = old
+            print(f"  {leg['ric']} is listed as {expired} now (expired)")
     rows = [{"date": d, "ric": leg["ric"], "cp": cp, "strike": leg["strike"], "expiry": pd.Timestamp(expiry),
              "bid": b, "ask": a} for d, b, a in zip(q.index, q["bid"], q["ask"])]
     return VL.quote_frame(rows)
@@ -266,8 +274,12 @@ def main(argv=None) -> int:
     target = min(day, expiry)
     existing = read_existing(OUT)
     if not args.dry_run and same_cycle(existing, spec) and existing.get("status") == "settled":
-        print(f"{OUT.relative_to(ROOT)} already holds the cycle settled at its {expiry} expiry: nothing to do.")
-        return 0
+        if existing.get("data_complete") is True:
+            print(f"{OUT.relative_to(ROOT)} already holds the cycle settled at its {expiry} expiry: nothing to do.")
+            return 0
+        if not args.retry:
+            print(f"{OUT.relative_to(ROOT)} holds the cycle settled by the retry with a leg's missing close carried: "
+                  f"settling it again")
     if args.retry and same_cycle(existing, spec) and existing.get("as_of") == str(target):
         print(f"Retry: the {target} close is already marked in {OUT.relative_to(ROOT)}; nothing to do.")
         return 0
@@ -294,9 +306,8 @@ def main(argv=None) -> int:
     problems = NM.data_problems(market, spec, target)
     extra = []
     as_of = pd.Timestamp(target)
-    if problems:
-        if not args.retry:
-            sys.exit("; ".join(problems) + ": data not final, nothing marked (the retry asks again).")
+    if problems and args.retry:
+        print("Retry: " + "; ".join(problems))
         last = NM.last_complete_session(market, entry, target)
         if last is None:
             sys.exit("; ".join(problems) + ", and no complete session since the entry: nothing marked.")
@@ -304,16 +315,26 @@ def main(argv=None) -> int:
             extra.append(f"Marked by the retry at the {NM._day(last)} close: LSEG had no complete "
                          f"{NM._day(as_of)} bar for NVDA at the retry.")
             as_of = last
-        else:
-            extra.append(f"Marked by the retry with LSEG's data as it stood: "
-                         + "; ".join(problems) + " (the leg's last mark is carried, as the backtest carries it).")
-        print("Retry: " + "; ".join(problems))
+            problems = NM.data_problems(market, spec, as_of)          # the legs at that close
+    # A leg with no quotes, or quotes that start late or stop early, is never marked over, not even by the retry:
+    # its mark and IV would be carried from wherever the quotes stop, and every hedge trade after it would change.
+    broken = NM.history_problems(market, spec, as_of)
+    if broken:
+        sys.exit("; ".join(broken) + ": the legs' quote history is not complete, so nothing was marked (the retry "
+                 "does not mark over this).")
+    if problems and not args.retry:
+        sys.exit("; ".join(problems) + ": data not final, nothing marked (the retry asks again).")
+    if problems:
+        again = "a later run settles the cycle again once LSEG has it" if as_of >= spec["expiry"] else \
+            "the next night's mark reads it again"
+        extra.append(f"Marked by the retry with LSEG's data as it stood: " + "; ".join(problems)
+                     + f" (the leg's last mark is carried, as the backtest carries it; {again}).")
     extra = [*NM.entry_differences(market, spec), *extra]
     try:
         mark = NM.mark_open_cycle(market, spec, as_of)
     except ValueError as exc:
         sys.exit(f"{exc}: nothing marked.")
-    doc = NM.document(mark, spec, cfg, extra_notes=extra, generated_at=now_utc())
+    doc = NM.document(mark, spec, cfg, extra_notes=extra, generated_at=now_utc(), data_complete=not problems)
     report(doc)
     text = json.dumps(doc, indent=1) + "\n"
     if args.dry_run:

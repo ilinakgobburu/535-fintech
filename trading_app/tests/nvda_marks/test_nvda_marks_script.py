@@ -148,8 +148,12 @@ def test_the_retry_marks_with_a_missing_leg_quote_carried_and_says_so(env):
     assert any(n.startswith("Marked by the retry with LSEG's data as it stood: LSEG has no 2026-11-16 quote for the "
                             "put") for n in doc["notes"])
     assert any(n.startswith("The put had no two-sided closing quote on November 16") for n in doc["notes"])
+    assert doc["data_complete"] is False
     rows = doc["marks"]["put_rich"]["mid"]["daily"]
     assert rows[-1]["put_mark"] == rows[-2]["put_mark"] and rows[-1]["put_iv"] == rows[-2]["put_iv"]
+    # only D's quote is carried: every earlier close is the full data's
+    full = json.loads(library_doc(D, env.cfg))["marks"]["put_rich"]["mid"]["daily"]
+    assert rows[:-1] == full[:-1] and rows[-1] != full[-1]
 
 
 def test_the_retry_with_ds_close_still_missing_marks_the_last_complete_close(env, monkeypatch):
@@ -213,6 +217,147 @@ def test_after_the_expiry_the_cycle_settles_under_the_expired_rics_and_is_then_l
     assert env.go(["--dry-run"], fake=S.FakeLSEG(published="2026-11-24", renamed=fake.renamed),
                   now=night("2026-11-24")) == 0                            # a dry run still marks
     assert len(env.sessions) == n + 1 and env.out.read_bytes() == before
+
+
+def open_file(env, as_of="2026-11-19") -> bytes:
+    """The open cycle's file as the night before the expiry wrote it."""
+    env.out.parent.mkdir(parents=True, exist_ok=True)
+    env.out.write_text(library_doc(as_of, env.cfg))
+    return env.out.read_bytes()
+
+
+@pytest.mark.parametrize("empty_as", ["frame", None])
+@pytest.mark.parametrize("retry", [False, True])
+def test_on_the_expiry_night_an_empty_answer_for_a_leg_settles_nothing(env, empty_as, retry):
+    """The review's case: LSEG lists the put's live RIC but answers with no rows, and knows no expired name."""
+    before = open_file(env)
+    put = env.cfg["cycle"]["legs"]["P"]["ric"]
+    fake = S.FakeLSEG(published="2026-11-20", empty=[put], empty_as=empty_as)
+    with pytest.raises(SystemExit) as e:
+        env.go(["--retry"] if retry else [], fake=fake, now=night("2026-11-20"))
+    assert str(e.value.code) == (f"LSEG gave no quotes for the put ({put}) from 2026-10-19 to 2026-11-19: the legs' "
+                                 f"quote history is not complete, so nothing was marked (the retry does not mark "
+                                 f"over this).")
+    assert env.out.read_bytes() == before and leftovers(env) == []
+    asked = [c[1] for c in fake.calls if c[0] == "get_history" and c[2] == ("BID", "ASK")]
+    assert asked[:2] == [put, put + "^K26"]                    # the empty answer after the expiry: the expired name
+
+
+@pytest.mark.parametrize("empty_as", ["frame", None])
+def test_after_the_expiry_an_empty_live_answer_reads_the_expired_name(env, empty_as):
+    legs = env.cfg["cycle"]["legs"]
+    fake = S.FakeLSEG(published="2026-11-23", renamed=[legs["P"]["ric"], legs["C"]["ric"]],
+                      empty=[legs["P"]["ric"], legs["C"]["ric"]], empty_as=empty_as)
+    assert env.go(fake=fake, now=night("2026-11-23")) == 0
+    assert env.out.read_text() == library_doc("2026-11-20", env.cfg)
+    asked = [c[1] for c in fake.calls if c[0] == "get_history" and c[2] == ("BID", "ASK")]
+    assert asked == [legs["P"]["ric"], legs["P"]["ric"] + "^K26", legs["C"]["ric"], legs["C"]["ric"] + "^K26"]
+
+
+def test_before_the_expiry_an_empty_answer_is_not_taken_for_the_rename(env):
+    before = old_file(env)
+    call = env.cfg["cycle"]["legs"]["C"]["ric"]
+    fake = S.FakeLSEG(published=D, empty=[call])
+    with pytest.raises(SystemExit) as e:
+        env.go(fake=fake)
+    assert str(e.value.code).startswith(f"LSEG gave no quotes for the call ({call}) from 2026-10-19 to 2026-11-16")
+    assert [c[1] for c in fake.calls if c[0] == "get_history" and c[2] == ("BID", "ASK")][1:] == [call]
+    assert env.out.read_bytes() == before
+
+
+@pytest.mark.parametrize("retry", [False, True])
+@pytest.mark.parametrize("cut, why", [
+    ((None, "2026-11-12"), "LSEG's last quote for the put ({ric}) is from 2026-11-12, before both 2026-11-18 and "
+                           "2026-11-19"),
+    (("2026-11-02", None), "LSEG has no quote for the put ({ric}) on the entry close, 2026-10-19: its history starts "
+                           "2026-11-02")])
+def test_on_the_expiry_night_a_cut_history_settles_nothing(env, retry, cut, why):
+    before = open_file(env)
+    legs = env.cfg["cycle"]["legs"]
+    fake = S.FakeLSEG(published="2026-11-23", renamed=[legs["P"]["ric"], legs["C"]["ric"]],
+                      cut={legs["P"]["ric"]: cut})
+    with pytest.raises(SystemExit) as e:
+        env.go(["--retry"] if retry else [], fake=fake, now=night("2026-11-23"))
+    assert str(e.value.code).startswith(why.format(ric=legs["P"]["ric"]) + ": the legs' quote history is not complete")
+    assert env.out.read_bytes() == before and leftovers(env) == []
+
+
+def test_the_retry_does_not_mark_over_an_empty_leg(env):
+    """The review's case: the call's live RIC answers with no rows at the 02:30 retry; the old file stays."""
+    before = old_file(env)
+    call = env.cfg["cycle"]["legs"]["C"]["ric"]
+    with pytest.raises(SystemExit) as e:
+        env.go(["--retry"], fake=S.FakeLSEG(published=D, empty=[call]), now=dt.datetime(2026, 11, 17, 2, 30))
+    assert "LSEG gave no quotes for the call" in str(e.value.code) and "the retry does not mark over this" in \
+        str(e.value.code)
+    assert env.out.read_bytes() == before and leftovers(env) == []
+
+
+@pytest.mark.parametrize("retry", [False, True])
+def test_a_leg_whose_quotes_stop_two_closes_before_d_is_never_marked(env, retry):
+    before = old_file(env)
+    put = env.cfg["cycle"]["legs"]["P"]["ric"]
+    fake = S.FakeLSEG(published=D, cut={put: (None, "2026-11-12")})
+    with pytest.raises(SystemExit) as e:
+        env.go(["--retry"] if retry else [], fake=fake, now=dt.datetime(2026, 11, 17, 2, 30))
+    assert str(e.value.code).startswith(f"LSEG's last quote for the put ({put}) is from 2026-11-12, before both "
+                                        f"2026-11-13 and 2026-11-16")
+    assert env.out.read_bytes() == before
+
+
+def test_the_retry_carries_one_missing_close_and_no_more(env):
+    put = env.cfg["cycle"]["legs"]["P"]["ric"]
+    before = old_file(env)
+    with pytest.raises(SystemExit):                                         # Nov 13 and 16 both missing
+        env.go(["--retry"], fake=S.FakeLSEG(published=D, no_row=[(put, D), (put, "2026-11-13")]))
+    assert env.out.read_bytes() == before
+    assert env.go(["--retry"], fake=S.FakeLSEG(published=D, no_row=[(put, D)])) == 0     # Nov 16 alone
+    doc = json.loads(env.out.read_text())
+    assert doc["as_of"] == "2026-11-16" and doc["data_complete"] is False
+
+
+def test_the_retrys_settlement_is_settled_again_by_the_next_run(env):
+    """The put's Nov 19 row is missing on the expiry night: the first run stops, the retry settles with it carried
+    and data_complete false, the next night's run settles from complete data, and only that file is left alone."""
+    before = open_file(env)
+    legs = env.cfg["cycle"]["legs"]
+    put = legs["P"]["ric"]
+    hole = [(put, "2026-11-19")]
+    with pytest.raises(SystemExit) as e:
+        env.go(fake=S.FakeLSEG(published="2026-11-20", no_row=hole), now=night("2026-11-20"))
+    assert str(e.value.code) == (f"LSEG has no 2026-11-19 quote for the put ({put}), the last close before the "
+                                 f"expiry: data not final, nothing marked (the retry asks again).")
+    assert env.out.read_bytes() == before
+    assert env.go(["--retry"], fake=S.FakeLSEG(published="2026-11-20", no_row=hole),
+                  now=dt.datetime(2026, 11, 21, 2, 30)) == 0
+    doc = json.loads(env.out.read_text())
+    assert doc["status"] == "settled" and doc["data_complete"] is False and S.schema_problems(doc) == []
+    assert f"Marked by the retry with LSEG's data as it stood: LSEG has no 2026-11-19 quote for the put ({put}), the " \
+           f"last close before the expiry (the leg's last mark is carried, as the backtest carries it; a later run " \
+           f"settles the cycle again once LSEG has it)." in doc["notes"]
+    retried = env.out.read_bytes()
+    # the next retry has nothing new to do; the next first run, with the row there now, settles it again
+    assert env.go(["--retry"], fake=None, now=dt.datetime(2026, 11, 24, 2, 30)) == 0
+    assert env.out.read_bytes() == retried
+    fake = S.FakeLSEG(published="2026-11-23", renamed=[put, legs["C"]["ric"]])
+    assert env.go(fake=fake, now=night("2026-11-23")) == 0
+    assert env.out.read_text() == library_doc("2026-11-20", env.cfg)
+    assert json.loads(env.out.read_text())["data_complete"] is True
+    final, n = env.out.read_bytes(), len(env.sessions)
+    assert env.go(fake=None, now=night("2026-11-24")) == 0                 # complete and settled: left alone
+    assert env.go(["--retry"], fake=None, now=dt.datetime(2026, 11, 25, 2, 30)) == 0
+    assert env.out.read_bytes() == final and len(env.sessions) == n
+
+
+def test_a_settled_file_without_the_completeness_flag_is_settled_again(env):
+    legs = env.cfg["cycle"]["legs"]
+    env.out.parent.mkdir(parents=True, exist_ok=True)
+    doc = json.loads(library_doc("2026-11-20", env.cfg))
+    del doc["data_complete"]
+    env.out.write_text(json.dumps(doc))
+    assert env.go(fake=S.FakeLSEG(published="2026-11-23", renamed=[legs["P"]["ric"], legs["C"]["ric"]]),
+                  now=night("2026-11-23")) == 0
+    assert env.out.read_text() == library_doc("2026-11-20", env.cfg)
 
 
 def test_a_leg_lseg_does_not_know_by_either_name_stops(env):

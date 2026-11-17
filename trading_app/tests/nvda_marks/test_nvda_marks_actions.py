@@ -4,7 +4,8 @@ only, in the order workflows' concurrency group (their pushes and its push never
 and packages and LSEG secrets passed only as the mark step's environment, never echoed and never under `set -x`; its
 commit step stages nothing but docs/data/*.json, refuses if anything else is staged, and rebases and retries its push.
 The commit step's own shell is run against a temporary repository to show that. docs/assets/nvda_marks.js fetches its
-file relative to the page without the cache, keeps the baked figures when it cannot, and is plain ES5.
+file relative to the page without the cache, keeps the baked figures when it cannot, and is plain ES5 (its behavior
+in a browser: test_nvda_marks_page.py).
 """
 
 from __future__ import annotations
@@ -34,12 +35,37 @@ def steps():
 
 def test_the_schedule_the_retry_and_the_run_button():
     w, on = workflow("nvda-marks.yml")
-    assert on["schedule"] == [{"cron": "30 3 * * 2-6"}, {"cron": "30 7 * * 2-6"}]
+    assert on["schedule"] == [{"cron": "45 4 * * 2-6"}, {"cron": "15 9 * * 2-6"}]
     assert "workflow_dispatch" in on and on["workflow_dispatch"] is None
     mark = next(s for s in steps() if s.get("id") == "mark")
     # only the second schedule passes --retry; the first and the Run button mark afresh
-    assert mark["run"] == "python nvda_marks.py ${{ github.event.schedule == '30 7 * * 2-6' && '--retry' || '' }}"
+    assert mark["run"] == "python nvda_marks.py ${{ github.event.schedule == '15 9 * * 2-6' && '--retry' || '' }}"
     assert on["schedule"][1]["cron"] in mark["run"]
+
+
+def utc_minutes(cron: str) -> tuple[int, str]:
+    minute, hour, dom, month, dow = cron.split()
+    assert (dom, month) == ("*", "*") and minute.isdigit() and hour.isdigit()
+    return int(hour) * 60 + int(minute), dow
+
+
+def test_its_runs_keep_well_clear_of_every_order_run_in_the_shared_group():
+    """A run queued while one in the group runs and another is pending cancels the pending one (GitHub's rule), so
+    the marks keep more than an hour from each orders run, and off the top of the hour, when GitHub delays most."""
+    _, on = workflow("nvda-marks.yml")
+    mine = [utc_minutes(s["cron"]) for s in on["schedule"]]
+    theirs = []
+    for f in sorted(WORKFLOWS.glob("*.yml")):
+        w, o = workflow(f.name)
+        if f.name != "nvda-marks.yml" and (w.get("concurrency") or {}).get("group") == "mkt-open-orders":
+            theirs += [utc_minutes(s["cron"]) for s in (o or {}).get("schedule") or []]
+    assert theirs                                          # the far-wing orders' 03:00 and 06:00
+    for m, dow in mine:
+        assert m % 60 != 0
+        for t, their_dow in theirs:
+            assert dow == their_dow and min(abs(m - t), 24 * 60 - abs(m - t)) > 60
+    text = (WORKFLOWS / "nvda-marks.yml").read_text()
+    assert "signon_control=True" in text and "a newly\n# queued run cancels the one already pending" in text
 
 
 def test_it_shares_the_order_workflows_group_python_and_packages():
@@ -167,12 +193,13 @@ def test_the_page_script_fetches_relative_to_the_page_without_the_cache():
 
 def test_the_page_script_keeps_the_baked_figures_and_says_what_it_shows():
     js = JS.read_text()
-    assert "Couldn't load tonight's mark; showing the figures as of " in js
+    assert "Couldn't load the latest mark; showing the figures as of " in js and "tonight" not in js
     assert '"stale: last mark " + dayName(doc.as_of)' in js and "var STALE_DAYS = 4;" in js
-    assert '"Settled at expiry"' in js and '"Latest mark, updated nightly"' in js
+    assert '"Settled at expiry"' in js and '"Latest mark, updated nightly"' in js and '"Final mark"' in js
     # the new content is built whole and checked before the baked content is replaced
     body = js[js.index("var done = function (doc) {"):]
-    assert body.index("r.check(doc);") < body.index("r.render(doc, new Date());") < body.index('el.innerHTML = "";')
+    assert body.index("r.check(doc);") < body.index("r.render(doc, new Date(), headingLevel(el));") < \
+        body.index('el.innerHTML = "";')
     # colors only from the page's variables, with fallbacks
     assert not re.search(r"(?<![,(])#[0-9A-Fa-f]{6}\b(?!\))", js.replace("var(--", ""))
 

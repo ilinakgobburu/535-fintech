@@ -147,10 +147,13 @@ class FakeLSEG:
     """
     LSEG as the script sees it after `published`'s close: nothing later. `no_close`/`no_open`: sessions whose
     close/open is not there yet; `no_row`: {(ric, day)} with no row yet; `renamed`: live RICs LSEG only knows under
-    the expired name; `broken`: RICs whose request fails with another error.
+    the expired name; `broken`: RICs whose request fails with another error; `empty`: names (live or expired, as
+    asked) LSEG lists but answers with no rows and no error (`empty_as`: an empty frame, or None); `cut`: {live RIC:
+    (first, last)} for a history LSEG gives only between those days (None: no bound).
     """
 
-    def __init__(self, published, seed: int = 3, no_close=(), no_open=(), no_row=(), renamed=(), broken=()):
+    def __init__(self, published, seed: int = 3, no_close=(), no_open=(), no_row=(), renamed=(), broken=(),
+                 empty=(), empty_as="frame", cut=None):
         self.close, self.opens, self.tb, self.divs = history(seed)
         self.frames = option_frames(self.close, self.tb, self.divs)
         self.published = pd.Timestamp(published)
@@ -158,6 +161,8 @@ class FakeLSEG:
         self.no_open = {pd.Timestamp(d) for d in no_open}
         self.no_row = {(r, pd.Timestamp(d)) for r, d in no_row}
         self.renamed, self.broken = set(renamed), set(broken)
+        self.empty, self.empty_as = set(empty), empty_as
+        self.cut = {r: tuple(None if d is None else pd.Timestamp(d) for d in v) for r, v in (cut or {}).items()}
         self.calls = []
 
     def _win(self, df, start, end):
@@ -177,9 +182,13 @@ class FakeLSEG:
             return self._win(pd.DataFrame({"MID_YLD_1": self.tb}), start, end)
         live = universe.split("^")[0]
         expired = "^" in universe
+        if universe in self.empty and live in self.frames:
+            return None if self.empty_as is None else pd.DataFrame(columns=["BID", "ASK"], dtype=float)
         if live in self.frames and (expired == (live in self.renamed)):
             f = self.frames[live]
             f = f[[(live, d) not in self.no_row for d in f.index]]
+            first, last = self.cut.get(live, (None, None))
+            f = f[[(first is None or d >= first) and (last is None or d <= last) for d in f.index]]
             return self._win(f[["BID", "ASK"]], start, end)
         raise Exception(f"Error code -1 | The universe is not found: {universe}")
 
@@ -213,9 +222,11 @@ def schema_problems(doc) -> list[str]:
     need(isinstance(doc, dict), "not an object")
     if not isinstance(doc, dict):
         return out
-    need(set(doc) == {"schema_version", "strategy", "underlying", "as_of", "generated_at", "status", "cycle", "sides",
-                      "fills", "nvda", "vol", "legs_now", "pnl", "marks", "settlement", "events", "notes"},
+    need(set(doc) == {"schema_version", "strategy", "underlying", "as_of", "generated_at", "status", "data_complete",
+                      "cycle", "sides", "fills", "nvda", "vol", "legs_now", "pnl", "marks", "settlement", "events",
+                      "notes"},
          f"top-level keys {sorted(doc)}")
+    need(isinstance(doc.get("data_complete"), bool), "data_complete is true or false")
     need(doc.get("schema_version") == 1, "schema_version")
     need(doc.get("strategy") == "vol_arb", "strategy")
     need(iso(doc.get("as_of")), "as_of")
@@ -235,6 +246,12 @@ def schema_problems(doc) -> list[str]:
         for m, v in dec.items():
             need(v.get("direction") in ("put_rich", "call_rich", None), f"decisions.{reading}.{m}.direction")
             need(v.get("p") is None or (num(v["p"]) and 0 <= v["p"] <= 1), f"decisions.{reading}.{m}.p")
+    for leg in ("put", "call"):
+        now = (doc.get("legs_now") or {}).get(leg) or {}
+        need(set(now) == {"mark", "iv", "iv_from", "mark_from", "intrinsic", "iv_at_entry"}, f"legs_now.{leg}")
+        need(all(num(now.get(k)) for k in ("mark", "iv", "intrinsic", "iv_at_entry")), f"legs_now.{leg} numbers")
+        need(all(iso(now.get(k)) and now[k] <= doc.get("as_of", "") for k in ("iv_from", "mark_from")),
+             f"legs_now.{leg} dates on or before as_of")
     for k in ("entry_close", "close", "change", "change_pct", "high_close", "low_close"):
         need(num((doc.get("nvda") or {}).get(k)), f"nvda.{k}")
     v = doc.get("vol") or {}

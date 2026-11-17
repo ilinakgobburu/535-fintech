@@ -335,13 +335,32 @@ def last_complete_session(market: dict, entry, day) -> pd.Timestamp | None:
     return pd.Timestamp(w.index[ok][-1]) if ok.any() else None
 
 
+def quoted_closes(market: dict, spec: dict, day) -> pd.DatetimeIndex:
+    """
+    The closes whose leg quotes a mark at `day` reads: the stock's sessions from the entry to `day` while the cycle
+    is open, and from the entry to the session before the expiry once it is settled (the expiry's close settles at
+    intrinsic, so its quotes are not read). The first is the entry close, whose mark and IV are the spec's.
+    """
+    day = pd.Timestamp(day).normalize()
+    idx = market["stock"].index
+    days = idx[(idx >= spec["entry"]) & (idx <= day)]
+    return days[days < spec["expiry"]]
+
+
+def _leg_dates(market: dict, ric: str) -> set:
+    q = market["quotes"]
+    return set(pd.DatetimeIndex(q.loc[q["ric"] == ric, "date"]))
+
+
 def data_problems(market: dict, spec: dict, day) -> list[str]:
     """
     Why `day`'s data is not final for the mark (empty when it is): NVDA has no close that session, or (after the
-    entry) no open, or (before the expiry) LSEG has no row at all for a leg that close (not published yet). A leg
-    with a row but no two-sided quote (no bid: nobody bidding for a far wing) is final data: VA.leg_path carries its
-    last mark and IV, the registered rule, and the notes say so (carried_notes). At the expiry the legs settle at
-    intrinsic, so their quotes are not needed.
+    entry) no open, or LSEG has no row at all for a leg on the last close the mark reads (quoted_closes): `day`
+    itself while the cycle is open (not published yet), the session before the expiry once it is settled. A leg with
+    a row but no two-sided quote (no bid: nobody bidding for a far wing) is final data: VA.leg_path carries its last
+    mark and IV, the registered rule, and the notes say so (carried_notes). The expiry's own quotes are not needed:
+    the legs settle at intrinsic there. The retry may mark over these, the missing close carried; history_problems()
+    lists what it may not.
     """
     day = pd.Timestamp(day).normalize()
     st, out = market["stock"], []
@@ -349,12 +368,43 @@ def data_problems(market: dict, spec: dict, day) -> list[str]:
         return [f"LSEG has no NVDA close for {day.date()}"]
     if day > spec["entry"] and not np.isfinite(st.at[day, "open"]):
         out.append(f"LSEG has no NVDA open for {day.date()}")
-    if day < spec["expiry"]:
-        q = market["quotes"]
+    reads = quoted_closes(market, spec, day)
+    if len(reads):
+        last = reads[-1]
         for cp in (PUT, CALL):
             ric = spec["legs"][cp]["ric"]
-            if q[(q["ric"] == ric) & (q["date"] == day)].empty:
-                out.append(f"LSEG has no {day.date()} quote for the {LEG[cp]} ({ric}) yet")
+            if last not in _leg_dates(market, ric):
+                out.append(f"LSEG has no {last.date()} quote for the {LEG[cp]} ({ric}) yet" if day < spec["expiry"]
+                           else f"LSEG has no {last.date()} quote for the {LEG[cp]} ({ric}), the last close before "
+                                f"the expiry")
+    return out
+
+
+def history_problems(market: dict, spec: dict, day) -> list[str]:
+    """
+    Why the legs' quote history cannot be marked at `day` at all, not even by the retry (empty when it can): for a
+    leg, LSEG gave no quote on any close the mark reads (quoted_closes; an empty answer), or none on the entry close
+    (the history starts late), or none on either of the last two closes it reads (the history stops early: the retry
+    carries one missing close, never more). Marked over, each would carry the leg's mark and IV from wherever its
+    quotes stop, and change every hedge trade after it. Any other missing close is LSEG's data as it is, carried
+    with a note (carried_notes).
+    """
+    reads = quoted_closes(market, spec, day)
+    out = []
+    if not len(reads):
+        return out
+    entry = spec["entry"]
+    for cp in (PUT, CALL):
+        ric, name = spec["legs"][cp]["ric"], LEG[cp]
+        got = _leg_dates(market, ric) & set(reads)
+        if not got:
+            out.append(f"LSEG gave no quotes for the {name} ({ric}) from {entry.date()} to {reads[-1].date()}")
+        elif entry not in got:
+            out.append(f"LSEG has no quote for the {name} ({ric}) on the entry close, {entry.date()}: its history "
+                       f"starts {min(got).date()}")
+        elif len(reads) > 1 and reads[-1] not in got and reads[-2] not in got:
+            out.append(f"LSEG's last quote for the {name} ({ric}) is from {max(got).date()}, before both "
+                       f"{reads[-2].date()} and {reads[-1].date()}")
     return out
 
 
@@ -473,12 +523,16 @@ def _iso(d) -> str:
     return pd.Timestamp(d).date().isoformat()
 
 
-def document(mark: dict, spec: dict, cfg: dict, *, extra_notes=(), generated_at: str) -> dict:
+def document(mark: dict, spec: dict, cfg: dict, *, extra_notes=(), generated_at: str,
+             data_complete: bool = True) -> dict:
     """
     docs/data/vol_arb_nvda_mark.json from mark_open_cycle()'s mark (schema_version 1): dollars to the cent, prices
     to 4 decimals, vols to 6. Everything but generated_at is a function of the mark and the config, so the same
-    inputs give the same file.
+    inputs give the same file. data_complete is False when the retry marked over data that was not final (a leg's
+    missing close carried): a settled file is left alone by later runs only when it is True.
     """
+    if not isinstance(data_complete, bool):
+        raise TypeError("data_complete must be True or False")
     put, call = spec["legs"][PUT], spec["legs"][CALL]
     legs_now = {}
     for cp in (PUT, CALL):
@@ -520,6 +574,7 @@ def document(mark: dict, spec: dict, cfg: dict, *, extra_notes=(), generated_at:
         "as_of": _iso(mark["as_of"]),
         "generated_at": generated_at,
         "status": mark["status"],
+        "data_complete": data_complete,
         "cycle": {
             "entry": _iso(spec["entry"]), "expiry": _iso(spec["expiry"]), "lot": spec["lot"],
             "spot_at_entry": spec["spot_at_entry"], "atm_iv_at_entry": _r(spec["atm_iv_at_entry"], 6),
