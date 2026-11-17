@@ -268,6 +268,12 @@
      60% of the width, leaving an empty band down the right) */
   .wrap{max-width:1000px}
   .lede,.takeaway,.prose,.cap,.lead-num,details.more{max-width:none}
+  /* paragraphs run edge to edge of the column (justified) on screens wider than a phone; on a phone a justified
+     narrow line opens wide gaps between words, so phones keep ordinary left-aligned lines */
+  @media (min-width:641px){
+    .lede,.takeaway,.prose p,.prose li,.cap,.lead-num,.banner,section.part > p,details.more p{text-align:justify;
+      text-wrap:pretty}
+  }
 </style>
 </head>
 <body data-fill="mid">
