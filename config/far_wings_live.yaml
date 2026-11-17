@@ -11,6 +11,9 @@
 # limits at the mid, its own $5,000 band and its own 40 x hedge limit, held to expiry; entry the first session after
 # each monthly expiry, the next on 2026-11-23). No pooling across names and no new rule. These 30 names were NOT in
 # the far-wing backtest, which used 11 stocks: their live results are out of sample in names as well as in time.
+#
+# The first entry (her decision of 2026-11-17, "Tomorrow (Wednesday)"): once, from 2026-11-17's close for 2026-11-18,
+# into the 2026-12-18 expiry the 2026-11-23 entry would have traded; then the registered calendar (first_entry below).
 
 names:                # each name: ticker (in its order ids, made safe: BRK B -> brkb-fw-...), ric (the stock on LSEG,
                       # as LSEG returns it), root (LSEG's option root), conid (Interactive Brokers' id, which every
@@ -499,10 +502,64 @@ acknowledged: {}      # order id: why Sanji's rejection of it, or his missing re
                       #   e.g.  nvda-fw-put-2026-11-23: rejected, strike token fixed in 1a2b3c4; the call filled alone
                       #         brkb-fw-call-2026-12-21: no result from Sanji for the session; the book shows no fill
 
+first_entry:          # her decision of 2026-11-17, about 15:20 New York time: a ONE-OFF early first entry, then the
+                      # registered calendar. far_wings_live.first_entry checks it; night_of and entry_for apply it
+  asked: why cant this start running, say tomorrow or thursday?
+  question: >-
+    When should the live far-wing script place its first entry (selling the Dec 18 put and call wings on each tracked
+    stock)? The tested rule enters Mon Nov 23; starting earlier is a one-off early first entry, recorded as such, then
+    the normal monthly calendar (next entry Dec 21)
+  answer: Tomorrow (Wednesday)
+  one_off: true
+  day: "2026-11-17"         # D: the wings are chosen from Tuesday's close (the 22:00 run, or the 01:00 retry) ...
+  for: "2026-11-18"         # ... and sold at Wednesday's session, the session after D
+  expiry: "2026-12-18"      # the cycle the regular 2026-11-23 entry would have traded
+  replaces: "2026-11-23"    # that regular entry (its orders would have been for 2026-11-24)
+  band_window: ["2026-11-10", "2026-11-17"]   # the closes the strikes asked for are banded on (see differs)
+  why: >-
+    She asked why the far wings could not start running tomorrow or Thursday rather than wait for the tested entry on
+    Monday 2026-11-23, and chose to start tomorrow. Nothing in the rule needs the wait except the calendar itself: the
+    Dec 18 chain is listed and quoted now, every tracked name's book is empty, and the wing, size, limit and band rules
+    do not depend on the entry date. Starting on 2026-11-18 puts orders in mkt/open_orders.json four sessions sooner.
+  differs: >-
+    From the tested calendar (vol-arb's: the first session after each monthly expiry, held to the next monthly
+    expiry) this entry differs in its date alone, and only once. It is entered 4 sessions early (D 2026-11-17 instead
+    of 2026-11-23; orders for 2026-11-18 instead of 2026-11-24), so it holds 31 calendar days to expiry instead of 25
+    (T = 31/365 in the deltas and in the vega the wings are sized on), and it is open across the 2026-11-20 monthly
+    expiry, which the tested cycles never are. With 6 more days to run, the same 0.05 and 0.03 deltas sit a little
+    further from the spot, the vega per contract is a little higher (so slightly fewer contracts for the same $200 a
+    vol point), and the premium is larger. The strikes asked for: the backtest banded each chain on the closes over
+    the 7 days either side of the previous monthly expiry (live, those up to D); that expiry (2026-11-20) has not come
+    yet on 2026-11-17, so this entry is banded on the closes over the 7 calendar days up to D, 2026-11-10 to
+    2026-11-17, the nearest analogue (strike_plan's window for an entry before the previous expiry). Everything else
+    is the registered rule: the put nearest 0.05 |delta| among two-sided puts under 0.10 (a tie to the lower strike),
+    the call nearest 0.03 among two-sided calls under 0.05 (a tie to the higher strike), each round(200 / Black-76 vega
+    per vol point per contract, T to 2026-12-18), at least 1, sold SHT with a limit at D's closing mid, held to
+    2026-12-18, each name's own $5,000 band checked from the next night. This cycle's results are out of sample in
+    timing as well: its results are those of the one early-entered cycle, to be reported as such.
+  rule: >-
+    Which names: every name's 2026-12-18 cycle begins on the first-entry night if it is tracked (price_history.json,
+    tracked: true, with its conid) by a run of that night that writes mkt/open_orders.json, whatever it got then: both
+    wings, one, or none (no eligible strike, still not final at the 01:00 retry, stopped by its own book), as a name
+    on a regular entry night gets that cycle's one chance. Such a name does not enter on 2026-11-23: that night it is
+    hedged only (data/far_wings_ledger.json's first_entry lists these names; and no regular entry is ever placed for
+    an expiry a name already holds or whose wings it ordered on an earlier night). A name not tracked by such a run
+    (Sanji not yet pricing its conid) enters at the regular entry on 2026-11-23, with the registered band. From
+    2026-12-21 (into 2027-01-15) every name is on the normal calendar. The 2026-11-20 expiry night does not touch the
+    Dec 18 legs or the shares hedging them: expiry is each held leg's own, so that night is a band check like any other.
+  late: >-
+    If no run on the first-entry night writes the file (the 22:00 run and the retry both started after 09:30 on
+    2026-11-18 and refused as late, or no name could be decided, or the LSEG login or the T-bill failed), the early
+    first entry is lost: nothing is ordered for 2026-11-18, and every name falls back to the regular entry on
+    2026-11-23 (orders for 2026-11-24). The late run's log says so. If the 22:00 run wrote and only the retry was late,
+    the names it left for the retry began their cycle that night and get no Dec 18 wings, as at a regular entry.
+
 technical_choices:    # Claude's, each with its reason, for her to scan (the backtest registration lists the same)
   calendar: >-
     vol-arb's entries: the first session after each monthly expiry, each position held to the next monthly expiry's
-    close. Same monthly cycle as the evidence.
+    close. Same monthly cycle as the evidence. Once, her one-off first entry (first_entry): 2026-11-17's close into
+    the 2026-12-18 expiry, four sessions before that cycle's registered entry; a name it covers does not enter that
+    cycle again.
   wings: >-
     one strike per wing: the two-sided put with |delta| under 0.10 closest to 0.05 (tie to the lower strike), the
     two-sided call with |delta| under 0.05 closest to 0.03 (tie to the higher strike), deltas from each option's own
@@ -582,6 +639,11 @@ live_rules:
     exits non-zero: on an entry night the entry is lost for that cycle, and the band check (a hedge, or closing
     leftover shares) waits for the next night. A retry that finds every name already written from D's close does
     nothing and stays green. Holidays and early closes are wheel_live's NYSE calendar.
+  - >-
+    The one-off first entry (first_entry above, her answer "Tomorrow (Wednesday)"): 2026-11-17's close is an entry
+    night once, into the 2026-12-18 expiry, for every tracked name, orders for 2026-11-18; a name tracked by a run of
+    that night that writes the file is hedged only on 2026-11-23, a name not tracked then enters on 2026-11-23; if no
+    run of that night writes, every name falls back to 2026-11-23. From 2026-12-21 the registered calendar.
   - >-
     An unfilled wing is not placed again that cycle (the backtest enters only once a cycle); the other wing trades
     and is hedged as it stands.

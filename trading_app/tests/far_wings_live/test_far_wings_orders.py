@@ -226,8 +226,9 @@ def test_the_entrys_limits_are_ds_mids_not_earlier_quotes(env):
         assert float(o["lmt_prc"]) == pytest.approx((r["bid"] + r["ask"]) / 2, abs=0.005)
 
 
-@pytest.mark.parametrize("day", [dt.date(2026, 11, 17), dt.date(2026, 11, 24), dt.date(2026, 12, 2),
-                                 dt.date(2026, 12, 18)])
+# 2026-11-17 is the one-off first entry's night (test_far_wings_first_entry.py); 2026-11-20 the Nov expiry's
+@pytest.mark.parametrize("day", [dt.date(2026, 11, 18), dt.date(2026, 11, 20), dt.date(2026, 11, 24),
+                                 dt.date(2026, 12, 2), dt.date(2026, 12, 18)])
 def test_a_night_that_is_not_an_entry_with_an_empty_book_writes_nothing_new_and_skips_lseg(env, day):
     env["use"](FakeLSEG(day, chain=False), now=dt.datetime.combine(day, dt.time(22, 0)))
     assert O.main([]) == 0

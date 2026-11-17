@@ -43,6 +43,19 @@ bid, mid above zero, one RIC per strike):
     orders      SHT each wing, a limit at D's closing mid (to the cent), bare-number strike and price strings, the
                 expiry as a date; ids <ticker>-fw-put-<D> and <ticker>-fw-call-<D> (nvda-fw-put-2026-11-23)
 
+THE ONE-OFF FIRST ENTRY (her decision of 2026-11-17, config/far_wings_live.yaml's first_entry): asked when the live
+script should place its first entry, the tested rule entering Mon Nov 23, she answered "Tomorrow (Wednesday)". So
+2026-11-17 (D, Tuesday's close) is an entry night once, into the 2026-12-18 expiry, the cycle the regular 2026-11-23
+entry would have traded, for every tracked name, with exactly the wing rules above (T to 2026-12-18: 31 calendar
+days, not 25); the chain is banded on the closes over the 7 calendar days up to D, 2026-11-10 to 2026-11-17, the
+nearest analogue of the backtest's 7 days either side of the previous expiry, which has not come yet (night_of,
+band_ref). Each name's 2026-12-18 cycle begins on that night if a run that night writes the file while it is tracked,
+whatever it got (both wings, one, none: no eligible strike, not final at the retry, stopped by its own book), and
+then it does not enter on 2026-11-23 (entry_for; the ledger's first_entry lists those names); a name not tracked by
+such a run enters at the regular 2026-11-23 entry, and if no run that night writes (both runs late, no name decided)
+the first entry is lost and every name falls back to 2026-11-23. A regular entry is never placed for an expiry a name
+already holds, or whose wings it ordered on an earlier night. From 2026-12-21 the normal calendar.
+
 No eligible strike is no position in that wing this cycle (said in the log); the other wing still trades. A wing whose
 mid rounds to a limit of 0 is not sold either. That rule is for a chain that is there: a right with D rows but not
 one two-sided quote (one_sided_problem: D's bids not posted yet) stops that name at 22:00 as data not final, and only
@@ -60,7 +73,9 @@ assigned both wings).
 
 EXPIRY. Sanji settles the options on the expiry's close (an assignment delivers shares). The night of the expiry the
 book holds no options, so the leftover hedge and any delivered shares are closed at the next open; the next night
-is the next entry. An option still listed on or after its expiry stops the run (the book is not up to date).
+is the next entry. An option still listed on or after its expiry stops the run (the book is not up to date). Each
+held leg's own expiry decides this, never the calendar's: on the 2026-11-20 expiry night the first entry's 2026-12-18
+legs are held, so the band is checked and the shares hedging them stay.
 
 WHOSE BOOK, AND A STALE BOOK: as vol_arb_live has them, name by name, for this strategy's ids (<ticker>-fw-...).
 Every option the book holds on a name's conid must be exactly what that name's filled orders add up to (its ids in
@@ -161,6 +176,105 @@ def decided_from(ledger: dict, day) -> str | None:
     if night is None:
         return None
     return ", ".join(night.get("ids") or []) or "no order"
+
+
+# --------------------------------------------------------------------------- the one-off first entry
+FIRST_KEYS = {"asked", "question", "answer", "one_off", "day", "for", "expiry", "replaces", "band_window", "why",
+              "differs", "rule", "late"}
+FIRST_TEXT = ("asked", "question", "answer", "why", "differs", "rule", "late")
+
+
+def _iso(x, what: str) -> dt.date:
+    if isinstance(x, str) and L._DATE.match(x):
+        return dt.date.fromisoformat(x)
+    raise ValueError(f"first_entry.{what} must be a YYYY-MM-DD string, not {x!r}")
+
+
+def first_entry(cfg: dict) -> dict | None:
+    """
+    config/far_wings_live.yaml's first_entry, checked ({"day", "for", "expiry", "replaces", "answer"}, dates as
+    dates), or None when there is none. It must be a one-off on a session that is not itself an entry session, for
+    the session after it, into the expiry of the next registered entry (`replaces`), its chain banded on the 7
+    calendar days up to D, with her question and answer and the why written down.
+    """
+    fe = cfg.get("first_entry")
+    if fe is None:
+        return None
+    if not isinstance(fe, dict) or set(fe) != FIRST_KEYS:
+        raise ValueError(f"first_entry needs exactly {', '.join(sorted(FIRST_KEYS))}")
+    if fe["one_off"] is not True:
+        raise ValueError("first_entry.one_off must be true: the early first entry happens once")
+    empty = [k for k in FIRST_TEXT if not (isinstance(fe[k], str) and fe[k].strip())]
+    if empty:
+        raise ValueError(f"first_entry.{empty[0]} must say it in words")
+    day, for_day, expiry, replaces = (_iso(fe[k], k) for k in ("day", "for", "expiry", "replaces"))
+    if not is_session(day) or entry_expiry(day) is not None:
+        raise ValueError(f"first_entry.day {day} must be an NYSE session that is not a registered entry")
+    if for_day != next_session(day):
+        raise ValueError(f"first_entry.for {for_day} must be the session after {day}, {next_session(day)}")
+    if (replaces, expiry) != next_entry(day):
+        e, x = next_entry(day)
+        raise ValueError(f"first_entry.replaces and expiry must be the next registered entry after {day} and its "
+                         f"expiry, {e} and {x}, not {replaces} and {expiry}")
+    window = fe["band_window"]
+    if not (isinstance(window, list) and len(window) == 2
+            and [_iso(w, "band_window") for w in window] == [day - dt.timedelta(days=7), day]):
+        raise ValueError(f"first_entry.band_window must be the 7 calendar days up to {day}: "
+                         f"[{day - dt.timedelta(days=7)}, {day}]")
+    return {"day": day, "for": for_day, "expiry": expiry, "replaces": replaces, "answer": fe["answer"].strip()}
+
+
+def night_of(day, force_entry: bool = False, first: dict | None = None) -> dict:
+    """
+    What night `day` is, with the one-off first entry (`first`, first_entry's): on its day an entry night into its
+    expiry ("first": True), its chain banded on the 7 days up to D ("band_ref": D, strike_plan's window then
+    [D - 7 days, D]); every other night vol_arb_live.night (`force_entry` as there), band_ref the previous monthly
+    expiry of an entry's expiry, as the backtest's chains were banded.
+    """
+    day = _d(day)
+    if first is not None and day == first["day"]:
+        return {"entry": True, "expiry": first["expiry"], "forced": False, "late": False, "first": True,
+                "band_ref": day}
+    t = night(day, force_entry)
+    return {**t, "first": False, "band_ref": previous_expiry(t["expiry"]) if t["entry"] else None}
+
+
+def entry_for(tonight: dict, ticker: str, mine: dict, book: Book, ledger: dict, day) -> tuple:
+    """
+    (the expiry this name enters tonight, or None; why it does not, when tonight is an entry night). `mine` is its
+    part of the ledger (name_ledger), `ledger` the whole (its first_entry). No entry when its cycle of that expiry
+    began at the one-off first entry on an earlier night (it was tracked by a run of that night that wrote the
+    file), when it already holds options of that expiry, or when its ledger has an option order of that expiry
+    written on an earlier night: one entry a cycle, as the backtest has it. A rerun on the same night decides again.
+    """
+    if not tonight["entry"]:
+        return None, None
+    x, day = _d(tonight["expiry"]), _d(day)
+    rec = ledger.get("first_entry")
+    if rec is not None and ticker in rec["names"] and _d(rec["expiry"]) == x and _d(rec["day"]) < day:
+        return None, (f"its {x} cycle began at the one-off first entry on {rec['day']} (tracked that night, "
+                      f"{LEDGER_PATH}'s first_entry), so no entry tonight: the band check only")
+    held = sorted(k for k in held_contracts(book) if k[1] == x)
+    if held:
+        return None, (f"it already holds {', '.join(_leg(k) for k in held)}, so no second {x} entry: the band "
+                      f"check only")
+    earlier = [i for d, n in sorted(mine["nights"].items()) if d < day.isoformat() for i in n.get("ids") or []
+               if (mine["orders"].get(i) or {}).get("contract") in ("put", "call")
+               and mine["orders"][i].get("expiry") == x.isoformat()]
+    if earlier:
+        return None, (f"its {x} wings were ordered on an earlier night ({', '.join(earlier)}), so no second {x} "
+                      f"entry: the band check only")
+    return x, None
+
+
+def record_first_entry(ledger: dict, day, for_day, expiry, names: list) -> dict:
+    """The ledger with the one-off first entry's night and the names whose cycle began then (tracked by a run of that
+    night that wrote the file; a retry's names join the 22:00 run's)."""
+    rec = ledger.get("first_entry") or {"names": []}
+    have = list(rec["names"])
+    return {**ledger, "first_entry": {"day": _d(day).isoformat(), "for": _d(for_day).isoformat(),
+                                      "expiry": _d(expiry).isoformat(),
+                                      "names": have + [t for t in names if t not in have]}}
 
 
 # --------------------------------------------------------------------------- the wings
@@ -325,7 +439,9 @@ def read_ledger(obj) -> dict:
                    "BRK B": {"orders": {...}, "nights": {...}}, ...}}
 
     A name's night is there once a run decided that name for that night (its orders, or none); a name left for the
-    retry, skipped or stopped has no night. None (no file yet) is an empty ledger.
+    retry, skipped or stopped has no night. None (no file yet) is an empty ledger. Once a run of the one-off first
+    entry's night has written the file, "first_entry": {"day": "2026-11-17", "for": "2026-11-18", "expiry":
+    "2026-12-18", "names": [every name tracked by such a run, whose cycle of that expiry began that night]}.
     """
     if obj is None:
         return {"format": LEDGER_FORMAT, "names": {}}
@@ -334,6 +450,12 @@ def read_ledger(obj) -> dict:
             or not all(isinstance(t, str) and isinstance(v, dict) and isinstance(v.get("orders"), dict)
                        and isinstance(v.get("nights"), dict) for t, v in names.items())):
         raise LedgerError(f"{LEDGER_PATH} is not a {LEDGER_FORMAT} file")
+    rec = obj.get("first_entry")
+    if rec is not None and not (isinstance(rec, dict) and set(rec) == {"day", "for", "expiry", "names"}
+                                and all(isinstance(rec[k], str) and L._DATE.match(rec[k])
+                                        for k in ("day", "for", "expiry"))
+                                and isinstance(rec["names"], list) and all(isinstance(t, str) for t in rec["names"])):
+        raise LedgerError(f"{LEDGER_PATH}'s first_entry is not {{day, for, expiry, names}}: {rec!r}")
     return obj
 
 
@@ -344,13 +466,13 @@ def name_ledger(ledger: dict, ticker: str) -> dict:
 
 def record_night(ledger: dict, ticker: str, new: list[dict], day, for_day) -> dict:
     """The ledger after a name's orders for tonight were written: each by id (a rerun's version replaces the earlier
-    one), and the night; every other name as it was."""
+    one), and the night; every other name, and the first entry's record, as they were."""
     mine = name_ledger(ledger, ticker)
     mine = {"orders": dict(mine["orders"]), "nights": dict(mine["nights"])}
     for o in new:
         mine["orders"][o["id"]] = o
     mine["nights"][_d(day).isoformat()] = {"for": _d(for_day).isoformat(), "ids": [o["id"] for o in new]}
-    return {"format": LEDGER_FORMAT, "names": {**ledger["names"], ticker: mine}}
+    return {**ledger, "format": LEDGER_FORMAT, "names": {**ledger["names"], ticker: mine}}
 
 
 def strategy_options(ledger: dict, fills: list | None, ticker: str, day) -> tuple[dict, bool]:
@@ -653,6 +775,7 @@ def check_config(cfg: dict) -> None:
     x = (cfg.get("limits") or {}).get("max_hedge_x_capital")
     if not _finite_number(x) or x <= 0:
         raise ValueError(f"limits.max_hedge_x_capital must be a positive number, not {x!r}")
+    first_entry(cfg)
 
 
 # --------------------------------------------------------------------------- what this module takes from the lib

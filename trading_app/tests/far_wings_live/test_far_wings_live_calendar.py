@@ -9,6 +9,7 @@ session has opened (session_open), across delayed runs, weekends, holidays and e
 from __future__ import annotations
 
 import datetime as dt
+import functools
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -122,18 +123,27 @@ def test_early_closes_are_wheel_lives():
     assert not FW.is_session(dt.date(2026, 11, 26)) and not FW.is_session(dt.date(2027, 1, 18))
 
 
-def test_every_half_hour_for_three_months_for_is_the_session_after_d():
-    now = dt.datetime(2026, 11, 1, 0, 0)
+@pytest.fixture
+def cached_sessions(monkeypatch):
+    """wheel_live.sessions, the same answers, each window worked out once (the loops below ask it some 20,000 times)."""
+    monkeypatch.setattr(L, "sessions", functools.lru_cache(maxsize=None)(L.sessions))
+
+
+def test_every_half_hour_for_three_months_for_is_the_session_after_d(cached_sessions):
+    now, pairs = dt.datetime(2026, 11, 1, 0, 0), set()
     while now < dt.datetime(2027, 2, 1):
         d, for_day = FW.run_dates(now)
         closes = dt.datetime.combine(d, L.close_time(d))
         assert closes <= now and FW.is_session(d), now
         # no session closes between D's close and now: D is the last close
         assert now < dt.datetime.combine(for_day, L.close_time(for_day)), now
-        assert for_day == FW.next_session(d) and not FW.night(d, for_day=for_day)["late"], now
+        assert for_day == FW.next_session(d), now
         # the clock-based 'for' agrees exactly when the session after D has not opened
         assert (L.decision_dates(now) == (d, for_day)) == (not FW.session_open(for_day, now)), now
+        pairs.add((d, for_day))
         now += dt.timedelta(minutes=30)
+    # vol_arb_live.night's 'late' (a 'for' other than the session after D) can no longer arise
+    assert len(pairs) > 55 and not any(FW.night(d, for_day=f)["late"] for d, f in pairs)
 
 
 def test_the_retry_s_already_written_check_keys_on_d_alone():
@@ -149,3 +159,35 @@ def test_the_retry_s_already_written_check_keys_on_d_alone():
     # a night recorded with another 'for' is still that night: the check does not compare a 'for' from the clock
     odd = {"orders": {}, "nights": {"2026-11-23": {"for": "2026-11-25", "ids": ["nvda-fw-hedge-2026-11-23"]}}}
     assert FW.decided_from(odd, dt.date(2026, 11, 23)) == "nvda-fw-hedge-2026-11-23"
+
+
+# --------------------------------------------------------------------------- daylight saving time, 2027-03-14
+# The Action's crons are UTC: 03:00 UTC is 22:00 New York in winter and 23:00 after the clocks go forward on Sunday
+# 2027-03-14; the 06:00 retry 01:00 then 02:00. A run GitHub delays to 13:31 UTC is 08:31 (before the open) in winter
+# and 09:31 (after it) in summer: the same UTC delay is refused only after the change.
+@pytest.mark.parametrize("when, d, for_day, open_", [
+    (utc(2027, 3, 12, 3, 0), dt.date(2027, 3, 11), dt.date(2027, 3, 12), False),    # Thursday 22:00 EST
+    (utc(2027, 3, 12, 13, 31), dt.date(2027, 3, 11), dt.date(2027, 3, 12), False),  # 08:31 EST, before the open
+    (utc(2027, 3, 13, 3, 0), dt.date(2027, 3, 12), dt.date(2027, 3, 15), False),    # Friday 22:00 EST: Monday
+    (utc(2027, 3, 15, 13, 31), dt.date(2027, 3, 12), dt.date(2027, 3, 15), True),   # Monday 09:31 EDT: refused
+    (utc(2027, 3, 16, 3, 0), dt.date(2027, 3, 15), dt.date(2027, 3, 16), False),    # Monday 23:00 EDT
+    (utc(2027, 3, 16, 6, 0), dt.date(2027, 3, 15), dt.date(2027, 3, 16), False),    # the retry, 02:00 EDT
+    (utc(2027, 3, 16, 13, 29), dt.date(2027, 3, 15), dt.date(2027, 3, 16), False),  # 09:29 EDT
+    (utc(2027, 3, 16, 13, 31), dt.date(2027, 3, 15), dt.date(2027, 3, 16), True),   # 09:31 EDT: refused
+])
+def test_daylight_saving_time_on_2027_03_14(when, d, for_day, open_):
+    assert FW.run_dates(when) == (d, for_day)
+    assert FW.session_open(for_day, when) is open_
+
+
+def test_every_half_hour_in_utc_across_the_clock_change(cached_sessions):
+    # as the Action's clock runs: UTC, read as New York time; D's close is final, 'for' the session after D
+    t = dt.datetime(2027, 3, 1, 0, 0, tzinfo=dt.timezone.utc)
+    while t < dt.datetime(2027, 3, 31, tzinfo=dt.timezone.utc):
+        now = t.astimezone(NY).replace(tzinfo=None)
+        d, for_day = FW.run_dates(now)
+        assert dt.datetime.combine(d, L.close_time(d)) <= now < dt.datetime.combine(for_day, L.close_time(for_day))
+        assert for_day == FW.next_session(d)
+        assert FW.session_open(for_day, now) == (now >= dt.datetime.combine(for_day, dt.time(9, 30)))
+        t += dt.timedelta(minutes=30)
+    assert utc(2027, 3, 13, 3, 0).hour == 22 and utc(2027, 3, 16, 3, 0).hour == 23

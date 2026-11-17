@@ -3,7 +3,8 @@ name: Far-wing orders
 # Every weeknight: read the book the course server (Sanji) wrote and write the next session's orders for the
 # far-wing trade to mkt/open_orders.json, for every name of the basket (NVDA and the long/short vol book's 30 names,
 # each its own $100,000 book; config/far_wings_live.yaml's names), all in the one file: on an entry night (the first
-# session after a monthly expiry) each name's two short wings, a far put and a far call, as limits at the closing mid;
+# session after a monthly expiry, and once 2026-11-17's close, the one-off first entry she chose: config's
+# first_entry) each name's two short wings, a far put and a far call, as limits at the closing mid;
 # on every night each name's band check, a stock hedge only when its book's net delta is outside its $5,000 band;
 # or []. The settings are config/far_wings_live.yaml; the decision is lib/far_wings_live.py. This is the one writer:
 # vol-arb-orders.yml and wheel-orders.yml keep only their Run buttons, and their scripts refuse outright while

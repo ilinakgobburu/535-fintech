@@ -47,6 +47,12 @@ before asking LSEG anything, and again if the session opens while it is asking: 
 is lost (it is placed only from the entry session's close, for the session after it), and every name's band check
 waits for the next night's run. The retry's check for what is already written keys on D alone.
 
+THE ONE-OFF FIRST ENTRY (config/far_wings_live.yaml's first_entry, her answer "Tomorrow (Wednesday)"): 2026-11-17's
+close is an entry night once, into the 2026-12-18 expiry, orders for 2026-11-18, its chain banded on the closes of
+2026-11-10 to 2026-11-17 (far_wings_live.night_of). The run that writes that night records in the ledger every name
+it found tracked; those names are hedged only on 2026-11-23 (far_wings_live.entry_for), the others enter then. A
+first-entry night refused as late writes nothing, and the cycle falls back to the regular 2026-11-23 entry.
+
 When Sanji rejects one of a name's orders, that name stops every night (the file keeps the order, so the same check
 fails again) until she has looked at it: fix what was wrong, then add the id to config/far_wings_live.yaml's
 `acknowledged` with the reason. When he gives no result for one, every name stops the same way. The next run notes
@@ -358,7 +364,7 @@ def replace_files(contents: list[tuple[Path, str]]) -> None:
 
 
 def write_orders(written: list[dict], decided: dict, tickers: list, day: dt.date, for_day: dt.date, dry_run: bool,
-                 ledger: dict, stopped: dict, skipped: dict | None = None) -> None:
+                 ledger: dict, stopped: dict, skipped: dict | None = None, first: tuple | None = None) -> None:
     """
     mkt/open_orders.json after far_wings_live.compose_orders (every name in one file), and data/far_wings_ledger.json
     with tonight's night for each name decided. Every order that leaves the file is named, another strategy's (the
@@ -369,7 +375,8 @@ def write_orders(written: list[dict], decided: dict, tickers: list, day: dt.date
     recorded their fills). `stopped` (names that got no orders because of their own book, an unexpected error on
     their data, or positions Sanji does not track) and `skipped` (names whose LSEG data was still not final at the
     01:00 retry, so their entry or hedge was not written) go to GITHUB_OUTPUT, for the workflow's last step to turn
-    red after the commit.
+    red after the commit. `first` (the one-off first entry's night): (its expiry, every name this run found tracked),
+    recorded in the ledger's first_entry, so those names do not enter that cycle again.
     """
     orders, note = FW.compose_orders(written, decided, tickers, day, for_day)
     if note:
@@ -397,12 +404,18 @@ def write_orders(written: list[dict], decided: dict, tickers: list, day: dt.date
         for t in tickers:
             if t in decided:
                 ledger = FW.record_night(ledger, t, decided[t], day, for_day)
+        if first is not None:
+            ledger = FW.record_first_entry(ledger, day, for_day, first[0], first[1])
         files.append((ROOT / LEDGER, json.dumps(ledger, indent=1) + "\n"))
     files.append((MKT / "open_orders.json", json.dumps(orders, indent=2) + "\n"))
     replace_files(files)
     if not note:
         n = sum(len(v) for v in decided.values())
         print(f"Recorded tonight's {n} order(s) for {len(decided)} name(s) in {LEDGER}")
+        if first is not None:
+            print(f"Recorded the one-off first entry in {LEDGER}: the {first[0]} cycle of "
+                  f"{', '.join(ledger['first_entry']['names'])} began tonight; no name of these enters it again, and "
+                  f"a name not tracked tonight enters at the regular entry")
     print(f"Wrote mkt/open_orders.json: {len(orders)} order(s): {', '.join(o['id'] for o in orders) or '[]'}")
     if os.environ.get("GITHUB_OUTPUT"):
         with open(os.environ["GITHUB_OUTPUT"], "a") as f:
@@ -437,18 +450,37 @@ def _holds(book) -> bool:
     return bool(book.shares or FW.held_contracts(book))
 
 
-def late_run(day, for_day, now, tonight, holders, earlier) -> str:
+def _left(ledger, tradable, tonight) -> list:
+    """On the first entry's night, the names a retry was to decide that the 22:00 run recorded as tracked."""
+    rec = ledger.get("first_entry") if tonight.get("first") else None
+    return [n["ticker"] for n in tradable if rec and n["ticker"] in rec["names"]]
+
+
+def late_run(day, for_day, now, tonight, holders, earlier, left=()) -> str:
     """
     Why a run whose orders' session (`for_day`) had already opened at `now` (FW.session_open) writes nothing, and what
     that costs: on an entry night the cycle's entry, which is placed only from the entry session's close for the
     session after it (the registered rule: no entry from older quotes), and for every name holding positions
     (`holders`) its band check, which waits for the next night's run. `earlier` are the names the 22:00 run already
-    wrote (a retry's), whose orders stand.
+    wrote (a retry's), whose orders stand. On the one-off first entry's night: with nothing written that night, the
+    first entry is lost and the cycle falls back to the regular entry; after a 22:00 run that wrote, the names it
+    left for the retry (`left`) began their cycle that night and get no wings this cycle.
     """
     out = [f"Late run ({now:%Y-%m-%d %H:%M} New York time): " + LATE.format(day=day, for_day=for_day)]
     if earlier:
         out.append(f"the 22:00 run's orders for {', '.join(earlier)} stand as it wrote them")
-    if tonight["entry"]:
+    if tonight.get("first") and not earlier:
+        e, _ = FW.next_entry(for_day)
+        out.append(f"{day} was the one-off first entry's night, so the early first entry is lost: no wing is placed "
+                   f"from {day}'s close for {for_day}, and the {tonight['expiry']} cycle falls back to the regular "
+                   f"entry on {e} (orders for {FW.next_session(e)})")
+    elif tonight.get("first"):
+        if left:
+            e, _ = FW.next_entry(for_day)
+            out.append(f"{', '.join(left)}, left for this retry by the 22:00 run that found them tracked, began their "
+                       f"{tonight['expiry']} cycle at the one-off first entry and get no wings this cycle (not on {e} "
+                       f"either), as a name not decided at a regular entry's retry gets none")
+    elif tonight["entry"]:
         e, x = FW.next_entry(for_day)
         out.append(f"{day} was an entry night, so this cycle's entry is lost: its wings are placed only from {day}'s "
                    f"close, for {for_day}, and not again this cycle (the next entry is {e}, for the {x} expiry)")
@@ -542,10 +574,14 @@ def main(argv=None) -> int:
             print(f"Retry: nothing was written for {for_day} from {day}'s close yet, so this run decides.")
         tradable = [n for n in tradable if not done[n["ticker"]]]
     earlier = [t for t, d in done.items() if d] if args.retry else []
-    tonight = FW.night(day, args.force_entry)
+    first = FW.first_entry(cfg)
+    tonight = FW.night_of(day, args.force_entry, first)
     print(f"Quotes from the close of {day}, orders for {for_day}: "
           + (f"entry night, expiry {tonight['expiry']}{' (forced)' if tonight['forced'] else ''}"
-             if tonight["entry"] else "not an entry night"))
+             if tonight["entry"] else "not an entry night")
+          + (f" (the one-off first entry, her decision of 2026-11-17: \"{first['answer']}\"; the regular entry of "
+             f"this cycle is {first['replaces']}; chain banded on the closes of {day - dt.timedelta(days=7)} to {day})"
+             if tonight["first"] else ""))
 
     # The book, and whether it is up to date with what this script already wrote: the file's checks stop every name,
     # a name's own problems stop that name.
@@ -597,7 +633,7 @@ def main(argv=None) -> int:
         if not args.dry_run:
             # before any LSEG request: the orders could only be written a day late
             sys.exit(late_run(day, for_day, now, tonight, [n["ticker"] for n in tradable if _holds(books[n["ticker"]])],
-                              earlier))
+                              earlier, _left(ledger, tradable, tonight)))
         print(f"Note (dry run): the session for {day}'s orders ({for_day}) is already open, so a run now would write "
               f"nothing and end red")
     return _tonight(args, cfg, day, for_day, tonight, written, books, tradable, tickers, ledger, stopped, earlier)
@@ -616,8 +652,7 @@ def _decide(args, cfg, name, day, for_day, tonight, book, held, lseg: Lseg) -> d
         divs = dividends(name["ric"], day, int(data["dividends_days"]))
     if tonight["entry"]:
         try:
-            strikes = FW.strike_plan(closes, FW.previous_expiry(tonight["expiry"]), day, cfg["chain"]["bands"],
-                                     name["grid"])
+            strikes = FW.strike_plan(closes, tonight["band_ref"], day, cfg["chain"]["bands"], name["grid"])
         except ValueError as exc:
             raise NotFinal(str(exc)) from None
         print(f"{name['ric']} closed at {closes.iloc[-1]:.2f} on {day}; asking LSEG for {len(strikes['P'])} puts "
@@ -651,13 +686,17 @@ def _tonight(args, cfg, day, for_day, tonight, written, books, tradable, tickers
             if t in stopped:
                 print(f"  {t} stopped, no orders tonight: {stopped[t]}")
                 continue
+            expiry, why = FW.entry_for(tonight, t, FW.name_ledger(ledger, t), book, ledger, day)
+            if why:
+                print(f"  {t}: {why}")
+            mine = {**tonight, "entry": expiry is not None}
             try:
-                plan = _decide(args, cfg, n, day, for_day, tonight, book, held, lseg)
+                plan = _decide(args, cfg, n, day, for_day, mine, book, held, lseg)
             except NotFinal as exc:
                 after = "the Run button" if args.retry else "the retry, or the Run button"
                 hedge = (f" Tonight's hedge was not written either: the book's {book.shares:+d} {t} shares stay as "
                          f"they are until a run succeeds ({after})."
-                         if tonight["entry"] and book.shares else
+                         if mine["entry"] and book.shares else
                          (" Its hedge was not written either." if _holds(book) else ""))
                 if args.retry:
                     # the last run before the open: its entry (or its hedge) is lost for the night, so the run ends
@@ -723,8 +762,9 @@ def _tonight(args, cfg, day, for_day, tonight, written, books, tradable, tickers
         # the session opened while LSEG was being asked: what was decided would be a day late
         print("Tonight by name: " + "; ".join(summary))
         sys.exit(late_run(day, for_day, now, tonight, [n["ticker"] for n in tradable if _holds(books[n["ticker"]])],
-                          earlier))
-    write_orders(written, decided, tickers, day, for_day, args.dry_run, ledger, stopped, skipped)
+                          earlier, _left(ledger, tradable, tonight)))
+    first = (tonight["expiry"], [n["ticker"] for n in tradable]) if tonight["first"] else None
+    write_orders(written, decided, tickers, day, for_day, args.dry_run, ledger, stopped, skipped, first)
     print("Tonight by name: " + "; ".join(summary))
     return 0
 
