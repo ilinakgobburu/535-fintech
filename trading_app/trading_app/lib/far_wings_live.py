@@ -18,9 +18,16 @@ brkb), the stock's LSEG RIC, the LSEG option root, its Interactive Brokers conid
 confirmed), its strike grid and its lot. A name with no conid, or one Sanji does not track (price_history.json,
 tracked: true), gets no orders (untradable).
 
-WHAT IS KNOWN WHEN. The script runs after the close of session D (wheel_live.decision_dates) and writes orders for
-the next session, `for`, which Sanji fills at that session's prices: a market order at the open, a limit sell when
-the bar's high reaches the limit.
+WHAT IS KNOWN WHEN. The script runs after the close of session D, the last NYSE session whose close is at or before
+the run (run_dates), and writes orders for `for`, the next NYSE session after D, always, which Sanji fills at that
+session's prices: a market order at the open, a limit sell when the bar's high reaches the limit. order.txt: 'for' is
+"The session the order belongs to. Not 'next'. A late run must not fill Monday's order on Tuesday", and Sanji resolves
+session S before a script plans S+1. GitHub can start a scheduled run hours late (on 2026-11-17 the 03:00 UTC run ran
+at 11:23 UTC, the 06:00 retry at 15:29 UTC), so `for` is never taken from the clock: a run whose `for` has already
+opened (09:30 New York, session_open) writes nothing and ends red, the entry of an entry night lost for that cycle and
+the band check waiting for the next night. (wheel_live.decision_dates, which the vol-arb and the wheel scripts use,
+takes `for` from the clock, the first session opening after the run: run during D+1, it labelled D's decisions for
+D+2, a stale order a day late.)
 
 ENTRY NIGHTS are vol-arb's calendar: the first session after each monthly expiry (vol_arb_live.entry_sessions, on
 wheel_live's NYSE calendar), each position held to the next monthly expiry. On an entry night, for each name, from
@@ -104,7 +111,7 @@ night, next_session, is_session, previous_expiry = VL.night, VL.next_session, VL
 next_entry, entry_expiry = VL.next_entry, VL.entry_expiry
 market, quote_frame, strike_plan, chain_problem = VL.market, VL.quote_frame, VL.strike_plan, VL.chain_problem
 Book, read_book, held_contracts, expired_legs = VL.Book, VL.read_book, VL.held_contracts, VL.expired_legs
-decided, decision_dates, merge_orders, BookFormatError = VL.decided, L.decision_dates, L.merge_orders, L.BookFormatError
+merge_orders, BookFormatError = L.merge_orders, L.BookFormatError
 transition, leg_delta, sha256_hex, option_ric = VL.transition, VL.leg_delta, VL.sha256_hex, build_option_ric
 
 
@@ -123,6 +130,37 @@ def _d(x) -> dt.date:
 def band_dollars() -> float:
     """The band, each name's own: 5% of its $100,000 book, $5,000."""
     return BAND_SHARE * CAPITAL
+
+
+# --------------------------------------------------------------------------- the run's dates
+def run_dates(now: dt.datetime) -> tuple[dt.date, dt.date]:
+    """
+    (D, for) for a run at `now`, New York time, on wheel_live's NYSE calendar (its holidays and its 13:00 early
+    closes). D is the last session whose close is at or before `now`, so its closing quotes are final. `for` is the
+    next session after D, whatever the clock says: Monday 22:00, Tuesday 01:00 and Tuesday 10:29 all give (Monday,
+    Tuesday); a Friday night or a Saturday gives (Friday, Monday). Whether `for` has opened already is session_open's
+    question, and the run's to refuse.
+    """
+    days = [d.date() for d in L.sessions(now.date() - dt.timedelta(days=14), now.date())]
+    day = max(d for d in days if dt.datetime.combine(d, L.close_time(d)) <= now)
+    return day, next_session(day)
+
+
+def session_open(for_day, now: dt.datetime) -> bool:
+    """Whether `for_day`'s session has opened (09:30 New York) by `now`: D's orders for it would then be a day late."""
+    return now >= dt.datetime.combine(_d(for_day), L.OPEN)
+
+
+def decided_from(ledger: dict, day) -> str | None:
+    """
+    Whether one name's ledger (name_ledger) records a run that decided it from D's close: the ids it wrote, "no order",
+    or None. Keyed on D alone: D's orders are only ever for the session after D (run_dates), so the clock of the run
+    asking has no part in it.
+    """
+    night = ledger["nights"].get(_d(day).isoformat())
+    if night is None:
+        return None
+    return ", ".join(night.get("ids") or []) or "no order"
 
 
 # --------------------------------------------------------------------------- the wings
@@ -442,9 +480,10 @@ def compose_orders(written: list[dict], decided: dict, tickers: list, day, for_d
     for a session after D, as it was: her own order closing another strategy's position by hand (what a name stopped
     by such a position waits for) is not dropped because the other names were written. The retired strategies' own
     orders (the vol-arb's and the wheel's ids, RETIRED_IDS) leave the file whatever their session, as every other
-    order for a session up to D does, as wheel_live.merge_orders has it for the one writer. A run during a session
-    not yet resolved (merge_orders' note: an order for a session between D and `for`) keeps that session's orders
-    alone and adds nothing, as before.
+    order for a session up to D does, as wheel_live.merge_orders has it for the one writer. An order dated between D
+    and `for` (merge_orders' note) keeps that date's orders alone and adds nothing, as before; with `for` the session
+    right after D (run_dates) that is only an order dated on a weekend or holiday between them, since a run during
+    `for`'s session, which this note once handled, now writes nothing at all (session_open).
     """
     new = [o for t in tickers if t in decided for o in decided[t]]
     kept, note = merge_orders(written, new, day, for_day)

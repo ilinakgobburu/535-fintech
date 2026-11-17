@@ -178,9 +178,12 @@ def test_the_recorded_lib_functions_are_the_files():
     for k in ("wheel.option_greeks", "vol_arb.two_sided", "vol_arb.leg_vega", "vol_arb.contracts_for",
               "vol_arb.greeks_at", "vol_arb_live.leg_delta", "vol_arb_live.transition", "vol_arb_live.entry_sessions",
               "vol_arb_live.read_book", "wheel_live.validate_order", "wheel_live.number_token",
-              "wheel_live.merge_orders", "wheel_live.decision_dates", "pmcc_daily.carry", "vol.implied_vol",
-              "ric.build_option_ric"):
+              "wheel_live.merge_orders", "wheel_live.sessions", "wheel_live.close_time", "pmcc_daily.carry",
+              "vol.implied_vol", "ric.build_option_ric"):
         assert k in got, k
+    # the run's dates are far_wings_live.run_dates' own: wheel_live.decision_dates takes 'for' from the clock, and
+    # vol_arb_live.decided checks the ledger against such a 'for'; neither is reached any more
+    assert "wheel_live.decision_dates" not in got and "vol_arb_live.decided" not in got
     assert not any(k.startswith("far_wings_live.") for k in got)
     # the vol-arb ML fit is not reached
     assert not any(k.startswith("vol_arb_wf.") for k in got)

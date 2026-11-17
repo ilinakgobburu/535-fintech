@@ -451,7 +451,6 @@ lib_functions:        # sha256 of the source lines of every lib function and con
   vol_arb_live._d: 4200c573aa85df6f4e18c292ccbc449d6a998ad54be011e28aa2756fc5828080
   vol_arb_live._strike: ce8f3f2d2302488dafa380c0c3f05224fab4de5fa5a9abf7f38574b48183f938
   vol_arb_live.chain_problem: dbca6eaa01fc30fd470cf831ee0f2e9c12080b59542e465663584af3006db2bf
-  vol_arb_live.decided: c63e4fc4d7dcc9fd4f57366b4bc0fa6db4478ef61b6e591de2bdccaaf7b09133
   vol_arb_live.entry_calendar: fc26278d58ddf6e09029b2e9f811cc2c568c7af2776f664bde88d0f8e81dad32
   vol_arb_live.entry_expiry: ca78b54afddda38a9dcb4f405062e1948572822f7280d8304f98ddc7002f3a46
   vol_arb_live.entry_sessions: a92edadd9449daa4e519fac18d7abb48de347f863efd25f1e9c2167c7f7dc792
@@ -486,7 +485,6 @@ lib_functions:        # sha256 of the source lines of every lib function and con
   wheel_live._DATE: b4bf88e672e33d317736861f764068d025df16ab04e4cb279b013f5ba696f273
   wheel_live._NUMBER: 5ddd7298a8e792018d1143da1d903ad237a7849b6942ea3cf6dff5a7dfb1d20d
   wheel_live.close_time: ccc9219a7679cc67acdb2404826dd3f70c2814e3f49a06e8499d38b1c07189a3
-  wheel_live.decision_dates: 682c31bcf5689bfcb2aeef0075d8f70c6a45758da22a4f1abfc6edaee7014808
   wheel_live.merge_orders: 3a2cf98ae82a92783d10beef1284f4278b34dc987f31d4b57b287cf787e49d1a
   wheel_live.number_token: 90f02a651f21b8169b7e904b54e059bfc18e869205eb5e8ee66c70eda102f986
   wheel_live.rejected_orders: 33aea99dabc63e77da9ca86aea4f98d98b3532b980ac4ba61a209725a8bc8f97
@@ -547,6 +545,12 @@ technical_choices:    # Claude's, each with its reason, for her to scan (the bac
     hand, which a stopped name waits for, is not dropped because the other names were written). The vol-arb's and the
     wheel's own orders (ids <root>-va-, -csp-, -cc-) leave the file as before, and so does any order for a session up
     to D.
+  dates: >-
+    far_wings_live.run_dates, not wheel_live.decision_dates (which the vol-arb and the wheel scripts keep, unchanged
+    and pinned): decision_dates takes `for` from the clock, the first session opening after the run, so a run GitHub
+    delayed into D+1 labelled D's decisions for D+2. Refusing a late run outright, rather than writing D's orders for
+    D+1 after it opened, keeps every order to the session it was planned for; the 01:00 retry is the margin for a
+    slow night. The retry's "already written" check keys on the night of D alone (far_wings_live.decided_from).
   name_by_name: >-
     one name's trouble never stops the others, except where the whole book is in doubt. A name whose LSEG data is not
     final at 22:00 (its close, its chain, a held leg's quotes, any LSEG error on its requests) is left for the 01:00
@@ -566,7 +570,18 @@ live_rules:
     the next monthly expiry from that session's closing quotes. The orders are for the next session, which Sanji
     fills at its prices (a limit sell fills when the bar's high reaches it), not at the close. The backtest's headline
     fill takes the next session's closing mid instead (filled when it is at least the limit). A run after that next
-    session's open (the Run button on Tuesday morning) places no entry, only the band check.
+    session's open (a scheduled run GitHub starts hours late, the Run button on Tuesday morning) places no entry, so
+    that cycle's entry is lost; since 2026-11-17 it writes nothing at all and ends red (the dates rule below).
+  - >-
+    The dates (2026-11-17, after GitHub started the vol-arb's 03:00 UTC run at 11:23 UTC and its 06:00 retry at 15:29
+    UTC, which wrote "Quotes from the close of 2026-11-16, orders for 2026-11-18"): D is the last NYSE session whose
+    close is at or before the run, and every order is for the next NYSE session after D, never a session taken from
+    the clock (order.txt: 'for' is "The session the order belongs to. Not 'next'. A late run must not fill Monday's
+    order on Tuesday"; Sanji resolves session S before a script plans S+1). A run, the 22:00 one or the retry, that
+    finds that session already open (09:30 New York) when it would write, writes nothing to mkt/ or the ledger and
+    exits non-zero: on an entry night the entry is lost for that cycle, and the band check (a hedge, or closing
+    leftover shares) waits for the next night. A retry that finds every name already written from D's close does
+    nothing and stays green. Holidays and early closes are wheel_live's NYSE calendar.
   - >-
     An unfilled wing is not placed again that cycle (the backtest enters only once a cycle); the other wing trades
     and is hedged as it stands.

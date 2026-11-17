@@ -268,15 +268,55 @@ def test_one_off_flags_need_a_dry_run_on_a_session(env, args):
     assert orders_file(env) == OLD_ORDERS
 
 
-def test_a_late_run_places_no_entry(env, capsys):
-    env["use"](FakeLSEG(ENTRY), now=dt.datetime(2026, 11, 24, 10, 0))
-    assert O.main([]) == 0
-    assert "2026-11-23 was an entry night, but 2026-11-24 has opened since" in capsys.readouterr().out
-    assert orders_file(env) == [] and env["sessions"] == []
+LATE_LINE = "is already open: nothing written (a late run must not fill a day late)"
 
 
-def test_a_late_run_with_leftover_shares_closes_them_and_still_places_no_wing(env, capsys):
-    # the expiry's leftover -350 shares were not closed; both Monday-night runs failed; the Run button Tuesday 10:00
+def red(excinfo) -> str:
+    """The message of a sys.exit(message): the run ended non-zero (exit status 1) with it."""
+    assert excinfo.value.code not in (0, None)
+    return str(excinfo.value.code)
+
+
+@pytest.mark.parametrize("now, args", [
+    (dt.datetime(2026, 11, 23, 22, 0), []),           # the 22:00 run
+    (dt.datetime(2026, 11, 24, 1, 0), ["--retry"]),    # the 01:00 retry, nothing written yet
+    (dt.datetime(2026, 11, 24, 6, 23), []),           # the 22:00 run as GitHub started it on 2026-11-17 (11:23 UTC)
+    (dt.datetime(2026, 11, 24, 9, 29), ["--retry"]),   # the retry a minute before the open
+])
+def test_a_run_up_to_the_open_writes_ds_orders_for_the_session_after_d(env, now, args):
+    env["use"](FakeLSEG(ENTRY), now=now)
+    assert O.main(args) == 0
+    assert [(o["id"], o["for"]) for o in orders_file(env)] == [("nvda-fw-put-2026-11-23", "2026-11-24"),
+                                                               ("nvda-fw-call-2026-11-23", "2026-11-24")]
+    assert env["output"].read_text() == "for_day=2026-11-24\n"
+
+
+@pytest.mark.parametrize("now, args", [
+    (dt.datetime(2026, 11, 24, 9, 30), []),            # the open itself
+    (dt.datetime(2026, 11, 24, 10, 29), ["--retry"]),  # the retry as GitHub started it on 2026-11-17 (15:29 UTC)
+    (dt.datetime(2026, 11, 24, 15, 59), []),           # Tuesday's close not in yet: D is still Monday
+])
+def test_a_late_run_writes_nothing_and_goes_red(env, now, args):
+    # the vol-arb's retry, started at 15:29 UTC on 2026-11-17, wrote "Quotes from the close of 2026-11-16, orders for
+    # 2026-11-18": 'for' from the clock. Here D is Monday's close and its orders could only be for Tuesday, which
+    # has opened: nothing is written to mkt/ or the ledger, LSEG is not asked, and the run ends red
+    before = files_now(env)
+    fake = env["use"](FakeLSEG(ENTRY), now=now)
+    with pytest.raises(SystemExit) as e:
+        O.main(args)
+    msg = red(e)
+    assert f"the session for 2026-11-23's orders (2026-11-24) {LATE_LINE}" in msg
+    assert ("2026-11-23 was an entry night, so this cycle's entry is lost: its wings are placed only from "
+            "2026-11-23's close, for 2026-11-24, and not again this cycle (the next entry is 2026-12-21, for the "
+            "2027-01-15 expiry)") in msg
+    assert "band check" not in msg                                 # an empty book: no hedge waits
+    assert files_now(env) == before and ledger_file(env) is None and not env["output"].exists()
+    assert fake.requests == [] and env["sessions"] == []
+
+
+def test_a_late_run_with_leftover_shares_leaves_them_for_the_next_night(env, capsys):
+    # the expiry's leftover -350 shares were not closed; both Monday-night runs failed; the Run button Tuesday 10:00.
+    # Before, it wrote the BTC for Wednesday from Monday's close; now nothing, and Tuesday night closes them
     write_mkt(env, "open_orders.json", [])
     hedge = {"id": "nvda-fw-hedge-2026-11-19", "for": "2026-11-20", "order_type": "mkt", "action": "SHT", "qty": 350,
              "underlying": S.NVDA, "contract": "underlying", "ref": "open"}
@@ -285,14 +325,66 @@ def test_a_late_run_with_leftover_shares_closes_them_and_still_places_no_wing(en
     write_mkt(env, "fills.json", [{"id": hedge["id"], "status": "filled"}])
     write_mkt(env, "positions.json", {"cash": 0, "positions": [
         {"underlying": S.NVDA, "contract": "underlying", "qty": -350}]})
+    before = files_now(env)
     fake = env["use"](FakeLSEG(ENTRY), now=dt.datetime(2026, 11, 24, 10, 0))
+    with pytest.raises(SystemExit) as e:
+        O.main([])
+    msg = red(e)
+    assert ("the band check from 2026-11-23's close for NVDA (any hedge, or the close of leftover shares) is not "
+            "written either: it waits for the next night's run, on 2026-11-24's close") in msg
+    assert files_now(env) == before and fake.requests == []
+    # Tuesday 22:00: D is Tuesday, the shares are closed at Wednesday's open
+    day = dt.date(2026, 11, 24)
+    env["use"](FakeLSEG(day, chain=False), now=dt.datetime(2026, 11, 24, 22, 0))
     assert O.main([]) == 0
     assert [(o["id"], o["action"], o["qty"], o["for"]) for o in orders_file(env)] == [
-        ("nvda-fw-hedge-2026-11-23", "BTC", 350, "2026-11-25")]
-    assert fake.option_requests() == []                      # no chain asked for: no wing from Monday's quotes
+        ("nvda-fw-hedge-2026-11-24", "BTC", 350, "2026-11-25")]
+
+
+def test_a_run_that_reaches_the_open_while_asking_lseg_writes_nothing(env, monkeypatch):
+    # 09:29 when it starts (D Monday, for Tuesday), 09:30 by the time it would write: what it decided is a day late
+    before = files_now(env)
+    fake = env["use"](FakeLSEG(ENTRY))
+    clock = iter([dt.datetime(2026, 11, 24, 9, 29), dt.datetime(2026, 11, 24, 9, 30)])
+    monkeypatch.setattr(O, "now_ny", lambda: next(clock))
+    with pytest.raises(SystemExit) as e:
+        O.main(["--retry"])
+    assert f"the session for 2026-11-23's orders (2026-11-24) {LATE_LINE}" in red(e)
+    assert files_now(env) == before and not env["output"].exists()
+    assert fake.option_requests() and env["sessions"][0].closed       # LSEG was asked, and the session closed
+
+
+def test_a_dry_run_after_the_open_still_shows_and_says_a_real_run_would_be_red(env, capsys):
+    env["use"](FakeLSEG(ENTRY), now=dt.datetime(2026, 11, 24, 10, 29))
+    assert O.main(["--dry-run"]) == 0
     out = capsys.readouterr().out
-    assert "only the band check" in out and "entry 2026-11-23 ->" not in out
-    assert "put wing" not in out and "call wing" not in out
+    assert ("Note (dry run): the session for 2026-11-23's orders (2026-11-24) is already open, so a run now would "
+            "write nothing and end red") in out
+    assert '"for": "2026-11-24"' in out and orders_file(env) == OLD_ORDERS
+
+
+@pytest.mark.parametrize("now, d, for_day, refused", [
+    (dt.datetime(2026, 11, 20, 22, 0), "2026-11-20", "2026-11-23", False),     # Friday night: Monday
+    (dt.datetime(2026, 11, 22, 23, 0), "2026-11-20", "2026-11-23", False),     # Sunday night
+    (dt.datetime(2026, 11, 23, 9, 30), "2026-11-20", "2026-11-23", True),      # Monday's open
+    (dt.datetime(2027, 1, 15, 22, 0), "2027-01-15", "2027-01-19", False),      # before the MLK Monday: Tuesday
+    (dt.datetime(2027, 1, 18, 12, 0), "2027-01-15", "2027-01-19", False),      # on the holiday itself
+    (dt.datetime(2026, 11, 25, 22, 0), "2026-11-25", "2026-11-27", False),     # Thanksgiving eve: Friday
+    (dt.datetime(2026, 11, 27, 12, 0), "2026-11-25", "2026-11-27", True),      # Friday, before its 13:00 close
+    (dt.datetime(2026, 11, 27, 13, 0), "2026-11-27", "2026-11-30", False),     # its early close: Monday
+])
+def test_weekends_holidays_and_the_early_close_end_to_end(env, now, d, for_day, refused):
+    write_mkt(env, "open_orders.json", [])
+    env["use"](FakeLSEG(dt.date.fromisoformat(d), chain=False), now=now)
+    if refused:
+        with pytest.raises(SystemExit) as e:
+            O.main([])
+        assert f"the session for {d}'s orders ({for_day}) {LATE_LINE}" in red(e)
+        assert ledger_file(env) is None
+        return
+    assert O.main([]) == 0
+    assert env["output"].read_text() == f"for_day={for_day}\n"
+    assert ledger_file(env)["names"]["NVDA"]["nights"] == {d: {"for": for_day, "ids": []}}
 
 
 # --------------------------------------------------------------------------- the nights after: the band
@@ -426,17 +518,18 @@ def test_a_bad_ledger_stops(env):
     assert orders_file(env) == OLD_ORDERS
 
 
-def test_a_run_while_the_session_is_open_keeps_its_order_and_records_nothing(env, capsys):
+def test_a_run_while_the_session_is_open_writes_nothing_and_keeps_the_written_orders(env, capsys):
     written = entry_night(env)                                     # for Nov 24
-    led = ledger_file(env)
-    # Tuesday noon, Sanji not yet through Tuesday: D is Monday, the orders for Wednesday; Tuesday's are kept
-    env["use"](FakeLSEG(dt.date(2026, 11, 23), chain=False), now=dt.datetime(2026, 11, 24, 12, 0))
     write_mkt(env, "fills.json", [])
     write_mkt(env, "positions.json", {"cash": 100_000, "positions": []})
-    assert O.main([]) == 0
-    out = capsys.readouterr().out
-    assert "kept nvda-fw-put-2026-11-23, nvda-fw-call-2026-11-23: its session has not been resolved yet" in out
-    assert orders_file(env) == written and ledger_file(env) == led
+    before = files_now(env)
+    # Tuesday noon, Sanji not yet through Tuesday: D is Monday, whose orders are for Tuesday, which is open. Before,
+    # this run took Wednesday from the clock and only merge_orders' note kept Tuesday's orders
+    env["use"](FakeLSEG(dt.date(2026, 11, 23), chain=False), now=dt.datetime(2026, 11, 24, 12, 0))
+    with pytest.raises(SystemExit) as e:
+        O.main([])
+    assert f"the session for 2026-11-23's orders (2026-11-24) {LATE_LINE}" in red(e)
+    assert files_now(env) == before and orders_file(env) == written
 
 
 # --------------------------------------------------------------------------- the retry, the chain, LSEG

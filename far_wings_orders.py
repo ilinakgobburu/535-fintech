@@ -37,6 +37,16 @@ being written: the run ends 0 with `stopped=` or `skipped=` in GITHUB_OUTPUT, an
 after the commit; a retry that decides nothing more but skipped or stopped a name exits non-zero. With
 owns_open_orders: false in the config (the far wings retired) it writes nothing and exits 0.
 
+THE DATES. D is the last NYSE session whose close is at or before the run, and every order is for the next session
+after D, always (far_wings_live.run_dates; order.txt: 'for' is "The session the order belongs to. Not 'next'. A late
+run must not fill Monday's order on Tuesday"). GitHub can start a scheduled run hours late (on 2026-11-17 the vol-arb's
+03:00 UTC run ran at 11:23 UTC and its 06:00 retry at 15:29 UTC, which wrote "Quotes from the close of 2026-11-16,
+orders for 2026-11-18": a stale order a day late). So a run, the 22:00 one or the retry, that finds the session for
+D's orders already open (09:30 New York) when it would write, writes nothing to mkt/ or the ledger and exits non-zero,
+before asking LSEG anything, and again if the session opens while it is asking: on an entry night that cycle's entry
+is lost (it is placed only from the entry session's close, for the session after it), and every name's band check
+waits for the next night's run. The retry's check for what is already written keys on D alone.
+
 When Sanji rejects one of a name's orders, that name stops every night (the file keeps the order, so the same check
 fails again) until she has looked at it: fix what was wrong, then add the id to config/far_wings_live.yaml's
 `acknowledged` with the reason. When he gives no result for one, every name stops the same way. The next run notes
@@ -87,6 +97,10 @@ PAUSE = 0.4         # seconds after every LSEG request (_paced): the course guid
 RETRY_PAUSE = 5.0   # seconds before the one repeat of a request LSEG failed on (any error but UNLISTED)
 UNLISTED = "the universe is not found"              # LSEG's answer for a RIC it does not know (lower case)
 LIB = Path(FW.__file__).resolve().parent            # trading_app/trading_app/lib
+
+
+LATE = ("the session for {day}'s orders ({for_day}) is already open: nothing written (a late run must not fill a day "
+        "late)")
 
 
 class NotFinal(Exception):
@@ -423,6 +437,27 @@ def _holds(book) -> bool:
     return bool(book.shares or FW.held_contracts(book))
 
 
+def late_run(day, for_day, now, tonight, holders, earlier) -> str:
+    """
+    Why a run whose orders' session (`for_day`) had already opened at `now` (FW.session_open) writes nothing, and what
+    that costs: on an entry night the cycle's entry, which is placed only from the entry session's close for the
+    session after it (the registered rule: no entry from older quotes), and for every name holding positions
+    (`holders`) its band check, which waits for the next night's run. `earlier` are the names the 22:00 run already
+    wrote (a retry's), whose orders stand.
+    """
+    out = [f"Late run ({now:%Y-%m-%d %H:%M} New York time): " + LATE.format(day=day, for_day=for_day)]
+    if earlier:
+        out.append(f"the 22:00 run's orders for {', '.join(earlier)} stand as it wrote them")
+    if tonight["entry"]:
+        e, x = FW.next_entry(for_day)
+        out.append(f"{day} was an entry night, so this cycle's entry is lost: its wings are placed only from {day}'s "
+                   f"close, for {for_day}, and not again this cycle (the next entry is {e}, for the {x} expiry)")
+    if holders:
+        out.append(f"the band check from {day}'s close for {', '.join(holders)} (any hedge, or the close of leftover "
+                   f"shares) is not written either: it waits for the next night's run, on {for_day}'s close")
+    return ". ".join(out) + "."
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[1])
     ap.add_argument("--dry-run", action="store_true", help="print the orders, write nothing")
@@ -466,12 +501,13 @@ def main(argv=None) -> int:
             sys.exit(f"--only names {unknown or pick} not in config/far_wings_live.yaml's names ({', '.join(tickers)})")
         names = [n for n in names if n["ticker"] in pick]
 
+    now = now_ny()
     if args.as_of:
         if not FW.is_session(args.as_of):
             sys.exit(f"{args.as_of} is not an NYSE session.")
         day, for_day = args.as_of, FW.next_session(args.as_of)
     else:
-        day, for_day = FW.decision_dates(now_ny())
+        day, for_day = FW.run_dates(now)
     try:
         tracked = FW.tracked_conids(read_json(ROOT / PRICE_HISTORY))
     except ValueError as exc:
@@ -494,7 +530,7 @@ def main(argv=None) -> int:
             if n["conid"] is not None:
                 untracked.append(n)
     if args.retry:
-        done = {n["ticker"]: FW.decided(FW.name_ledger(ledger, n["ticker"]), day, for_day) for n in tradable}
+        done = {n["ticker"]: FW.decided_from(FW.name_ledger(ledger, n["ticker"]), day) for n in tradable}
         if all(done.values()):
             said = "; ".join(f"{t}: {d}" for t, d in done.items()) if len(done) != 1 else next(iter(done.values()))
             print(f"Retry: the orders for {for_day} from {day}'s close were already written ({said}); nothing to do.")
@@ -506,14 +542,10 @@ def main(argv=None) -> int:
             print(f"Retry: nothing was written for {for_day} from {day}'s close yet, so this run decides.")
         tradable = [n for n in tradable if not done[n["ticker"]]]
     earlier = [t for t, d in done.items() if d] if args.retry else []
-    tonight = FW.night(day, args.force_entry, for_day)
+    tonight = FW.night(day, args.force_entry)
     print(f"Quotes from the close of {day}, orders for {for_day}: "
           + (f"entry night, expiry {tonight['expiry']}{' (forced)' if tonight['forced'] else ''}"
              if tonight["entry"] else "not an entry night"))
-    if tonight["late"]:
-        print(f"Note: {day} was an entry night, but {FW.next_session(day)} has opened since, so its wings are not "
-              f"placed from {day}'s quotes for {for_day} (the backtest enters on the entry close, filled the next "
-              f"session): no entry this cycle, only the band check.")
 
     # The book, and whether it is up to date with what this script already wrote: the file's checks stop every name,
     # a name's own problems stop that name.
@@ -561,6 +593,13 @@ def main(argv=None) -> int:
                        "again once Sanji has filled it")
         if why:
             stopped[t] = ". ".join(why)
+    if not args.as_of and FW.session_open(for_day, now):
+        if not args.dry_run:
+            # before any LSEG request: the orders could only be written a day late
+            sys.exit(late_run(day, for_day, now, tonight, [n["ticker"] for n in tradable if _holds(books[n["ticker"]])],
+                              earlier))
+        print(f"Note (dry run): the session for {day}'s orders ({for_day}) is already open, so a run now would write "
+              f"nothing and end red")
     return _tonight(args, cfg, day, for_day, tonight, written, books, tradable, tickers, ledger, stopped, earlier)
 
 
@@ -679,6 +718,12 @@ def _tonight(args, cfg, day, for_day, tonight, written, books, tradable, tickers
                      + " ".join(f"{t}: {why}" for t, why in problems.items()))
         print("No name can trade tonight (see above): nothing written.")
         return 0
+    now = now_ny()
+    if not args.dry_run and FW.session_open(for_day, now):
+        # the session opened while LSEG was being asked: what was decided would be a day late
+        print("Tonight by name: " + "; ".join(summary))
+        sys.exit(late_run(day, for_day, now, tonight, [n["ticker"] for n in tradable if _holds(books[n["ticker"]])],
+                          earlier))
     write_orders(written, decided, tickers, day, for_day, args.dry_run, ledger, stopped, skipped)
     print("Tonight by name: " + "; ".join(summary))
     return 0

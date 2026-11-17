@@ -15,6 +15,9 @@ on:
     - cron: "0 6 * * 2-6"   # the retry, 01:00 New York in winter (02:00 in summer), before the open: it decides only the
                             # names the first run did not (data not final at 22:00, or the run failed), and does
                             # nothing if it wrote every name's orders (the entry is one night only)
+                            # GitHub can start either hours late (2026-11-17: 11:23 and 15:29 UTC). The orders are
+                            # always for the session after the last close; a run that starts (or would write) after
+                            # that session's 09:30 open writes nothing and goes red, and nothing is committed
   workflow_dispatch:
 
 concurrency:

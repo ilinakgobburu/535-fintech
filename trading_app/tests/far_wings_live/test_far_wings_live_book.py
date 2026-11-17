@@ -51,17 +51,17 @@ def test_the_ledger_records_each_night_and_each_order_name_by_name():
     led = FW.name_ledger(full, "NVDA")
     assert set(led["orders"]) == {PUT["id"], CALL["id"]}
     assert led["nights"]["2026-11-23"] == {"for": "2026-11-24", "ids": [PUT["id"], CALL["id"]]}
-    assert FW.decided(led, dt.date(2026, 11, 23), dt.date(2026, 11, 24)) == f"{PUT['id']}, {CALL['id']}"
-    assert FW.decided(led, dt.date(2026, 11, 23), dt.date(2026, 11, 25)) is None
+    assert FW.decided_from(led, dt.date(2026, 11, 23)) == f"{PUT['id']}, {CALL['id']}"
+    assert FW.decided_from(led, dt.date(2026, 11, 24)) is None
     # another name's night is its own: NVDA's is untouched, and a name with no night yet is undecided
     brk = {**PUT, "id": "brkb-fw-put-2026-11-23", "underlying": 72063691, "strike": "500"}
     both = FW.record_night(full, "BRK B", [brk], dt.date(2026, 11, 23), dt.date(2026, 11, 24))
     assert FW.name_ledger(both, "NVDA") == led and set(FW.name_ledger(both, "BRK B")["orders"]) == {brk["id"]}
-    assert FW.decided(FW.name_ledger(both, "AAPL"), dt.date(2026, 11, 23), dt.date(2026, 11, 24)) is None
+    assert FW.decided_from(FW.name_ledger(both, "AAPL"), dt.date(2026, 11, 23)) is None
     assert FW.read_ledger(both) is both
     empty = FW.record_night(both, "NVDA", [], DAY, dt.date(2026, 11, 26))
     mine = FW.name_ledger(empty, "NVDA")
-    assert FW.decided(mine, DAY, dt.date(2026, 11, 26)) == "no order" and set(mine["orders"]) == set(led["orders"])
+    assert FW.decided_from(mine, DAY) == "no order" and set(mine["orders"]) == set(led["orders"])
     assert FW.name_ledger(empty, "BRK B") == FW.name_ledger(both, "BRK B")
     assert full["names"]["NVDA"]["nights"] == {"2026-11-23": {"for": "2026-11-24", "ids": [PUT["id"], CALL["id"]]}}
 

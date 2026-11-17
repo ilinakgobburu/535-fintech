@@ -841,17 +841,40 @@ def test_an_option_listed_past_its_expiry_on_one_name_stops_every_name(env):
         O.main([])
 
 
-def test_a_run_during_an_open_session_keeps_every_names_orders(env, capsys):
+def test_a_run_during_the_open_session_writes_nothing_for_any_name(env, capsys):
     env["track"]("NVDA", "BRK B")
     env["use"](FakeBasket(ENTRY, ["NVDA", "BRK B"]))
     assert O.main([]) == 0
     written, led = orders_file(env), ledger_file(env)
     write_mkt(env, "fills.json", [])
     write_mkt(env, "positions.json", {"cash": 0, "positions": []})
-    env["use"](FakeBasket(ENTRY, ["NVDA", "BRK B"], chain=False), now=dt.datetime(2026, 11, 24, 12, 0))
+    fake = env["use"](FakeBasket(ENTRY, ["NVDA", "BRK B"], chain=False), now=dt.datetime(2026, 11, 24, 12, 0))
+    out_before = output(env)
+    with pytest.raises(SystemExit) as e:
+        O.main([])
+    assert e.value.code not in (0, None)
+    assert ("the session for 2026-11-23's orders (2026-11-24) is already open: nothing written (a late run must not "
+            "fill a day late)") in str(e.value.code)
+    assert orders_file(env) == written and ledger_file(env) == led and output(env) == out_before
+    assert fake.requests == []
+
+
+def test_a_late_retry_keeps_the_22_runs_orders_and_says_which_names_lost_the_night(env, capsys):
+    # AAPL not final at 22:00; GitHub starts the retry at 10:29: NVDA's and BRK B's orders stand, AAPL gets none
+    env["track"]("NVDA", "AAPL", "BRK B")
+    fake = FakeBasket(ENTRY, ["NVDA", "AAPL", "BRK B"])
+    stale_strike(fake, "AAPL")
+    env["use"](fake)
     assert O.main([]) == 0
-    assert orders_file(env) == written and ledger_file(env) == led
-    assert "its session has not been resolved yet, so no new order" in capsys.readouterr().out
+    written, led = orders_file(env), ledger_file(env)
+    fake.requests.clear()
+    env["use"](fake, now=dt.datetime(2026, 11, 24, 10, 29))
+    with pytest.raises(SystemExit) as e:
+        O.main(["--retry"])
+    msg = str(e.value.code)
+    assert "the session for 2026-11-23's orders (2026-11-24) is already open: nothing written" in msg
+    assert "the 22:00 run's orders for NVDA, BRK B stand as it wrote them" in msg
+    assert orders_file(env) == written and ledger_file(env) == led and fake.requests == []
 
 
 # --------------------------------------------------------------------------- the one-off flags
