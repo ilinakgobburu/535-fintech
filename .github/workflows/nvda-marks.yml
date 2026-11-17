@@ -1,0 +1,78 @@
+name: NVDA marks
+
+# Every weeknight: mark the two-sided variance trade's open NVDA cycle (entered 2026-10-19, expiring 2026-11-20) to
+# the last close and commit docs/data/vol_arb_nvda_mark.json, which the vol-arb page shows (docs/assets/nvda_marks.js).
+# nvda_marks.py pulls LSEG and marks the cycle with lib/vol_arb.py's own cycle_path and run_trade
+# (lib/nvda_marks.py); config/nvda_marks.yaml holds the cycle as decided on its entry night, never decided again.
+# This workflow commits nothing but docs/data/*.json: a failed mark leaves the orders, the book, the far-wing files
+# and the old mark as they were. Once the cycle is settled at its expiry, the runs leave the file as it is.
+on:
+  schedule:
+    - cron: "30 3 * * 2-6"  # 03:30 UTC Tue-Sat = 22:30 New York Mon-Fri in winter (23:30 in summer), after the orders
+    - cron: "30 7 * * 2-6"  # the retry, 02:30 New York in winter: nothing to do if the first run marked tonight's
+                            # close; if it failed (LSEG not final yet), it marks with what LSEG has and says so
+  workflow_dispatch:
+
+concurrency:
+  group: mkt-open-orders      # shared with the order workflows, so their pushes to main never race this one's
+  cancel-in-progress: false
+
+# The repository's default token can only read, so the commit step needs write access.
+permissions:
+  contents: write
+
+jobs:
+  mark:
+    # Only main: a run started from another branch would rebase that branch onto main and push it.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # scikit-learn only because lib/vol_arb_live.py, whose readers the mark uses, imports lib/vol_arb_wf.py
+      - name: Install packages (same versions as requirements.txt, plus vol-arb's scikit-learn)
+        run: pip install lseg-data==2.1.1 pandas==2.2.3 numpy==1.26.4 scipy==1.13.1 pyyaml==6.0.3 scikit-learn==1.5.1
+
+      - name: Mark the open cycle
+        id: mark
+        env:
+          PYTHONWARNINGS: ignore::FutureWarning   # lseg-data's pandas deprecation notices
+          LSEG_APP_KEY: ${{ secrets.LSEG_APP_KEY }}
+          LSEG_USERNAME: ${{ secrets.LSEG_USERNAME }}
+          LSEG_PASSWORD: ${{ secrets.LSEG_PASSWORD }}
+        run: python nvda_marks.py ${{ github.event.schedule == '30 7 * * 2-6' && '--retry' || '' }}
+
+      - name: Commit docs/data
+        env:
+          AS_OF: ${{ steps.mark.outputs.as_of }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # a run that wrote nothing (the retry after a good first run, a settled cycle) leaves the file as it was
+          if ls docs/data/*.json > /dev/null 2>&1; then git add -- 'docs/data/*.json'; fi
+          if git diff --cached --quiet; then
+            echo "docs/data is unchanged"
+            exit 0
+          fi
+          # only the marks: stop if anything outside docs/data/*.json is staged
+          if git diff --cached --name-only | grep -v -E '^docs/data/[^/]+\.json$'; then
+            echo "Files outside docs/data/*.json are staged: nothing committed"
+            exit 1
+          fi
+          git commit -m "NVDA vol-arb mark at the ${AS_OF} close"
+          # The orders, the price job or Sanji may have pushed since the checkout: replay this commit on top and retry
+          # (anything else changed in the checkout is set aside and put back, never committed).
+          for attempt in 1 2 3; do
+            if git pull --rebase --autostash origin main && git push origin HEAD:main; then
+              exit 0
+            fi
+            sleep 10
+          done
+          exit 1

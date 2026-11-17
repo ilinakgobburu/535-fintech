@@ -1,0 +1,89 @@
+# The nightly mark of the two-sided variance trade's open NVDA cycle (her words of 2026-11-17: "have that be part
+# of the live run so it does the nightly git action bc nvda has been up and down"). nvda_marks.py reads this file,
+# pulls the closes and the two legs' quotes from LSEG, marks the cycle to the last close with lib/vol_arb.py's own
+# cycle_path and run_trade (lib/nvda_marks.py), and writes docs/data/vol_arb_nvda_mark.json, which
+# docs/assets/nvda_marks.js shows on the vol-arb page. .github/workflows/nvda-marks.yml runs it every weeknight.
+#
+# Where the numbers below come from: the vol-arb rules' NVDA continuation, computed 2026-11-17. At the 2026-10-19
+# close (the first session after the October monthly expiry) the cycle to the 2026-11-20 expiry was measured with
+# lib/vol_arb_live.measure_entry, its legs and size are lib/vol_arb.legs_at_entry's (the put and the call nearest
+# 0.25 |delta|, each round(200 / vega per vol point per contract)), and each model's p and direction were computed
+# at that entry. The decision is the entry night's and is never recomputed: nothing here is fitted or chosen again,
+# this file is data, and every night only these legs are marked. Both sides are marked whichever a model chose, so
+# the page shows each model's trade.
+
+schema_version: 1
+strategy: vol_arb
+underlying:
+  name: NVDA
+  ric: NVDA.O
+  root: NVDA
+
+cycle:
+  entry: 2026-10-19          # the entry close: legs priced at its mids, the first hedge at its close
+  expiry: 2026-11-20         # the monthly expiry: the legs settle at intrinsic on its close, the shares close there
+  lot: 100                   # shares per contract
+  spot_at_entry: 217.09      # NVDA's close on 2026-10-19
+  atm_iv_at_entry: 0.3898011906943258    # the measured at-the-money implied vol of the 2026-11-20 chain at entry
+  legs:                      # full precision: VA.cycle_path starts each leg from its entry mid, IV and delta
+    P:
+      ric: NVDAW202620250.U
+      strike: 202.5
+      contracts: 10
+      mid: 4.375
+      bid: 4.3
+      ask: 4.45
+      iv: 0.4150769192308875
+      delta: -0.25598595835926696
+    C:
+      ric: NVDAK202623500.U
+      strike: 235.0
+      contracts: 10
+      mid: 3.575
+      bid: 3.5
+      ask: 3.65
+      iv: 0.37009181836024196
+      delta: 0.26196049722592707
+  # Each model's p (the fitted chance that the put side is the richer one) and direction at the entry: p > 0.55
+  # put_rich (sell the put, buy the call), p < 0.45 call_rich (buy the put, sell the call), no trade (null) between.
+  # f7 is the earnings flag (a report between the entry and the expiry). At entry the data the decision was computed
+  # from held past report dates only, so f7 = 0; NVIDIA reports on 2026-11-17, inside the cycle, which makes f7 = 1
+  # by the backtest's rule. Both readings are kept.
+  decisions:
+    f7_0:
+      logistic_refit: {p: 0.4499606129063129, direction: call_rich}     # refit on every finished row at the entry
+      logistic_fit_once: {p: 0.45794125589890605, direction: null}      # fit once on the 2019-23 panel (the live rule)
+      forest_refit: {p: 0.5324276290144355, direction: null}
+      rule_1: {p: null, direction: put_rich}                            # put_rich when f1 > f2 (no fit)
+      rule_0: {p: null, direction: put_rich}                            # always put_rich
+    f7_1:
+      logistic_refit: {p: 0.5586748181764175, direction: put_rich}
+      logistic_fit_once: {p: 0.559579272597368, direction: put_rich}
+      forest_refit: {p: 0.5501826080912544, direction: put_rich}
+      rule_1: {p: null, direction: put_rich}
+      rule_0: {p: null, direction: put_rich}
+
+lseg:
+  rate_ric: US3MT=RR         # the 3-month T-bill (MID_YLD_1), carried forward over sessions without a print
+  days_before_entry: 7       # NVDA's closes and opens and both legs' quotes are pulled from a week before the entry
+  rate_days_before_entry: 30
+  dividend_days_before_entry: 400   # the dividend yield is the trailing year's dividends over the close
+
+# Data notes, each shown once the mark reaches its date.
+notes:
+  - from: 2026-11-12
+    text: >-
+      November 12's open of $151.005 is genuine: LSEG's daily bar for that session has a low of $148.80, a high of
+      $167.14 and a close of $166.19 on 747.7M shares, the day NVIDIA announced Jensen Huang's resignation (Colette
+      Kress is interim CEO). The hedge was rebalanced at that open, as the backtest rebalances at each open.
+  - from: 2026-10-19
+    text: >-
+      NVIDIA's November 17 report falls inside this cycle, so by the backtest's rule (actual report dates) the
+      earnings flag f7 is 1. The data the entry decision was first computed from held past report dates only (f7 = 0), so the
+      models' choices are shown under both readings.
+
+# Events inside the cycle: the notes say which mark is the last before and the first after.
+events:
+  - date: 2026-11-17
+    timing: after_close
+    what: NVIDIA's fiscal Q3 2027 results
