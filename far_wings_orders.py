@@ -21,7 +21,9 @@ retried before the open), and from its Run workflow button:
      NVDA position in the book is what this strategy's own fills add up to (lib/far_wings_live.book_problems).
 
 Every failure exits non-zero before mkt/open_orders.json is touched, so the Action goes red and the file keeps
-what it had.
+what it had; the file and the ledger are each written to a temporary file first and renamed into place, the ledger
+first, so a failure while writing them leaves both as they were. With owns_open_orders: false in the config (the far
+wings retired) it writes nothing and exits 0.
 
 When Sanji rejects one of this strategy's orders, or gives no result for one, every night stops (the file keeps
 the order, so the same check fails again) until she has looked at it: fix what was wrong, then add the id to
@@ -43,6 +45,7 @@ import datetime as dt
 import json
 import os
 import sys
+import tempfile
 import time
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -182,9 +185,12 @@ def chain(root: str, expiry: dt.date, plan: dict, day: dt.date, days: int, min_s
     """
     The expiry's puts and calls on D's close, in load_market's frame. Stops when LSEG looks part-way through
     publishing D (FW.chain_problem): no contract with a D row, fewer than `min_share` of the listed contracts with
-    a D row, or (`strict`, the 22:00 run) a listed contract with earlier rows but none for D. The 01:00 retry is
-    not strict: three hours on, such a contract is taken as a hole in D's chain (no quote that close), and the
-    wings are chosen without it.
+    a D row, or (`strict`, the 22:00 run) a listed contract with earlier rows but none for D; and (`strict`) when a
+    right has D rows but not one two-sided quote (FW.one_sided_problem: D's bids not posted yet), which would
+    otherwise lose the cycle's wing with a green run and a ledger night the retry takes as decided. The 01:00 retry
+    is not strict: three hours on, such a contract is taken as a hole in D's chain (no quote that close), and a
+    right still with no two-sided quote as no eligible strike (no position in that wing this cycle, as the
+    backtest has it), each said in the log.
     """
     rows, unlisted, dated, stale = [], 0, 0, []
     for cp in (FW.PUT, FW.CALL):
@@ -204,24 +210,69 @@ def chain(root: str, expiry: dt.date, plan: dict, day: dt.date, days: int, min_s
                          "expiry": pd.Timestamp(expiry), "bid": at["bid"].iloc[0], "ask": at["ask"].iloc[0]})
     asked = len(plan[FW.PUT]) + len(plan[FW.CALL])
     frame = FW.quote_frame(rows)
-    two = int((frame["mid"] > 0).sum())
-    print(f"  {asked} asked: {dated} with a {day} row ({two} two-sided), {unlisted} not listed"
+    two = {cp: int(((frame["mid"] > 0) & (frame["cp"] == cp)).sum()) for cp in (FW.PUT, FW.CALL)}
+    print(f"  {asked} asked: {dated} with a {day} row ({two[FW.PUT] + two[FW.CALL]} two-sided: {two[FW.PUT]} puts, "
+          f"{two[FW.CALL]} calls), {unlisted} not listed"
           + (f", {len(stale)} with earlier rows but none for {day}" if stale else ""))
     problem = FW.chain_problem(expiry, day, asked - unlisted, dated, stale if strict else [], min_share)
     if problem:
         sys.exit(f"{problem}: no order written.")
+    one_sided = FW.one_sided_problem(frame, expiry, day)
+    if one_sided and strict:
+        sys.exit(f"{one_sided[0].upper()}{one_sided[1:]}: LSEG's {day} data is not final, no order written (the "
+                 f"01:00 retry asks again).")
     if stale:
         print(f"  Note: chose without {len(stale)} listed contract(s) with no {day} quote ({', '.join(stale[:4])}"
               f"{', ...' if len(stale) > 4 else ''}): the retry takes them as holes in {day}'s chain")
+    if one_sided:
+        print(f"  Note: the retry still finds that {one_sided}: it takes that as no eligible strike, so that wing "
+              f"has no position this cycle")
     return frame
 
 
 # --------------------------------------------------------------------------- the file
+def _staged(path: Path, text: str) -> Path:
+    """`text` in a new temporary file beside `path` (the same directory, so os.replace onto `path` is one rename)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    tmp = Path(name)
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(text)
+        os.chmod(tmp, 0o644)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+    return tmp
+
+
+def replace_files(contents: list[tuple[Path, str]]) -> None:
+    """
+    Each (path, text) written whole: every text is first written to a temporary file beside its path, and only once
+    all are written is each moved onto its path (os.replace, a rename), in the order given. A failure before the
+    renames leaves every path as it was, and no temporary file behind; one between two renames in the same checkout
+    (most unlikely) leaves the earlier paths replaced, which is why the ledger goes first.
+    """
+    staged = []
+    try:
+        for path, text in contents:
+            staged.append((_staged(path, text), path))
+        for tmp, path in staged:
+            os.replace(tmp, path)
+    finally:
+        for tmp, _ in staged:
+            tmp.unlink(missing_ok=True)
+
+
 def write_orders(written: list[dict], new: list[dict], day: dt.date, for_day: dt.date, dry_run: bool,
                  ledger: dict, root: str) -> None:
     """
     mkt/open_orders.json after wheel_live.merge_orders, and data/far_wings_ledger.json with tonight's orders. Every
     order that leaves the file is named, another strategy's (the wheel's last put, a vol-arb order) said to be so.
+    Both files' contents are built before either is touched, and each is written to a temporary file beside it and
+    then renamed onto it, the ledger first and mkt/open_orders.json last (replace_files): a failure before the
+    renames leaves both as they were, so the file never holds orders the ledger does not know (which would stop
+    every later night with a LedgerError once Sanji recorded their fills).
     """
     orders, note = FW.merge_orders(written, new, day, for_day)
     if note:
@@ -235,14 +286,12 @@ def write_orders(written: list[dict], new: list[dict], day: dt.date, for_day: dt
         print("Dry run, nothing written. mkt/open_orders.json would be:")
         print(json.dumps(orders, indent=2))
         return
-    MKT.mkdir(exist_ok=True)
-    (MKT / "open_orders.json").write_text(json.dumps(orders, indent=2) + "\n")
-    print(f"Wrote mkt/open_orders.json: {len(orders)} order(s): {', '.join(o['id'] for o in orders) or '[]'}")
+    files = [] if note else [(ROOT / LEDGER, json.dumps(FW.record_night(ledger, new, day, for_day), indent=1) + "\n")]
+    files.append((MKT / "open_orders.json", json.dumps(orders, indent=2) + "\n"))
+    replace_files(files)
     if not note:
-        path = ROOT / LEDGER
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(FW.record_night(ledger, new, day, for_day), indent=1) + "\n")
         print(f"Recorded tonight's {len(new)} order(s) in {LEDGER}")
+    print(f"Wrote mkt/open_orders.json: {len(orders)} order(s): {', '.join(o['id'] for o in orders) or '[]'}")
     if os.environ.get("GITHUB_OUTPUT"):
         with open(os.environ["GITHUB_OUTPUT"], "a") as f:
             f.write(f"for_day={for_day.isoformat()}\n")
@@ -293,8 +342,11 @@ def main(argv=None) -> int:
     except ValueError as exc:
         sys.exit(f"{exc}. No order written.")
     if not cfg["owns_open_orders"] and not args.dry_run:
-        sys.exit("config/far_wings_live.yaml says owns_open_orders: false (the far-wing trade is retired from "
-                 "mkt/open_orders.json): nothing written.")
+        # retired on purpose: a green run that writes nothing, so the schedule does not go red twice a night
+        print("config/far_wings_live.yaml says owns_open_orders: false (the far-wing trade is retired from "
+              "mkt/open_orders.json): nothing written. Delete the schedule in .github/workflows/far-wings-orders.yml "
+              "to stop these runs.")
+        return 0
     check_libs(cfg)
     u = cfg["underlying"]
 

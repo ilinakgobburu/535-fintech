@@ -4,9 +4,10 @@ Tonight's two-sided variance trade orders for the course server (Sanji), from LS
 
 Retired from the nightly schedule (her choice of 2026-11-16, "Yes, switch to far wings"): far_wings_orders.py now
 writes mkt/open_orders.json every weeknight, and while config/far_wings_live.yaml says owns_open_orders: true this
-script refuses to write unless given --overwrite-far-wings (vol-arb-orders.yml's Run button with its box ticked);
-a --dry-run writes nothing and still runs. It ran (and with the flag still runs) at 22:00 New York time and with
---retry at 01:00 (it does nothing if the first run wrote tonight's orders):
+script refuses outright, as wheel_orders.py does: no flag gets past it, since the far wings' next nightly run would
+replace whatever it wrote (and its next run would replace the far wings'). To go back to the vol-arb, commit
+owns_open_orders: false there first. A --dry-run writes nothing and still runs. It ran at 22:00 New York time and
+with --retry at 01:00 (it does nothing if the first run wrote tonight's orders):
   1. read config/vol_arb_live.yaml, check lib/vol_arb.py and lib/vol_arb_wf.py, and each lib/wheel.py, lib/vol.py
      and lib/pmcc_daily.py function they use, against its hashes, and read the book (mkt/positions.json and
      mkt/fills.json, which Sanji writes). Stop if the book is not up to date with the orders already written, or
@@ -385,13 +386,12 @@ def main(argv=None) -> int:
     ap.add_argument("--panel", type=Path, help="another development panel file (default: the config's)")
     ap.add_argument("--retry", action="store_true",
                     help="the second nightly run: do nothing if tonight's orders were already written")
-    ap.add_argument("--overwrite-far-wings", action="store_true",
-                    help="write the vol-arb's orders even though the far-wing strategy owns mkt/open_orders.json")
     args = ap.parse_args(argv)
-    if not args.dry_run and not args.overwrite_far_wings and far_wings_own_orders():
+    if not args.dry_run and far_wings_own_orders():
         sys.exit("The far-wing trade owns mkt/open_orders.json (config/far_wings_live.yaml owns_open_orders: true): a "
-                 "vol-arb run would replace its wings or its hedge. Nothing written. Pass --overwrite-far-wings (the "
-                 "Run button's box) only to retire the far wings; a --dry-run still runs.")
+                 "vol-arb run would replace its wings or its hedge, and its next nightly run would replace the "
+                 "vol-arb's orders. Nothing written. To go back to the vol-arb, commit owns_open_orders: false there "
+                 "first; a --dry-run still runs.")
     if (args.as_of or args.force_entry) and not args.dry_run:
         sys.exit("--as-of and --force-entry are for a one-off check: add --dry-run.")
 

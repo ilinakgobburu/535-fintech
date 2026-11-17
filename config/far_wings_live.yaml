@@ -11,9 +11,11 @@ underlying:
   conid: 4815747      # Interactive Brokers' id, as in config/wheel_live.yaml (order.html asks for it)
 
 owns_open_orders: true  # this strategy writes mkt/open_orders.json every night (.github/workflows/far-wings-orders.yml).
-                        # While this is true, vol_arb_orders.py refuses to write unless given --overwrite-far-wings
-                        # (vol-arb-orders.yml's Run button with its box ticked) and wheel_orders.py refuses outright.
-                        # Set it to false to retire the far wings: far_wings_orders.py then writes nothing
+                        # While this is true, vol_arb_orders.py and wheel_orders.py both refuse outright (no flag gets
+                        # past it), so this is the file's one writer. Set it to false (and commit it) to retire the
+                        # far wings: far_wings_orders.py then writes nothing and ends green (exit 0) with a note, so
+                        # the two scheduled runs a night stay green; delete the schedule in far-wings-orders.yml too to
+                        # stop them running at all. Only then can the vol-arb's or the wheel's Run button write
 
 registered:           # lib/far_wings_live.py's numbers; the script stops if the two disagree
   put_max_abs_delta: 0.10       # the put wing: two-sided puts with |delta| strictly under 0.10 ...
@@ -201,6 +203,8 @@ live_rules:
     for a session not yet resolved is kept and nothing is added. A rejected or unanswered order stops every night
     until she adds its id to `acknowledged` with the reason; another strategy's orders are only noted.
   - >-
-    The vol-arb Action keeps only its Run button, which does nothing unless its overwrite box is ticked, and
-    vol_arb_orders.py refuses to write while owns_open_orders is true here; wheel_orders.py refuses outright. All
-    three workflows share one concurrency group (mkt-open-orders).
+    The vol-arb and wheel Actions keep only their Run buttons, and while owns_open_orders is true here
+    vol_arb_orders.py and wheel_orders.py refuse outright (no flag gets past it), so a click can never write orders
+    that the next far-wing run would silently replace, or that would silently replace the far wings'. All three
+    workflows share one concurrency group (mkt-open-orders). With owns_open_orders false, far_wings_orders.py writes
+    nothing and exits 0.

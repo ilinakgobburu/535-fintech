@@ -29,7 +29,9 @@ mid above zero, one RIC per strike):
                 expiry as a date; ids nvda-fw-put-<D> and nvda-fw-call-<D>
 
 No eligible strike is no position in that wing this cycle (said in the log); the other wing still trades. A wing whose
-mid rounds to a limit of 0 is not sold either.
+mid rounds to a limit of 0 is not sold either. That rule is for a chain that is there: a right with D rows but not
+one two-sided quote (one_sided_problem: D's bids not posted yet) stops the 22:00 run as data not final, and only the
+01:00 retry, finding it so still, takes it as no eligible strike.
 
 EVERY NIGHT, THE BAND. The book's net delta in shares: each held option's delta at D's close (its own closing mid's
 implied vol; a leg with no usable mid that close keeps its last IV, delta recomputed at D's spot and T:
@@ -165,6 +167,21 @@ def wings_at_entry(mkt: dict, day, expiry) -> dict:
     for cp in (PUT, CALL):
         out[cp] = wing(day_q, cp, expiry, spot, day, r, q, lot)
     return out
+
+
+def one_sided_problem(day_quotes: pd.DataFrame, expiry, day) -> str | None:
+    """
+    Why D's chain of `expiry` cannot be chosen from yet (None when it can): a right with D rows on LSEG but not one
+    two-sided quote among them (vol_arb.two_sided, the rule wing() chooses from: bid and ask there, ask at or above
+    bid, mid above zero). A healthy chain has many on each right, so none at all is LSEG part-way through posting D
+    (its bids not in yet), not the registered "no eligible strike", which is meant for a chain that is there.
+    """
+    two = VA.two_sided(day_quotes, expiry)
+    rights = [("put" if cp == PUT else "call") for cp in (PUT, CALL) if not (two["cp"] == cp).any()]
+    if not rights:
+        return None
+    return (f"no {_d(expiry)} {' and no '.join(rights)} has a two-sided {_d(day)} quote on LSEG (bid and ask both "
+            f"there), though the chain has {_d(day)} rows")
 
 
 # --------------------------------------------------------------------------- the band

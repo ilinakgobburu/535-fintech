@@ -10,6 +10,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import sys
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -461,6 +462,51 @@ def test_the_retry_chooses_without_a_hole_the_first_run_stopped_on(env, capsys):
     assert [o["id"] for o in orders_file(env)] == ["nvda-fw-put-2026-11-23", "nvda-fw-call-2026-11-23"]
 
 
+def no_bid_on_d(fake, keep=lambda row: True):
+    """D's row of each chain contract `keep` picks, left with no bid (LSEG gives it as missing): not two-sided."""
+    picked = [r for r in S.chain_rows(float(fake.closes.iloc[-1])) if keep(r)]
+    for r in picked:
+        f = fake.options[r["ric"]].copy()
+        f.loc[f.index[-1], "BID"] = float("nan")
+        fake.options[r["ric"]] = f
+    return picked
+
+
+@pytest.mark.parametrize("rights, named", [(("P", "C"), "put and no call"), (("C",), "call"), (("P",), "put")])
+def test_a_right_with_d_rows_but_no_two_sided_quote_stops_and_the_retry_decides(env, capsys, rights, named):
+    fake = FakeLSEG(ENTRY)
+    assert no_bid_on_d(fake, lambda r: r["cp"] in rights)
+    env["use"](fake)
+    with pytest.raises(SystemExit, match=f"^No 2026-12-18 {named} has a two-sided 2026-11-23 quote on LSEG .* "
+                                         f"LSEG's 2026-11-23 data is not final, no order written"):
+        O.main([])
+    # red, before anything is written: the night is not in the ledger, so the 01:00 retry decides
+    assert orders_file(env) == OLD_ORDERS and ledger_file(env) is None and not env["output"].exists()
+    first = capsys.readouterr().out
+    assert ("two-sided: 0 puts" in first) == ("P" in rights) and (", 0 calls)" in first) == ("C" in rights)
+    env["use"](fake, now=dt.datetime(2026, 11, 24, 1, 0))
+    assert O.main(["--retry"]) == 0
+    out = capsys.readouterr().out
+    assert "Retry: nothing was written for 2026-11-24 from 2026-11-23's close yet, so this run decides." in out
+    assert f"Note: the retry still finds that no 2026-12-18 {named} has a two-sided 2026-11-23 quote" in out
+    got = [o["id"] for o in orders_file(env)]
+    assert got == [i for cp, i in (("P", "nvda-fw-put-2026-11-23"), ("C", "nvda-fw-call-2026-11-23"))
+                   if cp not in rights]
+    assert ledger_file(env)["nights"]["2026-11-23"] == {"for": "2026-11-24", "ids": got}
+
+
+def test_a_few_one_sided_strikes_are_not_a_partial_chain(env, capsys):
+    # only a right with no two-sided quote at all stops: a few strikes with no bid are a healthy chain's holes
+    fake = FakeLSEG(ENTRY)
+    picked = no_bid_on_d(fake, lambda r: (r["cp"], r["strike"]) in {("P", 130.0), ("P", 135.0), ("C", 240.0)})
+    assert len(picked) == 3
+    env["use"](fake)
+    assert O.main([]) == 0
+    assert [o["id"] for o in orders_file(env)] == ["nvda-fw-put-2026-11-23", "nvda-fw-call-2026-11-23"]
+    out = capsys.readouterr().out
+    assert "Note:" not in out and "two-sided: " in out
+
+
 def test_a_chain_with_no_row_for_d_stops(env):
     env["use"](FakeLSEG(ENTRY, chain_day="2026-11-20"))
     with pytest.raises(SystemExit, match="data not final"):
@@ -507,15 +553,113 @@ def test_an_entry_night_failure_says_the_hedge_was_not_written_either(env):
         O.main([])
 
 
-# --------------------------------------------------------------------------- the config and the lib
-def test_a_retired_far_wings_writes_nothing(env, capsys):
-    set_cfg(env, owns_open_orders=False)
-    env["use"](FakeLSEG(ENTRY))
-    with pytest.raises(SystemExit, match="owns_open_orders: false"):
+# --------------------------------------------------------------------------- writing the two files
+def files_now(env):
+    root = env["root"]
+    return {p.relative_to(root).as_posix(): p.read_bytes() for d in ("mkt", "data") if (root / d).exists()
+            for p in sorted((root / d).iterdir())}
+
+
+def the_next_night(env):
+    """After the Nov 23 entry was written and filled: the Nov 24 run, which writes [] and records its night."""
+    written = entry_night(env)
+    day = dt.date(2026, 11, 24)
+    env["use"](FakeLSEG(day, chain=False, legs=leg_frames(day, [("P", 145.0, 0.51), ("C", 220.0, 0.42)])),
+               now=dt.datetime(2026, 11, 24, 22, 0))
+    return written
+
+
+def test_the_ledger_is_renamed_into_place_before_the_orders_file(env, monkeypatch):
+    the_next_night(env)
+    before = files_now(env)
+    moves, replace = [], O.os.replace
+
+    def recorded(src, dst):
+        moves.append((Path(src).parent.name, Path(src).name, Path(dst).name))
+        return replace(src, dst)
+
+    monkeypatch.setattr(O.os, "replace", recorded)
+    assert O.main([]) == 0
+    assert [(d, n) for d, _, n in moves] == [("data", "far_wings_ledger.json"), ("mkt", "open_orders.json")]
+    assert all(s.startswith("." + n + ".") and s.endswith(".tmp") for _, s, n in moves)   # each beside its file
+    now = files_now(env)
+    assert set(now) == set(before)                                         # no temporary file left behind
+    assert json.loads(now["mkt/open_orders.json"]) == []
+    assert json.loads(now["data/far_wings_ledger.json"])["nights"]["2026-11-24"] == {"for": "2026-11-25", "ids": []}
+    assert all((env["root"] / f).stat().st_mode & 0o777 == 0o644 for f in now)
+
+
+def _fail_record_night(monkeypatch):
+    def boom(*a, **k):
+        raise OSError("No space left on device")
+    monkeypatch.setattr(O.FW, "record_night", boom)
+
+
+def _fail_staging_the_orders_file(monkeypatch):
+    staged = O._staged
+
+    def stage(path, text):
+        if path.name == "open_orders.json":
+            raise OSError("No space left on device")
+        return staged(path, text)
+    monkeypatch.setattr(O, "_staged", stage)
+
+
+def _fail_the_first_rename(monkeypatch):
+    def replace(src, dst):
+        raise OSError("Read-only file system")
+    monkeypatch.setattr(O.os, "replace", replace)
+
+
+@pytest.mark.parametrize("fail", [_fail_record_night, _fail_staging_the_orders_file, _fail_the_first_rename])
+def test_a_failure_while_writing_leaves_both_files_as_they_were(env, monkeypatch, fail):
+    # before, mkt/open_orders.json was written first: a failing ledger write left orders the ledger did not know,
+    # and every later night stopped with a LedgerError once Sanji recorded their fills
+    the_next_night(env)
+    before, output = files_now(env), env["output"].read_text()
+    fail(monkeypatch)
+    with pytest.raises(OSError):
         O.main([])
-    assert orders_file(env) == OLD_ORDERS and env["sessions"] == []
+    assert files_now(env) == before                      # both files byte for byte, and no temporary file
+    assert env["output"].read_text() == output           # no for_day for the commit step
+
+
+def test_a_failure_on_the_first_night_leaves_no_ledger_and_the_old_file(env, monkeypatch):
+    env["use"](FakeLSEG(ENTRY))
+    _fail_record_night(monkeypatch)
+    with pytest.raises(OSError):
+        O.main([])
+    assert orders_file(env) == OLD_ORDERS and ledger_file(env) is None
+    assert files_now(env) == {"mkt/open_orders.json": (env["root"] / "mkt" / "open_orders.json").read_bytes()}
+
+
+# --------------------------------------------------------------------------- the config and the lib
+@pytest.mark.parametrize("args", [[], ["--retry"]])
+def test_a_retired_far_wings_writes_nothing_and_ends_green(env, capsys, args):
+    # retired on purpose: exit 0, so the two scheduled runs a night do not go red (the commit step finds nothing)
+    set_cfg(env, owns_open_orders=False)
+    fake = env["use"](FakeLSEG(ENTRY))
+    assert O.main(args) == 0
+    out = capsys.readouterr().out
+    assert "says owns_open_orders: false" in out and "nothing written" in out
+    assert "Delete the schedule in .github/workflows/far-wings-orders.yml" in out
+    assert orders_file(env) == OLD_ORDERS and env["sessions"] == [] and fake.requests == []
+    assert ledger_file(env) is None and not env["output"].exists()
     assert O.main(["--dry-run"]) == 0                              # a dry run still shows what it would do
+    assert orders_file(env) == OLD_ORDERS and "Dry run, nothing written" in capsys.readouterr().out
+
+
+def test_a_retired_far_wings_still_stops_on_a_malformed_config(env):
+    set_cfg(env, owns_open_orders="false")
+    env["use"](FakeLSEG(ENTRY))
+    with pytest.raises(SystemExit, match="owns_open_orders must be true or false"):
+        O.main([])
     assert orders_file(env) == OLD_ORDERS
+
+
+def test_the_config_says_how_to_retire_and_what_the_schedule_does_then():
+    text = (S.REPO / "config" / "far_wings_live.yaml").read_text().split("registered:")[0]
+    assert "ends green (exit 0)" in text and "delete the schedule in far-wings-orders.yml" in text
 
 
 def test_a_config_that_disagrees_stops_before_anything(env):

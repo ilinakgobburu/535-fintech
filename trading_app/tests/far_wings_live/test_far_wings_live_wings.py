@@ -157,6 +157,56 @@ def test_another_expirys_quotes_and_another_days_are_left_out():
     assert got["P"]["mid"] == base["P"]["mid"] and got["C"]["mid"] == base["C"]["mid"]
 
 
+# --------------------------------------------------------------------------- a right with no two-sided quote
+def day_frame(rows):
+    return FW.quote_frame(rows)
+
+
+def test_a_healthy_chain_has_no_one_sided_problem():
+    spot = float(S.closes().iloc[-1])
+    assert FW.one_sided_problem(day_frame(S.chain_rows(spot)), S.EXPIRY, S.ENTRY) is None
+    # all but one quote on each right with no bid: one two-sided quote a right is enough
+    rows = S.chain_rows(spot)
+    keep = {cp: next(r["strike"] for r in rows if r["cp"] == cp) for cp in "PC"}
+    one = {(r["cp"], r["strike"]) for r in rows if r["strike"] != keep[r["cp"]]}
+    assert FW.one_sided_problem(day_frame(S.chain_rows(spot, one_sided=one)), S.EXPIRY, S.ENTRY) is None
+
+
+@pytest.mark.parametrize("rights, named", [("PC", "put and no call"), ("P", "put"), ("C", "call")])
+def test_a_right_with_rows_but_no_two_sided_quote_is_named(rights, named):
+    spot = float(S.closes().iloc[-1])
+    rows = S.chain_rows(spot)
+    one = {(r["cp"], r["strike"]) for r in rows if r["cp"] in rights}
+    got = FW.one_sided_problem(day_frame(S.chain_rows(spot, one_sided=one)), S.EXPIRY, S.ENTRY)
+    assert got == (f"no 2026-12-18 {named} has a two-sided 2026-11-23 quote on LSEG (bid and ask both there), "
+                   f"though the chain has 2026-11-23 rows")
+    # and then that wing is none: the problem is exactly the case the wing rule would read as no eligible strike
+    w = wings(S.market(rows=S.chain_rows(spot, one_sided=one)))
+    assert all((w[cp] is None) == (cp in rights) for cp in "PC")
+
+
+@pytest.mark.parametrize("spoil", ["ask under bid", "zero mid", "no ask", "another expiry"])
+def test_what_is_not_two_sided_is_vol_arbs_rule(spoil):
+    spot = float(S.closes().iloc[-1])
+    calls = [r for r in S.chain_rows(spot) if r["cp"] == "C"]
+    puts = [r for r in S.chain_rows(spot) if r["cp"] == "P"]
+    for r in calls:
+        if spoil == "ask under bid":
+            r["bid"], r["ask"] = r["ask"], r["bid"]
+        elif spoil == "zero mid":
+            r["bid"], r["ask"] = 0.0, 0.0
+        elif spoil == "no ask":
+            r["ask"] = np.nan
+        else:
+            r["expiry"] = pd.Timestamp("2027-01-15")
+    got = FW.one_sided_problem(day_frame(puts + calls), S.EXPIRY, S.ENTRY)
+    assert got is not None and got.startswith("no 2026-12-18 call has a two-sided")
+    # a zero bid with an ask is two-sided (its mid is above zero), as vol_arb.two_sided has it
+    for r in calls:
+        r.update(expiry=pd.Timestamp(S.EXPIRY), bid=0.0, ask=0.05)
+    assert FW.one_sided_problem(day_frame(puts + calls), S.EXPIRY, S.ENTRY) is None
+
+
 # --------------------------------------------------------------------------- the size
 def test_each_wing_is_sized_to_about_200_dollars_a_vol_point():
     mkt = S.market()

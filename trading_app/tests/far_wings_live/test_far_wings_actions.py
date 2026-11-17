@@ -53,12 +53,13 @@ def test_it_is_the_only_scheduled_writer_and_every_writer_shares_the_group():
                for n in writers)
 
 
-def test_the_vol_arb_action_keeps_only_a_run_button_with_a_box():
+def test_the_vol_arb_action_keeps_only_a_run_button_with_no_override():
+    # no box and no flag: vol_arb_orders.py refuses outright while the far wings own the file, so a click can never
+    # write orders that the next far-wing run silently replaces (or that silently replace the far wings')
     w, on = workflow("vol-arb-orders.yml")
-    assert "schedule" not in on
-    box = on["workflow_dispatch"]["inputs"]["overwrite_far_wings"]
-    assert box == {"description": box["description"], "type": "boolean", "default": False}
+    assert "schedule" not in on and on["workflow_dispatch"] is None
     job = w["jobs"]["orders"]
-    assert job["if"] == "github.ref == 'refs/heads/main' && inputs.overwrite_far_wings"
+    assert job["if"] == "github.ref == 'refs/heads/main'"
     run = next(s for s in job["steps"] if s.get("id") == "orders")
-    assert run["run"] == "python vol_arb_orders.py --overwrite-far-wings"
+    assert run["run"] == "python vol_arb_orders.py"
+    assert "overwrite" not in (WORKFLOWS / "vol-arb-orders.yml").read_text()

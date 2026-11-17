@@ -1,8 +1,8 @@
 """
 The order Actions: the vol-arb one keeps only its Run button (the far wings' Action writes mkt/open_orders.json every
-night now), which does nothing unless its overwrite box is ticked; it runs on main with the wheel's pinned packages
-plus scikit-learn and commits mkt/open_orders.json with the rebase-and-retry step. The wheel's keeps only its Run
-button too, so one nightly job writes the orders file.
+night now), with no box and no flag: vol_arb_orders.py refuses outright while the far wings own the file. It runs on
+main with the wheel's pinned packages plus scikit-learn and commits mkt/open_orders.json with the rebase-and-retry
+step. The wheel's keeps only its Run button too, so one nightly job writes the orders file.
 """
 
 from __future__ import annotations
@@ -21,13 +21,11 @@ def workflow(name):
 
 def test_the_vol_arb_action():
     w, on = workflow("vol-arb-orders.yml")
-    # retired from the schedule; its Run button needs its box, which passes the flag past the far wings' claim
-    assert "schedule" not in on and "workflow_dispatch" in on
-    box = on["workflow_dispatch"]["inputs"]["overwrite_far_wings"]
-    assert box["type"] == "boolean" and box["default"] is False
+    # retired from the schedule; its Run button has no box, and nothing passes a flag past the far wings' claim
+    assert "schedule" not in on and "workflow_dispatch" in on and on["workflow_dispatch"] is None
     assert w["permissions"] == {"contents": "write"}
     job = w["jobs"]["orders"]
-    assert job["if"] == "github.ref == 'refs/heads/main' && inputs.overwrite_far_wings"
+    assert job["if"] == "github.ref == 'refs/heads/main'"
     steps = {s["name"]: s for s in job["steps"]}
     py = next(s for s in job["steps"] if s.get("uses", "").startswith("actions/setup-python"))
     assert py["with"]["python-version"] == "3.11"
@@ -36,7 +34,7 @@ def test_the_vol_arb_action():
                      if "pip install" in s.get("run", ""))
     assert set(pip.split()) == set(wheel_pip.split()) | {"scikit-learn==1.5.1"}
     run = next(s for s in job["steps"] if s.get("id") == "orders")
-    assert run["run"] == "python vol_arb_orders.py --overwrite-far-wings"
+    assert run["run"] == "python vol_arb_orders.py"
     assert set(run["env"]) == {"PYTHONWARNINGS", "LSEG_APP_KEY", "LSEG_USERNAME", "LSEG_PASSWORD"}
     commit = steps["Commit mkt/open_orders.json and the ledger"]["run"]
     assert "git add mkt/open_orders.json data/vol_arb_ledger.json" in commit       # the ledger the book check reads
