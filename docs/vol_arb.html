@@ -248,6 +248,14 @@
     table.tbl.even th,table.tbl.even td{padding-left:6px;padding-right:6px}
     table.tbl.even td{font-size:12.5px}
   }
+
+  /* spacing fixes 2026-11-17: tighter tracking on the small caps labels; text cells without tabular figures
+     (they widened hyphens); subscripts no longer push their lines apart */
+  .eyebrow,.part .no{letter-spacing:.04em}
+  .meta .chip i,.sub,.kpi .k,.ctl-k,table.tbl th,.st,dl.rules dt,.panel > .ph,
+  table.tbl.stack td:not(:first-child)::before{letter-spacing:.03em}
+  table.tbl td.l{font-variant-numeric:normal}
+  sub{line-height:0}
 </style>
 </head>
 <body data-fill="mid">
@@ -775,6 +783,12 @@ window.addEventListener('DOMContentLoaded', function(){
   });
 })();
 
+});
+</script>
+<script>
+/* spacing fix 2026-11-17: table cells holding words (not numbers) drop tabular figures, which widen hyphens */
+document.querySelectorAll('table.tbl td').forEach(function(td){
+  if (/[A-Za-z]-[A-Za-z]/.test(td.textContent)) td.style.fontVariantNumeric = 'normal';
 });
 </script>
 </body>
