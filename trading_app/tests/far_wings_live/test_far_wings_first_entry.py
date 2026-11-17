@@ -2,8 +2,9 @@
 The one-off first entry (her decision of 2026-11-17, asked "When should the live far-wing script place its first
 entry ...? The tested rule enters Mon Nov 23": "Tomorrow (Wednesday)"), end to end with LSEG faked (no network):
 tonight's 22:00 run (2026-11-17, 03:00 UTC on the 18th) writes every tracked name's Dec 18 wings for 2026-11-18,
-NVDA alone with the repo's price_history.json as it stands today and all 31 with the 30 additions
-(price_history_additions.json, the conids Sanji is to track) applied to a test copy; the 01:00 retry and a run GitHub
+NVDA alone when Sanji tracks NVDA alone (the repo's price_history.json cut to NVDA's entry, as it stood before the
+basket's 30 conids were added) and all 31 with the repo's price_history.json as it stands now (NVDA's entry and the 30
+additions, price_history_additions.json, for Sanji to track); the 01:00 retry and a run GitHub
 delays to 06:23 write the same; one delayed to 10:29 writes nothing, goes red, and the cycle falls back to the
 regular 2026-11-23 entry. Then the cycle: 11-18 and 11-19 hedge only, the 11-20 expiry night leaves the Dec 18 legs
 and their shares alone, 11-23 hedges only and does not enter again while a name untracked on 11-17 and tracked by
@@ -45,6 +46,12 @@ QUESTION = ("When should the live far-wing script place its first entry (selling
 
 def real_price_history() -> dict:
     return json.loads((S.REPO / "price_history.json").read_text())
+
+
+def nvda_alone() -> dict:
+    """The repo's price_history.json with NVDA's entry alone: Sanji pricing NVDA only, as before the basket's 30
+    conids were added (and as when he has not yet taken them up)."""
+    return {k: v for k, v in real_price_history().items() if int(k) == S.NVDA}
 
 
 def additions() -> dict:
@@ -274,9 +281,9 @@ def test_the_ledger_keeps_the_first_entry_record():
 
 
 # --------------------------------------------------------------------------- tonight, 2026-11-17 22:00
-def test_tonights_first_entry_with_nvda_alone_tracked_by_todays_price_history(env, capsys):
-    real = real_price_history()
-    assert FW.tracked_conids(real) == {S.NVDA}                     # Sanji tracks NVDA alone today
+def test_tonights_first_entry_with_nvda_alone_tracked(env, capsys):
+    real = nvda_alone()
+    assert FW.tracked_conids(real) == {S.NVDA}                     # Sanji tracks NVDA alone
     S.write_json(env["root"] / "price_history.json", real)
     fake = env["use"](FakeBasket(FIRST, ["NVDA"]), now=TONIGHT)
     assert O.main([]) == 0
@@ -299,7 +306,7 @@ def test_tonights_first_entry_with_nvda_alone_tracked_by_todays_price_history(en
             'first entry, her decision of 2026-11-17: "Tomorrow (Wednesday)"; the regular entry of this cycle is '
             '2026-11-23; chain banded on the closes of 2026-11-10 to 2026-11-17)') in out
     assert "Entry 2026-11-17 -> 2026-12-18: spot" in out and "T 31 days" in out
-    assert out.count(": no orders tonight") == 30                  # the 30 names Sanji does not track yet
+    assert out.count(": no orders tonight") == 30                  # the 30 names Sanji does not track
     assert "Dropped nvda-csp-2026-11-16 (for 2026-11-16, not this strategy's)" in out
     assert ("Recorded the one-off first entry in data/far_wings_ledger.json: the 2026-12-18 cycle of NVDA began "
             "tonight") in out
@@ -309,7 +316,11 @@ def test_tonights_first_entry_with_all_31_tracked(env, capsys):
     adds = additions()
     assert {int(k) for k in adds} == {n["conid"] for n in CFG["names"]} - {S.NVDA}
     assert all(v["tracked"] is True for v in adds.values())
-    S.write_json(env["root"] / "price_history.json", {**real_price_history(), **adds})
+    # the repo's price_history.json as it stands: NVDA's entry, then the 30 additions in config order
+    real = real_price_history()
+    assert real == {**nvda_alone(), **adds} and list(real) == [str(S.NVDA), *adds]
+    assert FW.tracked_conids(real) == {n["conid"] for n in CFG["names"]}
+    S.write_json(env["root"] / "price_history.json", real)
     fake = env["use"](FakeBasket(FIRST, TICKERS), now=TONIGHT)
     assert O.main([]) == 0
     got = orders_file(env)
@@ -336,7 +347,7 @@ def test_tonights_first_entry_with_all_31_tracked(env, capsys):
     (dt.datetime(2026, 11, 18, 9, 29), ["--retry"]),    # the retry, a minute before Wednesday's open
 ])
 def test_the_first_entry_from_the_retry_or_a_run_delayed_to_before_the_open(env, now, args):
-    S.write_json(env["root"] / "price_history.json", real_price_history())
+    S.write_json(env["root"] / "price_history.json", nvda_alone())
     env["use"](FakeBasket(FIRST, ["NVDA"]), now=now)
     assert O.main(args) == 0
     assert orders_file(env) == plan("NVDA")["orders"]
@@ -346,7 +357,7 @@ def test_the_first_entry_from_the_retry_or_a_run_delayed_to_before_the_open(env,
 
 @pytest.mark.parametrize("args", [[], ["--retry"]])
 def test_the_first_entry_refused_at_10_29_writes_nothing_and_falls_back_to_the_23rd(env, args):
-    S.write_json(env["root"] / "price_history.json", real_price_history())
+    S.write_json(env["root"] / "price_history.json", nvda_alone())
     before = files_now(env)
     fake = env["use"](FakeBasket(FIRST, ["NVDA"]), now=dt.datetime(2026, 11, 18, 10, 29))   # 15:29 UTC
     with pytest.raises(SystemExit) as e:
@@ -434,7 +445,7 @@ def test_a_plain_run_after_the_first_entry_was_written_says_it_stands_and_stays_
     # morning after a good night: the first entry was written, so the run has nothing to do. Before, it went red and
     # said the early first entry was lost and the cycle fell back to 2026-11-23, while the Dec 18 wings were in the
     # file and the ledger's first_entry kept NVDA from entering on the 23rd
-    S.write_json(env["root"] / "price_history.json", real_price_history())
+    S.write_json(env["root"] / "price_history.json", nvda_alone())
     env["use"](FakeBasket(FIRST, ["NVDA"]), now=first_now)
     assert O.main(first_args) == 0
     assert ledger_file(env)["first_entry"]["names"] == ["NVDA"]
@@ -459,7 +470,7 @@ def test_a_plain_run_after_the_first_entry_was_written_says_it_stands_and_stays_
 def test_a_plain_rerun_that_reaches_the_open_after_the_night_was_written_stays_green(env, capsys, monkeypatch):
     # the retry wrote at 01:00; a plain run starts at 09:29 and decides again (a rerun decides afresh), but the open
     # comes while it asks LSEG: nothing is written, the retry's orders stand, and the run is green
-    S.write_json(env["root"] / "price_history.json", real_price_history())
+    S.write_json(env["root"] / "price_history.json", nvda_alone())
     env["use"](FakeBasket(FIRST, ["NVDA"]), now=dt.datetime(2026, 11, 18, 1, 0))
     assert O.main(["--retry"]) == 0
     before = files_now(env)
