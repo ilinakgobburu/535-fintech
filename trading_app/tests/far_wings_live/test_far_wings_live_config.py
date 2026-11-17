@@ -83,7 +83,13 @@ def test_the_basket_is_the_31_names_she_chose():
         assert "costs only never-listed requests" in " ".join(S.name(t)["probe"].split()), t
     header = " ".join((S.REPO / "config" / "far_wings_live.yaml").read_text().split("\nnames:")[0]
                       .replace("#", " ").split())
-    assert "These 30 names were NOT in the far-wing backtest, which used 11 stocks" in header
+    # the backtest's stocks: ten (NVDA in development and the final test), three of them basket names
+    assert ("27 of these 30 names were never in the far-wing backtest, which used ten stocks (NVDA, AMD, DIS, COST "
+            "and DAL in development, 2019-23; NVDA, MA, V, APA, ADI and FISV in the final test, 2024-26; NVDA in "
+            "both); DIS, MA and V are the only basket names among them") in header
+    assert "11 stocks" not in header
+    basket = {n["ticker"] for n in names[1:]}
+    assert basket & {"NVDA", "AMD", "DIS", "COST", "DAL", "MA", "V", "APA", "ADI", "FISV"} == {"DIS", "MA", "V"}
     assert '"why cant you do more than nvda?"' in header and '"The 30-stock basket" and "$100k book per stock"' in header
 
 

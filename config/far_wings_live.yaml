@@ -9,8 +9,11 @@
 # book per stock". NVDA stays, and the long/short vol book's registered draw of 2026-11-17 (ranks 1-30, below in rank
 # order) joins it: 31 names, each its own independent $100,000 book under exactly NVDA's rules (the same wings, size,
 # limits at the mid, its own $5,000 band and its own 40 x hedge limit, held to expiry; entry the first session after
-# each monthly expiry, the next on 2026-11-23). No pooling across names and no new rule. These 30 names were NOT in
-# the far-wing backtest, which used 11 stocks: their live results are out of sample in names as well as in time.
+# each monthly expiry, the 2026-11-23 entry replaced once by the one-off first entry below for every name it covers).
+# No pooling across names and no new rule. 27 of these 30 names were never in the far-wing backtest, which used ten
+# stocks (NVDA, AMD, DIS, COST and DAL in development, 2019-23; NVDA, MA, V, APA, ADI and FISV in the final test,
+# 2024-26; NVDA in both); DIS, MA and V are the only basket names among them. Every name's live results are out of
+# sample in time, and the other 27 names' in names as well.
 #
 # The first entry (her decision of 2026-11-17, "Tomorrow (Wednesday)"): once, from 2026-11-17's close for 2026-11-18,
 # into the 2026-12-18 expiry the 2026-11-23 entry would have traded; then the registered calendar (first_entry below).
@@ -639,7 +642,8 @@ live_rules:
     fills at its prices (a limit sell fills when the bar's high reaches it), not at the close. The backtest's headline
     fill takes the next session's closing mid instead (filled when it is at least the limit). A run after that next
     session's open (a scheduled run GitHub starts hours late, the Run button on Tuesday morning) places no entry, so
-    that cycle's entry is lost; since 2026-11-17 it writes nothing at all and ends red (the dates rule below).
+    that cycle's entry is lost; since 2026-11-17 it writes nothing at all and ends red, unless every name was
+    already written from that close, when it stays green (the dates rule below).
   - >-
     The dates (2026-11-17, after GitHub started the vol-arb's 03:00 UTC run at 11:23 UTC and its 06:00 retry at 15:29
     UTC, which wrote "Quotes from the close of 2026-11-16, orders for 2026-11-18"): D is the last NYSE session whose
