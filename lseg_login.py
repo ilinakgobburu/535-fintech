@@ -17,7 +17,8 @@ lseg-username and lseg-password.
 
 One login holds one session at a time. By default a new session takes over (signs out) any other on the same
 login, LSEG Workspace included. open_session(take_over=False) never does: its login fails instead while another
-session holds the login (nvda_marks.py, so that the nightly mark never signs out an orders run).
+session holds the login (nvda_marks.py, so that the nightly mark never signs out an orders run; its workflow also
+waits, with lseg_wait.py, until no other workflow that logs in to LSEG is queued or running).
 """
 
 import os

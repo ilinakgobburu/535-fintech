@@ -2,6 +2,7 @@
 The nightly-mark Action and the page script. The Action runs at 04:45 UTC Tue-Sat and with --retry at 09:15, on main
 only, more than an hour from every orders run, in its own concurrency group (in the orders' group it could cancel a
 pending orders run), logging in to LSEG without taking over another session (so it never signs out an orders run),
+and only after waiting while any other LSEG workflow is queued or running (test_nvda_marks_wait.py),
 with the far wings' Python and packages and LSEG secrets passed only as the mark step's environment, never echoed
 and never under `set -x`; its commit step stages nothing but docs/data/*.json, refuses if anything else is staged,
 and rebases and retries its push.
@@ -150,7 +151,7 @@ def test_the_shared_login_takes_over_only_when_asked(monkeypatch, kwargs, signon
 def test_it_uses_the_order_workflows_python_and_packages():
     w, _ = workflow("nvda-marks.yml")
     fw, _ = workflow("far-wings-orders.yml")
-    assert w["permissions"] == {"contents": "write"}
+    assert w["permissions"] == {"contents": "write", "actions": "read"}      # actions: read for the wait step
     job = w["jobs"]["mark"]
     assert job["if"] == "github.ref == 'refs/heads/main'"
     fw_steps = fw["jobs"]["orders"]["steps"]

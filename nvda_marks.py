@@ -9,7 +9,9 @@ button:
      model's p and direction; lib/nvda_marks.cycle_spec checks it, nothing is decided again), and check that
      lib/vol_arb.py and lib/vol_arb_wf.py, and every lib function they use, are the frozen backtest code
      config/vol_arb_live.yaml pins;
-  2. log in to LSEG (lseg_login.py, never taking over another session) for NVDA's unadjusted closes and opens from a week before the entry to D, the
+  2. log in to LSEG (lseg_login.py, never taking over another session; in the Action only after lseg_wait.py has
+     seen no other LSEG workflow queued or running) for NVDA's unadjusted closes and opens from a week before the
+     entry to D, the
      3-month T-bill, dividends, and both legs' daily closing bid and ask, one RIC per request, each request paced;
   3. mark the cycle with trading_app/trading_app/lib/nvda_marks.py (no I/O; tested in trading_app/tests/nvda_marks/),
      which runs lib/vol_arb.py's own cycle_path and run_trade on the market lib/vol_arb_live.market builds from the

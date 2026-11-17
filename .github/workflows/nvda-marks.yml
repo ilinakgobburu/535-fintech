@@ -23,21 +23,27 @@ on:
 # the one LSEG login at once: nvda_marks.py logs in with lseg_login.open_session(take_over=False)
 # (signon_control=False), so while an orders run holds the login the mark's login fails and nothing is written
 # (the retry, or the next night, marks), and an orders run that starts during a mark takes the login over and the
-# mark fails the same way. A mark never signs out an orders run. Both push with a rebase and retry.
+# mark fails the same way. A mark never signs out an orders run. Since GitHub can start either run hours late, the
+# mark first waits (lseg_wait.py, up to 100 minutes) while any run of a workflow that logs in to LSEG (the far-wing
+# orders, the other order workflows' Run buttons, the plot) is queued or running, and does not log in at all if
+# one still is. Both push with a rebase and retry.
 concurrency:
   group: nvda-marks
   cancel-in-progress: false
 
-# The repository's default token can only read, so the commit step needs write access.
+# The repository's default token can only read, so the commit step needs write access; actions: read lets the wait
+# step list the repository's workflow runs.
 permissions:
   contents: write
+  actions: read
 
 jobs:
   mark:
     # Only main: a run started from another branch would rebase that branch onto main and push it.
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # up to 100 minutes waiting for an LSEG run to finish, then the mark itself (a few minutes)
+    timeout-minutes: 120
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -50,6 +56,13 @@ jobs:
       # scikit-learn only because lib/vol_arb_live.py, whose readers the mark uses, imports lib/vol_arb_wf.py
       - name: Install packages (same versions as requirements.txt, plus vol-arb's scikit-learn)
         run: pip install lseg-data==2.1.1 pandas==2.2.3 numpy==1.26.4 scipy==1.13.1 pyyaml==6.0.3 scikit-learn==1.5.1
+
+      # No login while another LSEG run is queued or running: waits for it (asking GitHub every minute, at most
+      # 100 minutes), and fails, before any login, if one still is then. The job's own token, read-only for runs.
+      - name: Wait until no other LSEG workflow is queued or running
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python lseg_wait.py --self nvda-marks.yml --max-wait-minutes 100 --poll-seconds 60
 
       - name: Mark the open cycle
         id: mark
