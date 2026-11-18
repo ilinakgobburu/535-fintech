@@ -1,0 +1,1224 @@
+{
+ "format": "far_wings_ledger/2",
+ "names": {
+  "NVDA": {
+   "orders": {
+    "nvda-fw-put-2026-11-17": {
+     "id": "nvda-fw-put-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 44,
+     "underlying": 4815747,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "110",
+     "ref": "open",
+     "lmt_prc": "0.77"
+    },
+    "nvda-fw-call-2026-11-17": {
+     "id": "nvda-fw-call-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 66,
+     "underlying": 4815747,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "235",
+     "ref": "open",
+     "lmt_prc": "0.34"
+    }
+   },
+   "nights": {
+    "2026-11-17": {
+     "for": "2026-11-18",
+     "ids": [
+      "nvda-fw-put-2026-11-17",
+      "nvda-fw-call-2026-11-17"
+     ]
+    }
+   }
+  },
+  "MSFT": {
+   "orders": {
+    "msft-fw-put-2026-11-17": {
+     "id": "msft-fw-put-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 12,
+     "underlying": 272093,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "410",
+     "ref": "open",
+     "lmt_prc": "1.68"
+    },
+    "msft-fw-call-2026-11-17": {
+     "id": "msft-fw-call-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 20,
+     "underlying": 272093,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "600",
+     "ref": "open",
+     "lmt_prc": "0.47"
+    }
+   },
+   "nights": {
+    "2026-11-17": {
+     "for": "2026-11-18",
+     "ids": [
+      "msft-fw-put-2026-11-17",
+      "msft-fw-call-2026-11-17"
+     ]
+    }
+   }
+  },
+  "AAPL": {
+   "orders": {
+    "aapl-fw-put-2026-11-17": {
+     "id": "aapl-fw-put-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 20,
+     "underlying": 265598,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "295",
+     "ref": "open",
+     "lmt_prc": "0.76"
+    },
+    "aapl-fw-call-2026-11-17": {
+     "id": "aapl-fw-call-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 29,
+     "underlying": 265598,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "425",
+     "ref": "open",
+     "lmt_prc": "0.37"
+    }
+   },
+   "nights": {
+    "2026-11-17": {
+     "for": "2026-11-18",
+     "ids": [
+      "aapl-fw-put-2026-11-17",
+      "aapl-fw-call-2026-11-17"
+     ]
+    }
+   }
+  },
+  "AMZN": {
+   "orders": {
+    "amzn-fw-put-2026-11-17": {
+     "id": "amzn-fw-put-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 26,
+     "underlying": 3691937,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "205",
+     "ref": "open",
+     "lmt_prc": "0.86"
+    },
+    "amzn-fw-call-2026-11-17": {
+     "id": "amzn-fw-call-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 44,
+     "underlying": 3691937,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "315",
+     "ref": "open",
+     "lmt_prc": "0.24"
+    }
+   },
+   "nights": {
+    "2026-11-17": {
+     "for": "2026-11-18",
+     "ids": [
+      "amzn-fw-put-2026-11-17",
+      "amzn-fw-call-2026-11-17"
+     ]
+    }
+   }
+  },
+  "GOOG": {
+   "orders": {
+    "goog-fw-put-2026-11-17": {
+     "id": "goog-fw-put-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 23,
+     "underlying": 208813720,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "225",
+     "ref": "open",
+     "lmt_prc": "0.87"
+    },
+    "goog-fw-call-2026-11-17": {
+     "id": "goog-fw-call-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 34,
+     "underlying": 208813720,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "345",
+     "ref": "open",
+     "lmt_prc": "0.39"
+    }
+   },
+   "nights": {
+    "2026-11-17": {
+     "for": "2026-11-18",
+     "ids": [
+      "goog-fw-put-2026-11-17",
+      "goog-fw-call-2026-11-17"
+     ]
+    }
+   }
+  },
+  "BRK B": {
+   "orders": {
+    "brkb-fw-put-2026-11-17": {
+     "id": "brkb-fw-put-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 11,
+     "underlying": 72063691,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "525",
+     "ref": "open",
+     "lmt_prc": "0.98"
+    },
+    "brkb-fw-call-2026-11-17": {
+     "id": "brkb-fw-call-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 12,
+     "underlying": 72063691,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "650",
+     "ref": "open",
+     "lmt_prc": "0.66"
+    }
+   },
+   "nights": {
+    "2026-11-17": {
+     "for": "2026-11-18",
+     "ids": [
+      "brkb-fw-put-2026-11-17",
+      "brkb-fw-call-2026-11-17"
+     ]
+    }
+   }
+  },
+  "META": {
+   "orders": {
+    "meta-fw-put-2026-11-17": {
+     "id": "meta-fw-put-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 10,
+     "underlying": 107113386,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "490",
+     "ref": "open",
+     "lmt_prc": "2.37"
+    },
+    "meta-fw-call-2026-11-17": {
+     "id": "meta-fw-call-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 16,
+     "underlying": 107113386,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "785",
+     "ref": "open",
+     "lmt_prc": "0.84"
+    }
+   },
+   "nights": {
+    "2026-11-17": {
+     "for": "2026-11-18",
+     "ids": [
+      "meta-fw-put-2026-11-17",
+      "meta-fw-call-2026-11-17"
+     ]
+    }
+   }
+  },
+  "JNJ": {
+   "orders": {
+    "jnj-fw-put-2026-11-17": {
+     "id": "jnj-fw-put-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 23,
+     "underlying": 8719,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "240",
+     "ref": "open",
+     "lmt_prc": "0.62"
+    },
+    "jnj-fw-call-2026-11-17": {
+     "id": "jnj-fw-call-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 47,
+     "underlying": 8719,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "330",
+     "ref": "open",
+     "lmt_prc": "0.18"
+    }
+   },
+   "nights": {
+    "2026-11-17": {
+     "for": "2026-11-18",
+     "ids": [
+      "jnj-fw-put-2026-11-17",
+      "jnj-fw-call-2026-11-17"
+     ]
+    }
+   }
+  },
+  "JPM": {
+   "orders": {
+    "jpm-fw-put-2026-11-17": {
+     "id": "jpm-fw-put-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 20,
+     "underlying": 1520593,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "275",
+     "ref": "open",
+     "lmt_prc": "0.89"
+    },
+    "jpm-fw-call-2026-11-17": {
+     "id": "jpm-fw-call-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 36,
+     "underlying": 1520593,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "375",
+     "ref": "open",
+     "lmt_prc": "0.19"
+    }
+   },
+   "nights": {
+    "2026-11-17": {
+     "for": "2026-11-18",
+     "ids": [
+      "jpm-fw-put-2026-11-17",
+      "jpm-fw-call-2026-11-17"
+     ]
+    }
+   }
+  },
+  "V": {
+   "orders": {
+    "v-fw-put-2026-11-17": {
+     "id": "v-fw-put-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 15,
+     "underlying": 49462172,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "360",
+     "ref": "open",
+     "lmt_prc": "0.93"
+    },
+    "v-fw-call-2026-11-17": {
+     "id": "v-fw-call-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 22,
+     "underlying": 49462172,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "470",
+     "ref": "open",
+     "lmt_prc": "0.35"
+    }
+   },
+   "nights": {
+    "2026-11-17": {
+     "for": "2026-11-18",
+     "ids": [
+      "v-fw-put-2026-11-17",
+      "v-fw-call-2026-11-17"
+     ]
+    }
+   }
+  },
+  "XOM": {
+   "orders": {
+    "xom-fw-put-2026-11-17": {
+     "id": "xom-fw-put-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 45,
+     "underlying": 895178251,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "140",
+     "ref": "open",
+     "lmt_prc": "0.33"
+    },
+    "xom-fw-call-2026-11-17": {
+     "id": "xom-fw-call-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 59,
+     "underlying": 895178251,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "200",
+     "ref": "open",
+     "lmt_prc": "0.18"
+    }
+   },
+   "nights": {
+    "2026-11-17": {
+     "for": "2026-11-18",
+     "ids": [
+      "xom-fw-put-2026-11-17",
+      "xom-fw-call-2026-11-17"
+     ]
+    }
+   }
+  },
+  "WMT": {
+   "orders": {
+    "wmt-fw-put-2026-11-17": {
+     "id": "wmt-fw-put-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 61,
+     "underlying": 13824,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "105",
+     "ref": "open",
+     "lmt_prc": "0.27"
+    },
+    "wmt-fw-call-2026-11-17": {
+     "id": "wmt-fw-call-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 74,
+     "underlying": 13824,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "155",
+     "ref": "open",
+     "lmt_prc": "0.16"
+    }
+   },
+   "nights": {
+    "2026-11-17": {
+     "for": "2026-11-18",
+     "ids": [
+      "wmt-fw-put-2026-11-17",
+      "wmt-fw-call-2026-11-17"
+     ]
+    }
+   }
+  },
+  "PFE": {
+   "orders": {
+    "pfe-fw-put-2026-11-17": {
+     "id": "pfe-fw-put-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 220,
+     "underlying": 11031,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "25",
+     "ref": "open",
+     "lmt_prc": "0.06"
+    },
+    "pfe-fw-call-2026-11-17": {
+     "id": "pfe-fw-call-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 353,
+     "underlying": 11031,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "34",
+     "ref": "open",
+     "lmt_prc": "0.03"
+    }
+   },
+   "nights": {
+    "2026-11-17": {
+     "for": "2026-11-18",
+     "ids": [
+      "pfe-fw-put-2026-11-17",
+      "pfe-fw-call-2026-11-17"
+     ]
+    }
+   }
+  },
+  "UNH": {
+   "orders": {
+    "unh-fw-put-2026-11-17": {
+     "id": "unh-fw-put-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 16,
+     "underlying": 13272,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "320",
+     "ref": "open",
+     "lmt_prc": "1.23"
+    },
+    "unh-fw-call-2026-11-17": {
+     "id": "unh-fw-call-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 24,
+     "underlying": 13272,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "470",
+     "ref": "open",
+     "lmt_prc": "0.48"
+    }
+   },
+   "nights": {
+    "2026-11-17": {
+     "for": "2026-11-18",
+     "ids": [
+      "unh-fw-put-2026-11-17",
+      "unh-fw-call-2026-11-17"
+     ]
+    }
+   }
+  },
+  "BAC": {
+   "orders": {
+    "bac-fw-put-2026-11-17": {
+     "id": "bac-fw-put-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 147,
+     "underlying": 10098,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "41",
+     "ref": "open",
+     "lmt_prc": "0.11"
+    },
+    "bac-fw-call-2026-11-17": {
+     "id": "bac-fw-call-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 188,
+     "underlying": 10098,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "57.5",
+     "ref": "open",
+     "lmt_prc": "0.05"
+    }
+   },
+   "nights": {
+    "2026-11-17": {
+     "for": "2026-11-18",
+     "ids": [
+      "bac-fw-put-2026-11-17",
+      "bac-fw-call-2026-11-17"
+     ]
+    }
+   }
+  },
+  "VZ": {
+   "orders": {
+    "vz-fw-put-2026-11-17": {
+     "id": "vz-fw-put-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 187,
+     "underlying": 4901,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "38",
+     "ref": "open",
+     "lmt_prc": "0.07"
+    },
+    "vz-fw-call-2026-11-17": {
+     "id": "vz-fw-call-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 298,
+     "underlying": 4901,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "55",
+     "ref": "open",
+     "lmt_prc": "0.03"
+    }
+   },
+   "nights": {
+    "2026-11-17": {
+     "for": "2026-11-18",
+     "ids": [
+      "vz-fw-put-2026-11-17",
+      "vz-fw-call-2026-11-17"
+     ]
+    }
+   }
+  },
+  "PG": {
+   "orders": {
+    "pg-fw-put-2026-11-17": {
+     "id": "pg-fw-put-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 44,
+     "underlying": 11054,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "150",
+     "ref": "open",
+     "lmt_prc": "0.25"
+    },
+    "pg-fw-call-2026-11-17": {
+     "id": "pg-fw-call-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 61,
+     "underlying": 11054,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "195",
+     "ref": "open",
+     "lmt_prc": "0.12"
+    }
+   },
+   "nights": {
+    "2026-11-17": {
+     "for": "2026-11-18",
+     "ids": [
+      "pg-fw-put-2026-11-17",
+      "pg-fw-call-2026-11-17"
+     ]
+    }
+   }
+  },
+  "WFC": {
+   "orders": {
+    "wfc-fw-put-2026-11-17": {
+     "id": "wfc-fw-put-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 98,
+     "underlying": 10375,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "67.5",
+     "ref": "open",
+     "lmt_prc": "0.16"
+    },
+    "wfc-fw-call-2026-11-17": {
+     "id": "wfc-fw-call-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 167,
+     "underlying": 10375,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "100",
+     "ref": "open",
+     "lmt_prc": "0.06"
+    }
+   },
+   "nights": {
+    "2026-11-17": {
+     "for": "2026-11-18",
+     "ids": [
+      "wfc-fw-put-2026-11-17",
+      "wfc-fw-call-2026-11-17"
+     ]
+    }
+   }
+  },
+  "INTC": {
+   "orders": {
+    "intc-fw-put-2026-11-17": {
+     "id": "intc-fw-put-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 79,
+     "underlying": 270639,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "40",
+     "ref": "open",
+     "lmt_prc": "0.65"
+    },
+    "intc-fw-call-2026-11-17": {
+     "id": "intc-fw-call-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 181,
+     "underlying": 270639,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "85",
+     "ref": "open",
+     "lmt_prc": "0.13"
+    }
+   },
+   "nights": {
+    "2026-11-17": {
+     "for": "2026-11-18",
+     "ids": [
+      "intc-fw-put-2026-11-17",
+      "intc-fw-call-2026-11-17"
+     ]
+    }
+   }
+  },
+  "CVX": {
+   "orders": {
+    "cvx-fw-put-2026-11-17": {
+     "id": "cvx-fw-put-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 28,
+     "underlying": 5684,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "185",
+     "ref": "open",
+     "lmt_prc": "0.54"
+    },
+    "cvx-fw-call-2026-11-17": {
+     "id": "cvx-fw-call-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 40,
+     "underlying": 5684,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "250",
+     "ref": "open",
+     "lmt_prc": "0.23"
+    }
+   },
+   "nights": {
+    "2026-11-17": {
+     "for": "2026-11-18",
+     "ids": [
+      "cvx-fw-put-2026-11-17",
+      "cvx-fw-call-2026-11-17"
+     ]
+    }
+   }
+  },
+  "T": {
+   "orders": {
+    "t-fw-put-2026-11-17": {
+     "id": "t-fw-put-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 279,
+     "underlying": 37018770,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "19",
+     "ref": "open",
+     "lmt_prc": "0.06"
+    },
+    "t-fw-call-2026-11-17": {
+     "id": "t-fw-call-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 520,
+     "underlying": 37018770,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "27",
+     "ref": "open",
+     "lmt_prc": "0.02"
+    }
+   },
+   "nights": {
+    "2026-11-17": {
+     "for": "2026-11-18",
+     "ids": [
+      "t-fw-put-2026-11-17",
+      "t-fw-call-2026-11-17"
+     ]
+    }
+   }
+  },
+  "KO": {
+   "orders": {
+    "ko-fw-put-2026-11-17": {
+     "id": "ko-fw-put-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 62,
+     "underlying": 8894,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "87.5",
+     "ref": "open",
+     "lmt_prc": "0.19"
+    }
+   },
+   "nights": {
+    "2026-11-17": {
+     "for": "2026-11-18",
+     "ids": [
+      "ko-fw-put-2026-11-17"
+     ]
+    }
+   }
+  },
+  "MRK": {
+   "orders": {
+    "mrk-fw-put-2026-11-17": {
+     "id": "mrk-fw-put-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 53,
+     "underlying": 70101545,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "120",
+     "ref": "open",
+     "lmt_prc": "0.28"
+    },
+    "mrk-fw-call-2026-11-17": {
+     "id": "mrk-fw-call-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 78,
+     "underlying": 70101545,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "170",
+     "ref": "open",
+     "lmt_prc": "0.12"
+    }
+   },
+   "nights": {
+    "2026-11-17": {
+     "for": "2026-11-18",
+     "ids": [
+      "mrk-fw-put-2026-11-17",
+      "mrk-fw-call-2026-11-17"
+     ]
+    }
+   }
+  },
+  "MA": {
+   "orders": {
+    "ma-fw-put-2026-11-17": {
+     "id": "ma-fw-put-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 11,
+     "underlying": 38685693,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "560",
+     "ref": "open",
+     "lmt_prc": "1.15"
+    },
+    "ma-fw-call-2026-11-17": {
+     "id": "ma-fw-call-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 18,
+     "underlying": 38685693,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "740",
+     "ref": "open",
+     "lmt_prc": "0.4"
+    }
+   },
+   "nights": {
+    "2026-11-17": {
+     "for": "2026-11-18",
+     "ids": [
+      "ma-fw-put-2026-11-17",
+      "ma-fw-call-2026-11-17"
+     ]
+    }
+   }
+  },
+  "CSCO": {
+   "orders": {
+    "csco-fw-put-2026-11-17": {
+     "id": "csco-fw-put-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 81,
+     "underlying": 268084,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "75",
+     "ref": "open",
+     "lmt_prc": "0.24"
+    },
+    "csco-fw-call-2026-11-17": {
+     "id": "csco-fw-call-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 136,
+     "underlying": 268084,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "120",
+     "ref": "open",
+     "lmt_prc": "0.08"
+    }
+   },
+   "nights": {
+    "2026-11-17": {
+     "for": "2026-11-18",
+     "ids": [
+      "csco-fw-put-2026-11-17",
+      "csco-fw-call-2026-11-17"
+     ]
+    }
+   }
+  },
+  "HD": {
+   "orders": {
+    "hd-fw-put-2026-11-17": {
+     "id": "hd-fw-put-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 20,
+     "underlying": 7930,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "290",
+     "ref": "open",
+     "lmt_prc": "0.71"
+    },
+    "hd-fw-call-2026-11-17": {
+     "id": "hd-fw-call-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 28,
+     "underlying": 7930,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "390",
+     "ref": "open",
+     "lmt_prc": "0.3"
+    }
+   },
+   "nights": {
+    "2026-11-17": {
+     "for": "2026-11-18",
+     "ids": [
+      "hd-fw-put-2026-11-17",
+      "hd-fw-call-2026-11-17"
+     ]
+    }
+   }
+  },
+  "BA": {
+   "orders": {
+    "ba-fw-put-2026-11-17": {
+     "id": "ba-fw-put-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 42,
+     "underlying": 4762,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "135",
+     "ref": "open",
+     "lmt_prc": "0.41"
+    },
+    "ba-fw-call-2026-11-17": {
+     "id": "ba-fw-call-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 61,
+     "underlying": 4762,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "200",
+     "ref": "open",
+     "lmt_prc": "0.19"
+    }
+   },
+   "nights": {
+    "2026-11-17": {
+     "for": "2026-11-18",
+     "ids": [
+      "ba-fw-put-2026-11-17",
+      "ba-fw-call-2026-11-17"
+     ]
+    }
+   }
+  },
+  "DIS": {
+   "orders": {
+    "dis-fw-put-2026-11-17": {
+     "id": "dis-fw-put-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 68,
+     "underlying": 6459,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "100",
+     "ref": "open",
+     "lmt_prc": "0.18"
+    },
+    "dis-fw-call-2026-11-17": {
+     "id": "dis-fw-call-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 94,
+     "underlying": 6459,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "135",
+     "ref": "open",
+     "lmt_prc": "0.08"
+    }
+   },
+   "nights": {
+    "2026-11-17": {
+     "for": "2026-11-18",
+     "ids": [
+      "dis-fw-put-2026-11-17",
+      "dis-fw-call-2026-11-17"
+     ]
+    }
+   }
+  },
+  "ORCL": {
+   "orders": {
+    "orcl-fw-put-2026-11-17": {
+     "id": "orcl-fw-put-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 45,
+     "underlying": 272800,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "80",
+     "ref": "open",
+     "lmt_prc": "1.08"
+    },
+    "orcl-fw-call-2026-11-17": {
+     "id": "orcl-fw-call-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 91,
+     "underlying": 272800,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "180",
+     "ref": "open",
+     "lmt_prc": "0.26"
+    }
+   },
+   "nights": {
+    "2026-11-17": {
+     "for": "2026-11-18",
+     "ids": [
+      "orcl-fw-put-2026-11-17",
+      "orcl-fw-call-2026-11-17"
+     ]
+    }
+   }
+  },
+  "PEP": {
+   "orders": {
+    "pep-fw-put-2026-11-17": {
+     "id": "pep-fw-put-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 42,
+     "underlying": 11017,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "125",
+     "ref": "open",
+     "lmt_prc": "0.3"
+    },
+    "pep-fw-call-2026-11-17": {
+     "id": "pep-fw-call-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 84,
+     "underlying": 11017,
+     "contract": "call",
+     "expiry": "2026-12-18",
+     "strike": "165",
+     "ref": "open",
+     "lmt_prc": "0.1"
+    }
+   },
+   "nights": {
+    "2026-11-17": {
+     "for": "2026-11-18",
+     "ids": [
+      "pep-fw-put-2026-11-17",
+      "pep-fw-call-2026-11-17"
+     ]
+    }
+   }
+  },
+  "CMCSA": {
+   "orders": {
+    "cmcsa-fw-put-2026-11-17": {
+     "id": "cmcsa-fw-put-2026-11-17",
+     "for": "2026-11-18",
+     "order_type": "lmt",
+     "action": "SHT",
+     "qty": 244,
+     "underlying": 267748,
+     "contract": "put",
+     "expiry": "2026-12-18",
+     "strike": "21",
+     "ref": "open",
+     "lmt_prc": "0.08"
+    }
+   },
+   "nights": {
+    "2026-11-17": {
+     "for": "2026-11-18",
+     "ids": [
+      "cmcsa-fw-put-2026-11-17"
+     ]
+    }
+   }
+  }
+ },
+ "first_entry": {
+  "day": "2026-11-17",
+  "for": "2026-11-18",
+  "expiry": "2026-12-18",
+  "names": [
+   "NVDA",
+   "MSFT",
+   "AAPL",
+   "AMZN",
+   "GOOG",
+   "BRK B",
+   "META",
+   "JNJ",
+   "JPM",
+   "V",
+   "XOM",
+   "WMT",
+   "PFE",
+   "UNH",
+   "BAC",
+   "VZ",
+   "PG",
+   "WFC",
+   "INTC",
+   "CVX",
+   "T",
+   "KO",
+   "MRK",
+   "MA",
+   "CSCO",
+   "HD",
+   "BA",
+   "DIS",
+   "ORCL",
+   "PEP",
+   "CMCSA"
+  ]
+ }
+}
