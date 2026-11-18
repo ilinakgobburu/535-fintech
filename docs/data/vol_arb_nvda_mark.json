@@ -2,8 +2,8 @@
  "schema_version": 1,
  "strategy": "vol_arb",
  "underlying": "NVDA",
- "as_of": "2026-11-16",
- "generated_at": "2026-11-17T20:35:19Z",
+ "as_of": "2026-11-17",
+ "generated_at": "2026-11-18T13:27:44Z",
  "status": "open",
  "data_complete": true,
  "cycle": {
@@ -99,62 +99,62 @@
  },
  "nvda": {
   "entry_close": 217.09,
-  "close": 156.14,
-  "change": -60.95,
-  "change_pct": -28.0759,
+  "close": 155.46,
+  "change": -61.63,
+  "change_pct": -28.3891,
   "high_close": 221.97,
-  "low_close": 156.14,
-  "sessions": 21
+  "low_close": 155.46,
+  "sessions": 22
  },
  "vol": {
-  "realized_since_entry": 0.586751,
-  "returns": 20,
+  "realized_since_entry": 0.57281,
+  "returns": 21,
   "atm_iv_at_entry": 0.389801,
   "how": "realized: zero-mean, annualized (x 252 / returns) over NVDA's daily log returns from the entry close to the mark; implied: the measured at-the-money vol of the cycle's chain at entry"
  },
  "legs_now": {
   "put": {
-   "mark": 45.975,
-   "iv": 0.867097,
-   "iv_from": "2026-11-13",
-   "mark_from": "2026-11-16",
-   "intrinsic": 46.36,
+   "mark": 47.9,
+   "iv": 1.948202,
+   "iv_from": "2026-11-17",
+   "mark_from": "2026-11-17",
+   "intrinsic": 47.04,
    "iv_at_entry": 0.415077
   },
   "call": {
-   "mark": 0.06,
-   "iv": 1.553197,
-   "iv_from": "2026-11-16",
-   "mark_from": "2026-11-16",
+   "mark": 0.07,
+   "iv": 1.843697,
+   "iv_from": "2026-11-17",
+   "mark_from": "2026-11-17",
    "intrinsic": 0.0,
    "iv_at_entry": 0.370092
   }
  },
  "pnl": {
   "put_rich": {
-   "mid": -995.2,
-   "stress": -1274.22
+   "mid": -2200.37,
+   "stress": -2482.14
   },
   "call_rich": {
-   "mid": 995.2,
-   "stress": 716.17
+   "mid": 2200.37,
+   "stress": 1918.6
   }
  },
  "marks": {
   "put_rich": {
    "mid": {
-    "pnl": -995.2,
+    "pnl": -2200.37,
     "split": {
-     "gamma": -3336.54,
-     "theta": 3015.59,
-     "vega": -2379.21,
-     "delta_hedge": 2828.32,
+     "gamma": -3336.48,
+     "theta": 2963.05,
+     "vega": -2414.87,
+     "delta_hedge": 2854.71,
      "costs": 0.0,
-     "residual": -1123.35
+     "residual": -2266.78
     },
-    "hedge_trades": 20,
+    "hedge_trades": 21,
     "entry_shares": -518,
-    "shares": -970,
+    "shares": -1005,
     "spread_cost": 0.0,
     "hedge_costs": 0.0,
     "dividends": 0.0,
@@ -666,24 +666,48 @@
        "costs": 0.0,
        "residual": -1123.35
       }
+     },
+     {
+      "date": "2026-11-17",
+      "close": 155.46,
+      "open": 156.895,
+      "put_mark": 47.9,
+      "put_iv": 1.948202,
+      "call_mark": 0.07,
+      "call_iv": 1.843697,
+      "hedge_trade": -35,
+      "shares": -1005,
+      "dividend": 0.0,
+      "option_mv": -47830.0,
+      "cash": 201866.93,
+      "pnl_to_date": -2200.37,
+      "day_pnl": -1205.18,
+      "split_to_date": {
+       "gamma": -3336.48,
+       "theta": 2963.05,
+       "vega": -2414.87,
+       "delta_hedge": 2854.71,
+       "costs": 0.0,
+       "residual": -2266.78
+      }
      }
     ]
    },
    "stress": {
-    "pnl": -1274.22,
+    "pnl": -2482.14,
     "split": {
-     "gamma": -3336.54,
-     "theta": 3015.59,
-     "vega": -2379.21,
-     "delta_hedge": 2828.32,
-     "costs": -279.02,
-     "residual": -1123.35
+     "gamma": -3336.48,
+     "theta": 2963.05,
+     "vega": -2414.87,
+     "delta_hedge": 2854.71,
+     "costs": -281.77,
+     "residual": -2266.78
     },
-    "hedge_trades": 20,
+    "hedge_trades": 21,
     "entry_shares": -518,
-    "shares": -970,
+    "shares": -1005,
     "spread_cost": 150.0,
-    "hedge_costs": 129.02,
+    "hedge_costs": 131.77,
     "dividends": 0.0,
     "units": {
      "put": -1000,
@@ -1193,24 +1217,48 @@
        "costs": -279.02,
        "residual": -1123.35
       }
+     },
+     {
+      "date": "2026-11-17",
+      "close": 155.46,
+      "open": 156.895,
+      "put_mark": 47.9,
+      "put_iv": 1.948202,
+      "call_mark": 0.07,
+      "call_iv": 1.843697,
+      "hedge_trade": -35,
+      "shares": -1005,
+      "dividend": 0.0,
+      "option_mv": -47830.0,
+      "cash": 201585.16,
+      "pnl_to_date": -2482.14,
+      "day_pnl": -1207.92,
+      "split_to_date": {
+       "gamma": -3336.48,
+       "theta": 2963.05,
+       "vega": -2414.87,
+       "delta_hedge": 2854.71,
+       "costs": -281.77,
+       "residual": -2266.78
+      }
      }
     ]
    }
   },
   "call_rich": {
    "mid": {
-    "pnl": 995.2,
+    "pnl": 2200.37,
     "split": {
-     "gamma": 3336.54,
-     "theta": -3015.59,
-     "vega": 2379.21,
-     "delta_hedge": -2828.32,
+     "gamma": 3336.48,
+     "theta": -2963.05,
+     "vega": 2414.87,
+     "delta_hedge": -2854.71,
      "costs": 0.0,
-     "residual": 1123.35
+     "residual": 2266.78
     },
-    "hedge_trades": 20,
+    "hedge_trades": 21,
     "entry_shares": 518,
-    "shares": 970,
+    "shares": 1005,
     "spread_cost": 0.0,
     "hedge_costs": 0.0,
     "dividends": 0.0,
@@ -1722,24 +1770,48 @@
        "costs": 0.0,
        "residual": 1123.35
       }
+     },
+     {
+      "date": "2026-11-17",
+      "close": 155.46,
+      "open": 156.895,
+      "put_mark": 47.9,
+      "put_iv": 1.948202,
+      "call_mark": 0.07,
+      "call_iv": 1.843697,
+      "hedge_trade": 35,
+      "shares": 1005,
+      "dividend": 0.0,
+      "option_mv": 47830.0,
+      "cash": -201866.93,
+      "pnl_to_date": 2200.37,
+      "day_pnl": 1205.18,
+      "split_to_date": {
+       "gamma": 3336.48,
+       "theta": -2963.05,
+       "vega": 2414.87,
+       "delta_hedge": -2854.71,
+       "costs": 0.0,
+       "residual": 2266.78
+      }
      }
     ]
    },
    "stress": {
-    "pnl": 716.17,
+    "pnl": 1918.6,
     "split": {
-     "gamma": 3336.54,
-     "theta": -3015.59,
-     "vega": 2379.21,
-     "delta_hedge": -2828.32,
-     "costs": -279.02,
-     "residual": 1123.35
+     "gamma": 3336.48,
+     "theta": -2963.05,
+     "vega": 2414.87,
+     "delta_hedge": -2854.71,
+     "costs": -281.77,
+     "residual": 2266.78
     },
-    "hedge_trades": 20,
+    "hedge_trades": 21,
     "entry_shares": 518,
-    "shares": 970,
+    "shares": 1005,
     "spread_cost": 150.0,
-    "hedge_costs": 129.02,
+    "hedge_costs": 131.77,
     "dividends": 0.0,
     "units": {
      "put": 1000,
@@ -2249,6 +2321,30 @@
        "costs": -279.02,
        "residual": 1123.35
       }
+     },
+     {
+      "date": "2026-11-17",
+      "close": 155.46,
+      "open": 156.895,
+      "put_mark": 47.9,
+      "put_iv": 1.948202,
+      "call_mark": 0.07,
+      "call_iv": 1.843697,
+      "hedge_trade": 35,
+      "shares": 1005,
+      "dividend": 0.0,
+      "option_mv": 47830.0,
+      "cash": -202148.7,
+      "pnl_to_date": 1918.6,
+      "day_pnl": 1202.43,
+      "split_to_date": {
+       "gamma": 3336.48,
+       "theta": -2963.05,
+       "vega": 2414.87,
+       "delta_hedge": -2854.71,
+       "costs": -281.77,
+       "residual": 2266.78
+      }
      }
     ]
    }
@@ -2265,7 +2361,7 @@
  "notes": [
   "November 12's open of $151.005 is genuine: LSEG's daily bar for that session has a low of $148.80, a high of $167.14 and a close of $166.19 on 747.7M shares, the day NVIDIA announced Jensen Huang's resignation (Colette Kress is interim CEO). The hedge was rebalanced at that open, as the backtest rebalances at each open.",
   "NVIDIA's November 17 report falls inside this cycle, so by the backtest's rule (actual report dates) the earnings flag f7 is 1. The data the entry decision was first computed from held past report dates only (f7 = 0), so the models' choices are shown under both readings.",
-  "NVIDIA's fiscal Q3 2027 results come on November 17 after the close, inside this cycle (expiry November 20): the November 17 mark is the last before them and the November 18 mark the first after.",
+  "This mark (November 17 close) is before NVIDIA's fiscal Q3 2027 results, reported November 17 after the close; the November 18 mark is the first after them.",
   "November 16's closing mid for the put ($45.975) is under its intrinsic value ($46.36), so it has no implied vol; its IV is carried from November 13 (the registered rule) and its delta recomputed from it at that close."
  ]
 }
