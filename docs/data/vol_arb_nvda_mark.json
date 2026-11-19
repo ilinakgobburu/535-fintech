@@ -2,8 +2,8 @@
  "schema_version": 1,
  "strategy": "vol_arb",
  "underlying": "NVDA",
- "as_of": "2026-11-17",
- "generated_at": "2026-11-18T13:27:44Z",
+ "as_of": "2026-11-18",
+ "generated_at": "2026-11-19T13:54:58Z",
  "status": "open",
  "data_complete": true,
  "cycle": {
@@ -99,26 +99,26 @@
  },
  "nvda": {
   "entry_close": 217.09,
-  "close": 155.46,
-  "change": -61.63,
-  "change_pct": -28.3891,
+  "close": 150.96,
+  "change": -66.13,
+  "change_pct": -30.462,
   "high_close": 221.97,
-  "low_close": 155.46,
-  "sessions": 22
+  "low_close": 150.96,
+  "sessions": 23
  },
  "vol": {
-  "realized_since_entry": 0.57281,
-  "returns": 21,
+  "realized_since_entry": 0.568401,
+  "returns": 22,
   "atm_iv_at_entry": 0.389801,
   "how": "realized: zero-mean, annualized (x 252 / returns) over NVDA's daily log returns from the entry close to the mark; implied: the measured at-the-money vol of the cycle's chain at entry"
  },
  "legs_now": {
   "put": {
-   "mark": 47.9,
-   "iv": 1.948202,
-   "iv_from": "2026-11-17",
-   "mark_from": "2026-11-17",
-   "intrinsic": 47.04,
+   "mark": 51.9,
+   "iv": 2.20131,
+   "iv_from": "2026-11-18",
+   "mark_from": "2026-11-18",
+   "intrinsic": 51.54,
    "iv_at_entry": 0.415077
   },
   "call": {
@@ -132,29 +132,29 @@
  },
  "pnl": {
   "put_rich": {
-   "mid": -2200.37,
-   "stress": -2482.14
+   "mid": -2303.35,
+   "stress": -2591.17
   },
   "call_rich": {
-   "mid": 2200.37,
-   "stress": 1918.6
+   "mid": 2303.35,
+   "stress": 2015.53
   }
  },
  "marks": {
   "put_rich": {
    "mid": {
-    "pnl": -2200.37,
+    "pnl": -2303.35,
     "split": {
-     "gamma": -3336.48,
-     "theta": 2963.05,
-     "vega": -2414.87,
-     "delta_hedge": 2854.71,
+     "gamma": -3382.17,
+     "theta": 3541.78,
+     "vega": -2944.08,
+     "delta_hedge": 2572.58,
      "costs": 0.0,
-     "residual": -2266.78
+     "residual": -2091.46
     },
-    "hedge_trades": 21,
+    "hedge_trades": 22,
     "entry_shares": -518,
-    "shares": -1005,
+    "shares": -929,
     "spread_cost": 0.0,
     "hedge_costs": 0.0,
     "dividends": 0.0,
@@ -690,24 +690,48 @@
        "costs": 0.0,
        "residual": -2266.78
       }
+     },
+     {
+      "date": "2026-11-18",
+      "close": 150.96,
+      "open": 159.19,
+      "put_mark": 51.9,
+      "put_iv": 2.20131,
+      "call_mark": 0.07,
+      "call_iv": 1.843697,
+      "hedge_trade": 76,
+      "shares": -929,
+      "dividend": 0.0,
+      "option_mv": -51830.0,
+      "cash": 189768.49,
+      "pnl_to_date": -2303.35,
+      "day_pnl": -102.98,
+      "split_to_date": {
+       "gamma": -3382.17,
+       "theta": 3541.78,
+       "vega": -2944.08,
+       "delta_hedge": 2572.58,
+       "costs": 0.0,
+       "residual": -2091.46
+      }
      }
     ]
    },
    "stress": {
-    "pnl": -2482.14,
+    "pnl": -2591.17,
     "split": {
-     "gamma": -3336.48,
-     "theta": 2963.05,
-     "vega": -2414.87,
-     "delta_hedge": 2854.71,
-     "costs": -281.77,
-     "residual": -2266.78
+     "gamma": -3382.17,
+     "theta": 3541.78,
+     "vega": -2944.08,
+     "delta_hedge": 2572.58,
+     "costs": -287.82,
+     "residual": -2091.46
     },
-    "hedge_trades": 21,
+    "hedge_trades": 22,
     "entry_shares": -518,
-    "shares": -1005,
+    "shares": -929,
     "spread_cost": 150.0,
-    "hedge_costs": 131.77,
+    "hedge_costs": 137.82,
     "dividends": 0.0,
     "units": {
      "put": -1000,
@@ -1241,24 +1265,48 @@
        "costs": -281.77,
        "residual": -2266.78
       }
+     },
+     {
+      "date": "2026-11-18",
+      "close": 150.96,
+      "open": 159.19,
+      "put_mark": 51.9,
+      "put_iv": 2.20131,
+      "call_mark": 0.07,
+      "call_iv": 1.843697,
+      "hedge_trade": 76,
+      "shares": -929,
+      "dividend": 0.0,
+      "option_mv": -51830.0,
+      "cash": 189480.67,
+      "pnl_to_date": -2591.17,
+      "day_pnl": -109.03,
+      "split_to_date": {
+       "gamma": -3382.17,
+       "theta": 3541.78,
+       "vega": -2944.08,
+       "delta_hedge": 2572.58,
+       "costs": -287.82,
+       "residual": -2091.46
+      }
      }
     ]
    }
   },
   "call_rich": {
    "mid": {
-    "pnl": 2200.37,
+    "pnl": 2303.35,
     "split": {
-     "gamma": 3336.48,
-     "theta": -2963.05,
-     "vega": 2414.87,
-     "delta_hedge": -2854.71,
+     "gamma": 3382.17,
+     "theta": -3541.78,
+     "vega": 2944.08,
+     "delta_hedge": -2572.58,
      "costs": 0.0,
-     "residual": 2266.78
+     "residual": 2091.46
     },
-    "hedge_trades": 21,
+    "hedge_trades": 22,
     "entry_shares": 518,
-    "shares": 1005,
+    "shares": 929,
     "spread_cost": 0.0,
     "hedge_costs": 0.0,
     "dividends": 0.0,
@@ -1794,24 +1842,48 @@
        "costs": 0.0,
        "residual": 2266.78
       }
+     },
+     {
+      "date": "2026-11-18",
+      "close": 150.96,
+      "open": 159.19,
+      "put_mark": 51.9,
+      "put_iv": 2.20131,
+      "call_mark": 0.07,
+      "call_iv": 1.843697,
+      "hedge_trade": -76,
+      "shares": 929,
+      "dividend": 0.0,
+      "option_mv": 51830.0,
+      "cash": -189768.49,
+      "pnl_to_date": 2303.35,
+      "day_pnl": 102.98,
+      "split_to_date": {
+       "gamma": 3382.17,
+       "theta": -3541.78,
+       "vega": 2944.08,
+       "delta_hedge": -2572.58,
+       "costs": 0.0,
+       "residual": 2091.46
+      }
      }
     ]
    },
    "stress": {
-    "pnl": 1918.6,
+    "pnl": 2015.53,
     "split": {
-     "gamma": 3336.48,
-     "theta": -2963.05,
-     "vega": 2414.87,
-     "delta_hedge": -2854.71,
-     "costs": -281.77,
-     "residual": 2266.78
+     "gamma": 3382.17,
+     "theta": -3541.78,
+     "vega": 2944.08,
+     "delta_hedge": -2572.58,
+     "costs": -287.82,
+     "residual": 2091.46
     },
-    "hedge_trades": 21,
+    "hedge_trades": 22,
     "entry_shares": 518,
-    "shares": 1005,
+    "shares": 929,
     "spread_cost": 150.0,
-    "hedge_costs": 131.77,
+    "hedge_costs": 137.82,
     "dividends": 0.0,
     "units": {
      "put": 1000,
@@ -2345,6 +2417,30 @@
        "costs": -281.77,
        "residual": 2266.78
       }
+     },
+     {
+      "date": "2026-11-18",
+      "close": 150.96,
+      "open": 159.19,
+      "put_mark": 51.9,
+      "put_iv": 2.20131,
+      "call_mark": 0.07,
+      "call_iv": 1.843697,
+      "hedge_trade": -76,
+      "shares": 929,
+      "dividend": 0.0,
+      "option_mv": 51830.0,
+      "cash": -190056.31,
+      "pnl_to_date": 2015.53,
+      "day_pnl": 96.93,
+      "split_to_date": {
+       "gamma": 3382.17,
+       "theta": -3541.78,
+       "vega": 2944.08,
+       "delta_hedge": -2572.58,
+       "costs": -287.82,
+       "residual": 2091.46
+      }
      }
     ]
    }
@@ -2361,7 +2457,8 @@
  "notes": [
   "November 12's open of $151.005 is genuine: LSEG's daily bar for that session has a low of $148.80, a high of $167.14 and a close of $166.19 on 747.7M shares, the day NVIDIA announced Jensen Huang's resignation (Colette Kress is interim CEO). The hedge was rebalanced at that open, as the backtest rebalances at each open.",
   "NVIDIA's November 17 report falls inside this cycle, so by the backtest's rule (actual report dates) the earnings flag f7 is 1. The data the entry decision was first computed from held past report dates only (f7 = 0), so the models' choices are shown under both readings.",
-  "This mark (November 17 close) is before NVIDIA's fiscal Q3 2027 results, reported November 17 after the close; the November 18 mark is the first after them.",
-  "November 16's closing mid for the put ($45.975) is under its intrinsic value ($46.36), so it has no implied vol; its IV is carried from November 13 (the registered rule) and its delta recomputed from it at that close."
+  "This mark (November 18 close) is the first after NVIDIA's fiscal Q3 2027 results, reported November 17 after the close.",
+  "November 16's closing mid for the put ($45.975) is under its intrinsic value ($46.36), so it has no implied vol; its IV is carried from November 13 (the registered rule) and its delta recomputed from it at that close.",
+  "The call had no two-sided closing quote on November 18, so its mark and IV there are carried from November 17 (the registered rule)."
  ]
 }
