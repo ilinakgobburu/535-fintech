@@ -70,6 +70,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add mkt/open_orders.json
+          # the assignment names open_orders.json at the repository root; the course server reads mkt/, so a copy
+          cp mkt/open_orders.json open_orders.json
+          git add open_orders.json
           # the ledger is written on every night that writes orders, but not on a night that kept an order for the
           # session in progress; before its first night it does not exist yet
           if [ -f data/far_wings_ledger.json ]; then git add data/far_wings_ledger.json; fi

@@ -39,6 +39,9 @@ def test_the_far_wing_action():
     assert set(run["env"]) == {"PYTHONWARNINGS", "LSEG_APP_KEY", "LSEG_USERNAME", "LSEG_PASSWORD"}
     commit = next(s for s in job["steps"] if s.get("name") == "Commit mkt/open_orders.json and the ledger")
     assert "git add mkt/open_orders.json\n" in commit["run"]
+    # the root copy the assignment names, made after the script and committed with it
+    assert "cp mkt/open_orders.json open_orders.json\ngit add open_orders.json\n" in commit["run"]
+    assert commit["run"].index("git add mkt/open_orders.json") < commit["run"].index("cp mkt/open_orders.json")
     assert "if [ -f data/far_wings_ledger.json ]; then git add data/far_wings_ledger.json; fi" in commit["run"]
     assert "git pull --rebase origin main" in commit["run"] and "git push origin HEAD:main" in commit["run"]
     assert commit["env"]["FOR_DAY"] == "${{ steps.orders.outputs.for_day }}"

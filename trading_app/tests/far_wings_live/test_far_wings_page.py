@@ -131,8 +131,13 @@ def test_the_page_never_calls_the_added_entries_tracked_by_the_server():
 
 # --------------------------------------------------------------------------- the NVDA section
 def test_the_nvda_section_is_a_dated_snapshot_not_a_nightly_mark():
+    """The page carries no nightly NVDA mark. The condensed page (November 20) dropped the October 19 snapshot; if a
+    rebuild brings it back, it must still read as a dated snapshot."""
     page = PAGE.read_text()
     assert "data-nvda-mark" not in page and "nvda_marks.js" not in page
+    if '<section class="part" id="nvda">' not in page:
+        assert 'href="#nvda"' not in page
+        return
     sec = page[page.index('<section class="part" id="nvda">'):]
     sec = sec[:sec.index("</section>")]
     text = flat(sec)
