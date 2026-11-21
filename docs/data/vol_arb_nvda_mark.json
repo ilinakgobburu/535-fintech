@@ -2,9 +2,9 @@
  "schema_version": 1,
  "strategy": "vol_arb",
  "underlying": "NVDA",
- "as_of": "2026-11-19",
- "generated_at": "2026-11-20T13:38:09Z",
- "status": "open",
+ "as_of": "2026-11-20",
+ "generated_at": "2026-11-21T13:02:10Z",
+ "status": "settled",
  "data_complete": true,
  "cycle": {
   "entry": "2026-10-19",
@@ -99,26 +99,26 @@
  },
  "nvda": {
   "entry_close": 217.09,
-  "close": 145.98,
-  "change": -71.11,
-  "change_pct": -32.756,
+  "close": 125.53,
+  "change": -91.56,
+  "change_pct": -42.1761,
   "high_close": 221.97,
-  "low_close": 145.98,
-  "sessions": 24
+  "low_close": 125.53,
+  "sessions": 25
  },
  "vol": {
-  "realized_since_entry": 0.566888,
-  "returns": 23,
+  "realized_since_entry": 0.739692,
+  "returns": 24,
   "atm_iv_at_entry": 0.389801,
   "how": "realized: zero-mean, annualized (x 252 / returns) over NVDA's daily log returns from the entry close to the mark; implied: the measured at-the-money vol of the cycle's chain at entry"
  },
  "legs_now": {
   "put": {
-   "mark": 56.5,
+   "mark": 76.8,
    "iv": 1.893789,
    "iv_from": "2026-11-19",
-   "mark_from": "2026-11-19",
-   "intrinsic": 56.52,
+   "mark_from": "2026-11-20",
+   "intrinsic": 76.97,
    "iv_at_entry": 0.415077
   },
   "call": {
@@ -132,29 +132,29 @@
  },
  "pnl": {
   "put_rich": {
-   "mid": -2075.82,
-   "stress": -2365.85
+   "mid": -2287.12,
+   "stress": -2642.8
   },
   "call_rich": {
-   "mid": 2075.82,
-   "stress": 1785.78
+   "mid": 2287.12,
+   "stress": 1931.45
   }
  },
  "marks": {
   "put_rich": {
    "mid": {
-    "pnl": -2075.82,
+    "pnl": -2287.12,
     "split": {
-     "gamma": -3426.44,
-     "theta": 4087.53,
+     "gamma": -3455.63,
+     "theta": 4102.15,
      "vega": -2631.64,
-     "delta_hedge": 2629.27,
+     "delta_hedge": 2519.91,
      "costs": 0.0,
-     "residual": -2734.54
+     "residual": -2821.91
     },
-    "hedge_trades": 23,
+    "hedge_trades": 25,
     "entry_shares": -518,
-    "shares": -958,
+    "shares": 0,
     "spread_cost": 0.0,
     "hedge_costs": 0.0,
     "dividends": 0.0,
@@ -738,24 +738,48 @@
        "costs": 0.0,
        "residual": -2734.54
       }
+     },
+     {
+      "date": "2026-11-20",
+      "close": 125.53,
+      "open": 143.52,
+      "put_mark": 76.8,
+      "put_iv": 1.893789,
+      "call_mark": 0.07,
+      "call_iv": 1.843697,
+      "hedge_trade": -41,
+      "shares": 0,
+      "dividend": 0.0,
+      "option_mv": 0.0,
+      "cash": -2287.12,
+      "pnl_to_date": -2287.12,
+      "day_pnl": -211.31,
+      "split_to_date": {
+       "gamma": -3455.63,
+       "theta": 4102.15,
+       "vega": -2631.64,
+       "delta_hedge": 2519.91,
+       "costs": 0.0,
+       "residual": -2821.91
+      }
      }
     ]
    },
    "stress": {
-    "pnl": -2365.85,
+    "pnl": -2642.8,
     "split": {
-     "gamma": -3426.44,
-     "theta": 4087.53,
+     "gamma": -3455.63,
+     "theta": 4102.15,
      "vega": -2631.64,
-     "delta_hedge": 2629.27,
-     "costs": -290.03,
-     "residual": -2734.54
+     "delta_hedge": 2519.91,
+     "costs": -355.68,
+     "residual": -2821.91
     },
-    "hedge_trades": 23,
+    "hedge_trades": 25,
     "entry_shares": -518,
-    "shares": -958,
+    "shares": 0,
     "spread_cost": 150.0,
-    "hedge_costs": 140.03,
+    "hedge_costs": 205.68,
     "dividends": 0.0,
     "units": {
      "put": -1000,
@@ -1337,24 +1361,48 @@
        "costs": -290.03,
        "residual": -2734.54
       }
+     },
+     {
+      "date": "2026-11-20",
+      "close": 125.53,
+      "open": 143.52,
+      "put_mark": 76.8,
+      "put_iv": 1.893789,
+      "call_mark": 0.07,
+      "call_iv": 1.843697,
+      "hedge_trade": -41,
+      "shares": 0,
+      "dividend": 0.0,
+      "option_mv": 0.0,
+      "cash": -2642.8,
+      "pnl_to_date": -2642.8,
+      "day_pnl": -276.95,
+      "split_to_date": {
+       "gamma": -3455.63,
+       "theta": 4102.15,
+       "vega": -2631.64,
+       "delta_hedge": 2519.91,
+       "costs": -355.68,
+       "residual": -2821.91
+      }
      }
     ]
    }
   },
   "call_rich": {
    "mid": {
-    "pnl": 2075.82,
+    "pnl": 2287.12,
     "split": {
-     "gamma": 3426.44,
-     "theta": -4087.53,
+     "gamma": 3455.63,
+     "theta": -4102.15,
      "vega": 2631.64,
-     "delta_hedge": -2629.27,
+     "delta_hedge": -2519.91,
      "costs": 0.0,
-     "residual": 2734.54
+     "residual": 2821.91
     },
-    "hedge_trades": 23,
+    "hedge_trades": 25,
     "entry_shares": 518,
-    "shares": 958,
+    "shares": 0,
     "spread_cost": 0.0,
     "hedge_costs": 0.0,
     "dividends": 0.0,
@@ -1938,24 +1986,48 @@
        "costs": 0.0,
        "residual": 2734.54
       }
+     },
+     {
+      "date": "2026-11-20",
+      "close": 125.53,
+      "open": 143.52,
+      "put_mark": 76.8,
+      "put_iv": 1.893789,
+      "call_mark": 0.07,
+      "call_iv": 1.843697,
+      "hedge_trade": 41,
+      "shares": 0,
+      "dividend": 0.0,
+      "option_mv": 0.0,
+      "cash": 2287.12,
+      "pnl_to_date": 2287.12,
+      "day_pnl": 211.31,
+      "split_to_date": {
+       "gamma": 3455.63,
+       "theta": -4102.15,
+       "vega": 2631.64,
+       "delta_hedge": -2519.91,
+       "costs": 0.0,
+       "residual": 2821.91
+      }
      }
     ]
    },
    "stress": {
-    "pnl": 1785.78,
+    "pnl": 1931.45,
     "split": {
-     "gamma": 3426.44,
-     "theta": -4087.53,
+     "gamma": 3455.63,
+     "theta": -4102.15,
      "vega": 2631.64,
-     "delta_hedge": -2629.27,
-     "costs": -290.03,
-     "residual": 2734.54
+     "delta_hedge": -2519.91,
+     "costs": -355.68,
+     "residual": 2821.91
     },
-    "hedge_trades": 23,
+    "hedge_trades": 25,
     "entry_shares": 518,
-    "shares": 958,
+    "shares": 0,
     "spread_cost": 150.0,
-    "hedge_costs": 140.03,
+    "hedge_costs": 205.68,
     "dividends": 0.0,
     "units": {
      "put": 1000,
@@ -2537,12 +2609,43 @@
        "costs": -290.03,
        "residual": 2734.54
       }
+     },
+     {
+      "date": "2026-11-20",
+      "close": 125.53,
+      "open": 143.52,
+      "put_mark": 76.8,
+      "put_iv": 1.893789,
+      "call_mark": 0.07,
+      "call_iv": 1.843697,
+      "hedge_trade": 41,
+      "shares": 0,
+      "dividend": 0.0,
+      "option_mv": 0.0,
+      "cash": 1931.45,
+      "pnl_to_date": 1931.45,
+      "day_pnl": 145.67,
+      "split_to_date": {
+       "gamma": 3455.63,
+       "theta": -4102.15,
+       "vega": 2631.64,
+       "delta_hedge": -2519.91,
+       "costs": -355.68,
+       "residual": 2821.91
+      }
      }
     ]
    }
   }
  },
- "settlement": null,
+ "settlement": {
+  "date": "2026-11-20",
+  "close": 125.53,
+  "intrinsic": {
+   "put": 76.97,
+   "call": 0.0
+  }
+ },
  "events": [
   {
    "date": "2026-11-17",
