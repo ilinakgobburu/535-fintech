@@ -390,9 +390,6 @@
         $5,000 (5% of the book), a market order for the next open hedges back to zero; with
         no options left (after an expiry or an assignment), any leftover shares are closed. With no order for any
         stock, it writes <code>[]</code>.</dd>
-      <dt>Schedule</dt><dd>GitHub Action “Far-wing orders” (<code>far-wings-orders.yml</code>),
-        03:00 UTC Tuesday to Saturday: 10 pm in New York, Monday to Friday nights
-        (11 pm in summer), with a retry at 06:00 UTC. Each run writes <code>mkt/open_orders.json</code>, where the course server reads orders, and copies it to <code>open_orders.json</code> at the repository root, where the assignment names it.</dd>
       <dt>Inputs</dt><dd>From LSEG: closes, dividends, the 3-month T-bill and each stock's closing option quotes.</dd>
       <dt>First entry</dt><dd>A one-off for Wednesday, November 18, 2026, chosen from the November 17 close into the December 18, 2026 expiry (31 days instead of the tested 25), in place of that cycle's November 23 entry. Then monthly: the next entry is chosen from the December 21, 2026 close (orders for December 22).</dd>
     </dl>
@@ -507,7 +504,7 @@
   <footer>
     Sources, all read when this page was built; the build stops if a source is missing or a printed figure cannot be
     reproduced from it.
-    The nightly script: <code>535-fintech</code>: <code>far_wings_orders.py</code>, <code>.github/workflows/far-wings-orders.yml</code>, <code>config/far_wings_live.yaml</code>, <code>trading_app/trading_app/lib/far_wings_live.py</code>, main at <code>d10e811</code> (2026-11-20); <code>price_history.json</code> and <code>mkt/</code> as main has them; the example is the dry run's printed output on the
+    The nightly script: <code>535-fintech</code>: <code>far_wings_orders.py</code>, <code>.github/workflows/far-wings-orders.yml</code>, <code>config/far_wings_live.yaml</code>, <code>trading_app/trading_app/lib/far_wings_live.py</code>, main at <code>1978185</code> (2026-11-20); <code>price_history.json</code> and <code>mkt/</code> as main has them; the example is the dry run's printed output on the
     November 17, 2026 close.
     Sections 1 to 3 rest on research records kept outside this repository, so they are described here, not linked.
     Section 1: two exploratory studies of the development stage's option chains (where the smile's extra price sat,
