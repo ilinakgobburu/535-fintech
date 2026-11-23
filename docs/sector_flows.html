@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tech Selloff and the Sectors</title>
-<meta name="description" content="What the other ten sectors did during the NVIDIA-led tech selloff of Nov 16-20, 2026: each sector's delta, gamma and vega to tech, ETF money flows, a rolling delta tracker and implied vol.">
+<meta name="description" content="What the other ten sectors did during the NVIDIA-led tech selloff of Nov 16-20, 2026: each sector's beta, gamma and vega to tech, ETF money flows, a rolling beta tracker and implied vol.">
 <meta name="robots" content="noindex">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -183,15 +183,15 @@
   <header>
     <div class="eyebrow">MEng FinTech · Algorithmic Trading II · Market note</div>
     <h1>Tracking tech's <span class="accent">ripple effect</span> on the market</h1>
-    <p class="lede">NVIDIA lost 23% of its value in the five sessions of November 16–20, 2026. This page looks at what the other ten sectors did that week and how much of it tech's move explains: through prices (each sector's <em>delta</em> to tech), money moving between funds (ETF creations and redemptions), and options (implied volatility).</p>
+    <p class="lede">NVIDIA lost 23% of its value in the five sessions of November 16–20, 2026. This page looks at what the other ten sectors did that week and how much of it tech's move explains: through prices (each sector's <em>beta</em> to tech), money moving between funds (ETF creations and redemptions), and options (implied volatility).</p>
   </header>
 
   <div class="kpis" id="tiles"></div>
   <p class="cap">Tiles are price changes from the November 13 close to the November 20 close. The charts below use log returns, which add up across days. Data from LSEG.</p>
 
-  <section class="part" id="delta"><span class="no">1 · Delta</span><h2>How much each sector usually moves with tech</h2>
+  <section class="part" id="beta"><span class="no">1 · Beta</span><h2>How much each sector usually moves with tech</h2>
     <div class="prose">
-      <p>A sector's delta to tech is the slope of its daily return on XLK's, measured over the two years before last week. A delta of 0.30 means the sector moved 0.30% on average for every 1% XLK moved; R² shows how loosely. Gamma and vega extend the same idea: gamma is how that delta changes on big tech moves, and vega is how the sector's return has gone with changes in tech's implied volatility, with XLK's own move held fixed.</p>
+      <p>A sector's beta to tech is the slope of its daily return on XLK's, measured over the two years before last week. It plays the role an option's delta plays: how much the sector moves per 1% move in tech. A beta of 0.30 means the sector moved 0.30% on average for every 1% XLK moved; R² shows how loosely. Gamma and vega carry the option analogy further: gamma is how that beta changes on big tech moves, and vega is how the sector's return has gone with changes in tech's implied volatility, with XLK's own move held fixed.</p>
     </div>
     <div class="panel"><div class="ph"><h3 class="ph-t">Sector greeks to tech</h3><span class="tags"><span class="tag" id="basewin"></span></span></div><div class="pb">
       <div class="legend">
@@ -199,33 +199,33 @@
         <span><svg width="44" height="14" aria-hidden="true"><line x1="2" y1="7" x2="42" y2="7" stroke="var(--series-3)" stroke-width="1.5"/><rect x="12.5" y="3" width="19" height="8" rx="2" fill="var(--panel)" stroke="var(--series-3)" stroke-width="1.5"/></svg>Gamma without April 2025*</span>
       </div>
       <div class="chart greekchart" id="greekchart"></div>
-      <p class="cap">Each candle is one estimate: the dot is the value, the bar covers one standard error either side and the thin line two (about a 95% range). A candle that crosses the zero line means the data can't tell the sign. Gamma is slightly positive for nine of ten sectors over the two years, mostly because of the April 2025 tariff crash and rebound (April 3–10). *Without those six sessions (a check added after seeing the results), every sector's gamma is within ±0.015 except energy's (−0.064 ± 0.023), and the standard errors grow by about 70%, so outside that episode the data can't pin down any curvature. Vega is negative everywhere: a 1-point rise in XLK's implied vol has gone with a 0.17–0.29% lower return for the other sectors, beyond what tech's own move explains. Flow delta is a fund's daily net flow as posted, in % of its shares, per 1% XLK move the session before. Theta has no counterpart here (a fund doesn't decay against tech), so it is left out.</p>
+      <p class="cap">Each candle is one estimate: the dot is the value, the bar covers one standard error either side and the thin line two (about a 95% range). A candle that crosses the zero line means the data can't tell the sign. Gamma is slightly positive for nine of ten sectors over the two years, mostly because of the April 2025 tariff crash and rebound (April 3–10). *Without those six sessions (a check added after seeing the results), every sector's gamma is within ±0.015 except energy's (−0.064 ± 0.023), and the standard errors grow by about 70%, so outside that episode the data can't pin down any curvature. Vega is negative everywhere: a 1-point rise in XLK's implied vol has gone with a 0.17–0.29% lower return for the other sectors, beyond what tech's own move explains. Flow beta is a fund's daily net flow as posted, in % of its shares, per 1% XLK move the session before. Theta has no counterpart here (a fund doesn't decay against tech), so it is left out.</p>
       <details class="nums"><summary>The numbers (standard errors in small type)</summary>
         <div class="tbl-wrap"><table class="tbl small" id="greeks"></table></div>
       </details>
     </div></div>
   </section>
 
-  <section class="part" id="week"><span class="no">2 · Last week</span><h2>Nine of ten sectors fell more than their delta said, but not on tech's worst day</h2>
+  <section class="part" id="week"><span class="no">2 · Last week</span><h2>Nine of ten sectors fell more than their beta said, but not on tech's worst day</h2>
     <div class="prose">
-      <p>For each fund, the gray ring is what its delta predicted from XLK's five daily moves, and the blue dot is what actually happened. Nine of the ten sectors fell more than predicted: by 2 to 5.5 points for eight of them and 1.7 for industrials. Consumer discretionary, the most tech-like sector, fell 0.3 points less.</p>
+      <p>For each fund, the gray ring is what its beta predicted from XLK's five daily moves, and the blue dot is what actually happened. Nine of the ten sectors fell more than predicted: by 2 to 5.5 points for eight of them and 1.7 for industrials. Consumer discretionary, the most tech-like sector, fell 0.3 points less.</p>
     </div>
     <div class="panel"><div class="ph"><h3 class="ph-t">Week return against prediction</h3><span class="tags"><span class="tag">Mon–Fri, sum of daily log returns, %</span></span></div><div class="pb">
       <div class="legend">
-        <span><svg width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="var(--panel)" stroke="var(--series-3)" stroke-width="2"/></svg>Predicted by delta</span>
-        <span><svg width="14" height="14" aria-hidden="true"><path d="M7 1.5 L12.5 7 L7 12.5 L1.5 7 Z" fill="var(--series-2)"/></svg>Predicted by delta + vega (added after seeing the results)</span>
+        <span><svg width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="var(--panel)" stroke="var(--series-3)" stroke-width="2"/></svg>Predicted by beta</span>
+        <span><svg width="14" height="14" aria-hidden="true"><path d="M7 1.5 L12.5 7 L7 12.5 L1.5 7 Z" fill="var(--series-2)"/></svg>Predicted by beta + vega (added after seeing the results)</span>
         <span><svg width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="5.5" fill="var(--series-1)"/></svg>Actual, Mon–Fri</span>
       </div>
       <div class="chart" id="dots"></div>
-      <p class="cap">Week return = the sum of the five daily log returns, in %. The orange diamond adds vega (a prediction added after seeing the results; tech's implied vol rose 16 points over the week). It brings the week's prediction 20–48% closer for the nine sectors that fell more than predicted, but it doesn't track the days: it overshoots Friday's drop for every sector by 0.4 to 1.8 points, and for consumer discretionary it moves the week's prediction too low. The registered delta-plus-gamma prediction does no better; it widens the gap for every sector but energy. Treasuries (TLT) rose 2.6% when delta predicted a small fall, and gold (GLD) fell 9.2% in price.</p>
+      <p class="cap">Week return = the sum of the five daily log returns, in %. The orange diamond adds vega (a prediction added after seeing the results; tech's implied vol rose 16 points over the week). It brings the week's prediction 20–48% closer for the nine sectors that fell more than predicted, but it doesn't track the days: it overshoots Friday's drop for every sector by 0.4 to 1.8 points, and for consumer discretionary it moves the week's prediction too low. The registered beta-plus-gamma prediction does no better; it widens the gap for every sector but energy. Treasuries (TLT) rose 2.6% when beta predicted a small fall, and gold (GLD) fell 9.2% in price.</p>
     </div></div>
     <div class="prose">
       <h3 class="sub">The extra losses came before Friday</h3>
-      <p>On Friday, when XLK fell 7.3%, every sector landed within 0.3 points of its delta prediction or fell less than predicted (financials −1.8% against −2.1% predicted). The gap built up mostly Tuesday to Thursday, when XLK moved −0.9%, +0.3% and −1.9% (energy and communication services also missed on Monday). On Wednesday, with tech up, energy fell 3.3% and health care 2.2%. These data don't say what drove those days. This day-by-day split was added after seeing the results.</p>
+      <p>On Friday, when XLK fell 7.3%, every sector landed within 0.3 points of its beta prediction or fell less than predicted (financials −1.8% against −2.1% predicted). The gap built up mostly Tuesday to Thursday, when XLK moved −0.9%, +0.3% and −1.9% (energy and communication services also missed on Monday). On Wednesday, with tech up, energy fell 3.3% and health care 2.2%. These data don't say what drove those days. This day-by-day split was added after seeing the results.</p>
       <h3 class="sub">How unusual was the miss?</h3>
       <p>A single day's miss has a standard deviation of about 1 point (0.9 to 1.5 by sector, and 1.2 to 2.5 on days tech fell 2% or more), so the fair yardstick for a five-day miss is every five-day stretch of the past two years (500 of them). Last week put seven sectors in their worst 10% (health care at the 1.2nd percentile, communication services 3.4th, financials 3.6th), industrials and utilities near their 18th percentile, and consumer discretionary above its median. Averaged over the ten sectors, the miss was −3.1 points, worse than all but 1.6% of five-day stretches. The worst was the week ending April 8, 2025 (−8.7). This comparison was added after seeing the results.</p>
-      <h3 class="sub">Delta is also lower lately</h3>
-      <p>The two-year delta includes April 2025, when everything moved together. Over the 63 sessions before last week, most sectors had little or no delta to tech (financials 0.07, utilities −0.02), and staples' was negative (−0.25). Measured that way, the gaps above would be even bigger. See the tracker in section 4.</p>
+      <h3 class="sub">Beta is also lower lately</h3>
+      <p>The two-year beta includes April 2025, when everything moved together. Over the 63 sessions before last week, most sectors had little or no beta to tech (financials 0.07, utilities −0.02), and staples' was negative (−0.25). Measured that way, the gaps above would be even bigger. See the tracker in section 4.</p>
     </div>
   </section>
 
@@ -251,28 +251,28 @@
     </div></div>
   </section>
 
-  <section class="part" id="tracker"><span class="no">4 · Greeks tracker</span><h2>Each sector's delta, day by day</h2>
+  <section class="part" id="tracker"><span class="no">4 · Greeks tracker</span><h2>Each sector's beta, day by day</h2>
     <div class="prose">
-      <p>Each panel shows the sector's delta to tech measured over a rolling 63 sessions (about three months), from January 2025 through last Friday. The dashed line is the two-year delta used in section 2, and the shaded strip at the right is last week. Hover or tap a panel to read any day.</p>
+      <p>Each panel shows the sector's beta to tech measured over a rolling 63 sessions (about three months), from January 2025 through last Friday. The dashed line is the two-year beta used in section 2, and the shaded strip at the right is last week. Hover or tap a panel to read any day.</p>
     </div>
-    <div class="panel"><div class="ph"><h3 class="ph-t">Rolling 63-session delta to XLK</h3><span class="tags"><span class="tag">Jan 2025 – Nov 20, 2026</span></span></div><div class="pb">
+    <div class="panel"><div class="ph"><h3 class="ph-t">Rolling 63-session beta to XLK</h3><span class="tags"><span class="tag">Jan 2025 – Nov 20, 2026</span></span></div><div class="pb">
       <div class="legend">
-        <span><svg width="22" height="10" aria-hidden="true"><line x1="1" y1="5" x2="21" y2="5" stroke="var(--series-1)" stroke-width="2"/></svg>Rolling 63-session delta</span>
-        <span><svg width="22" height="10" aria-hidden="true"><line x1="1" y1="5" x2="21" y2="5" stroke="var(--series-3)" stroke-width="1.5" stroke-dasharray="4 3"/></svg>Two-year delta</span>
+        <span><svg width="22" height="10" aria-hidden="true"><line x1="1" y1="5" x2="21" y2="5" stroke="var(--series-1)" stroke-width="2"/></svg>Rolling 63-session beta</span>
+        <span><svg width="22" height="10" aria-hidden="true"><line x1="1" y1="5" x2="21" y2="5" stroke="var(--series-3)" stroke-width="1.5" stroke-dasharray="4 3"/></svg>Two-year beta</span>
         <span><span class="key" style="background:var(--band-strong);border-radius:2px;width:12px"></span>Last week</span>
       </div>
       <div class="multiples" id="multiples"></div>
-      <p class="cap">The lines top out in June–July 2025: for nine sectors in windows that include the April 2025 tariff crash, and for consumer discretionary just after it left the window. Several rose again in spring 2026. Through the fall, health care, energy and staples were negative. By the week before the selloff, financials, energy, health care, utilities and real estate were near zero and staples' was still negative; industrials and consumer discretionary kept some. Last week pushed every rolling delta up (financials 0.07 → 0.13, communication services 0.11 → 0.19), but a three-month window only moves so far in five days.</p>
+      <p class="cap">The lines top out in June–July 2025: for nine sectors in windows that include the April 2025 tariff crash, and for consumer discretionary just after it left the window. Several rose again in spring 2026. Through the fall, health care, energy and staples were negative. By the week before the selloff, financials, energy, health care, utilities and real estate were near zero and staples' was still negative; industrials and consumer discretionary kept some. Last week pushed every rolling beta up (financials 0.07 → 0.13, communication services 0.11 → 0.19), but a three-month window only moves so far in five days.</p>
     </div></div>
   </section>
 
   <section class="part" id="options"><span class="no">5 · Options</span><h2>Implied vol rose in every sector</h2>
     <div class="prose">
-      <p>Each fund's 30-day at-the-money implied volatility (LSEG's ATMIV series) rose over the week, and S&amp;P 500 implied vol nearly doubled. The gray ring is the rise each fund's normal <em>vol delta</em> predicted from XLK's (the slope of its daily IV change on XLK's). Real estate's rose 18 points against about 3 predicted, and financials' 12.8 against 8.9, about as far above as the S&amp;P 500's (14.5 against 11.1). Energy (6.9 against 10.9) and consumer discretionary (11.0 against 13.0) rose less than predicted. Materials', utilities' and real estate's series are noisy, so read those three with care: materials' swung between 18 and 108 over the past three months and was below its starting level on Thursday, and utilities' printed 88 one day in September.</p>
+      <p>Each fund's 30-day at-the-money implied volatility (LSEG's ATMIV series) rose over the week, and S&amp;P 500 implied vol nearly doubled. The gray ring is the rise each fund's normal <em>vol beta</em> predicted from XLK's (the slope of its daily IV change on XLK's). Real estate's rose 18 points against about 3 predicted, and financials' 12.8 against 8.9, about as far above as the S&amp;P 500's (14.5 against 11.1). Energy (6.9 against 10.9) and consumer discretionary (11.0 against 13.0) rose less than predicted. Materials', utilities' and real estate's series are noisy, so read those three with care: materials' swung between 18 and 108 over the past three months and was below its starting level on Thursday, and utilities' printed 88 one day in September.</p>
     </div>
     <div class="panel"><div class="ph"><h3 class="ph-t">30-day ATM implied vol, change over the week</h3><span class="tags"><span class="tag">Nov 13 → Nov 20, vol points</span></span></div><div class="pb">
       <div class="legend">
-        <span><svg width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="var(--panel)" stroke="var(--series-3)" stroke-width="2"/></svg>Predicted by vol delta</span>
+        <span><svg width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="var(--panel)" stroke="var(--series-3)" stroke-width="2"/></svg>Predicted by vol beta</span>
         <span><svg width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="5.5" fill="var(--series-1)"/></svg>Actual change</span>
       </div>
       <div class="chart" id="ivdots"></div>
@@ -290,7 +290,7 @@
     <div class="panel"><div class="ph"><h3 class="ph-t">Data and checks</h3></div><div class="pb">
       <dl class="rules">
         <dt>Data</dt><dd>LSEG (platform session), <span id="nreq"></span> requests in all. Daily closes and volume for 15 ETFs and NVDA, and NAV for 13 of the ETFs (XLRE's and SGOV's flows use the close); daily shares outstanding (<code>TR.SharesOutstanding</code>); 30-day ATM implied vol (<code>ATMIV.U</code>) for 11 sector funds, SPY and NVDA. Baseline: the 504 sessions ending Nov 13.</dd>
-        <dt>Written down first</dt><dd>The funds, the two-year baseline and the delta and flow measures were written down before any data was pulled. The greeks, the 63-session tracker and the implied-vol pull were added after the first price and share pull, before any of them was computed. Four things were added after seeing the results and are labeled where they appear: the delta + vega prediction, gamma without April 2025, and in section 2 the five-day comparison and the day-by-day split.</dd>
+        <dt>Written down first</dt><dd>The funds, the two-year baseline and the beta and flow measures were written down before any data was pulled. The greeks, the 63-session tracker and the implied-vol pull were added after the first price and share pull, before any of them was computed. Four things were added after seeing the results and are labeled where they appear: the beta + vega prediction, gamma without April 2025, and in section 2 the five-day comparison and the day-by-day split.</dd>
         <dt>Flow timing</dt><dd>Share counts usually post a day late. For seven of the ten sector funds, flows line up with the fund's own return the day before (correlation 0.16–0.35), which fits a one-day reporting lag; it doesn't show up for XLK, XLC, XLU, XLRE, SPY, SGOV or TLT. The trade-date view shifts every fund's counts back one session. Both views are shown, and neither was chosen in advance.</dd>
         <dt>Friday's flows</dt><dd>When the data were pulled on Nov 23, LSEG's Friday share count repeated Thursday's for 13 of the 15 funds, so the crash day's money (and Thursday's, by trade date) is unknown. It is left out, not counted as zero.</dd>
         <dt>Splits</dt><dd>XLK, XLE, XLU, XLY and XLB split 2-for-1 on Dec 5, 2025. LSEG's prices are split-adjusted but its share counts are not, so earlier counts were doubled. Otherwise each fund would show a fake inflow worth its whole size on that day.</dd>
@@ -356,12 +356,12 @@ document.addEventListener("click", (ev) => {
 
 // ---- greeks as candles: one panel per greek, one row per fund (dot = estimate, bar = ±1 SE, line = ±2 SE)
 const GREEKS = [
-  { k: "delta", se: "delta_se", title: "Delta to XLK", unit: "% per 1% XLK", n: 2 },
-  { k: "delta_nvda", se: "delta_nvda_se", title: "Delta to NVDA", unit: "% per 1% NVDA", n: 2 },
-  { k: "gamma", se: "gamma_se", title: "Gamma", unit: "delta change per 1% XLK", n: 3, ex: ["gamma_ex", "gamma_ex_se"] },
+  { k: "delta", se: "delta_se", title: "Beta to XLK", unit: "% per 1% XLK", n: 2 },
+  { k: "delta_nvda", se: "delta_nvda_se", title: "Beta to NVDA", unit: "% per 1% NVDA", n: 2 },
+  { k: "gamma", se: "gamma_se", title: "Gamma", unit: "beta change per 1% XLK", n: 3, ex: ["gamma_ex", "gamma_ex_se"] },
   { k: "vega", se: "vega_se", title: "Vega", unit: "% per XLK vol point", n: 2 },
-  { k: "flow_delta", se: "flow_delta_se", title: "Flow delta", unit: "% of shares per 1% XLK", n: 3 },
-  { k: "r2", se: null, title: "R²", unit: "fit of delta, 0 to 1", n: 2 },
+  { k: "flow_delta", se: "flow_delta_se", title: "Flow beta", unit: "% of shares per 1% XLK", n: 3 },
+  { k: "r2", se: null, title: "R²", unit: "fit of beta, 0 to 1", n: 2 },
 ];
 function niceStep(span) {
   for (const s of [0.005, 0.01, 0.02, 0.025, 0.05, 0.1, 0.2, 0.25, 0.5, 1]) if (span / s <= 4.5) return s;
@@ -371,15 +371,15 @@ const mfmt = (v, n) => (v < 0 ? "−" : v > 0 ? "+" : "") + Math.abs(v).toFixed(
 function drawGreeks() {
   const el = $("greekchart"), W = Math.max(300, el.clientWidth);
   const rows = D.rows.filter(r => r.t !== "SGOV").slice().sort((a, b) => (a.group === b.group ? b.delta - a.delta : a.group === "sector" ? -1 : 1));
-  const cols = W >= 900 ? 6 : W >= 600 ? 3 : 2, names = W >= 900;
-  const labW = names ? 168 : 44, gap = 14, rowH = 25, head = 38, axis = 22, sep = 8, blockGap = 22;
+  const cols = 2, names = W >= 640;   // two panels per row, so each greek has room
+  const labW = names ? 168 : 44, gap = names ? 28 : 14, rowH = names ? 27 : 25, head = 40, axis = 22, sep = 8, blockGap = 26;
   const nSec = rows.filter(r => r.group === "sector").length;
   const rowY = (i) => head + i * rowH + (i >= nSec ? sep : 0) + rowH / 2;
   const blockH = head + rows.length * rowH + sep + axis;
   const nBlocks = Math.ceil(GREEKS.length / cols);
   const pw = (W - labW - gap * (cols - 1)) / cols;
   const H = nBlocks * blockH + (nBlocks - 1) * blockGap;
-  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Each sector's delta, gamma, vega and flow delta to tech, with standard errors">`;
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Each sector's beta, gamma, vega and flow beta to tech, with standard errors">`;
   for (let bI = 0; bI < nBlocks; bI++) {
     const y0 = bI * (blockH + blockGap);
     rows.forEach((r, i) => {
@@ -433,7 +433,7 @@ function drawGreeks() {
 // ---- greeks table (the numbers, under the candles)
 (function greeks() {
   const se = (v, s, n) => `${fmt(v, n)} <span class="se">±${s.toFixed(n)}</span>`;
-  let h = `<thead><tr><th class="l">Fund</th><th>Delta to XLK</th><th>R²</th><th>Delta to NVDA</th><th>Gamma</th><th>Gamma ex-Apr 2025*</th><th>Vega (%/vol pt)</th><th>Flow delta</th></tr></thead><tbody>`;
+  let h = `<thead><tr><th class="l">Fund</th><th>Beta to XLK</th><th>R²</th><th>Beta to NVDA</th><th>Gamma</th><th>Gamma ex-Apr 2025*</th><th>Vega (%/vol pt)</th><th>Flow beta</th></tr></thead><tbody>`;
   for (const r of D.rows) {
     if (r.t === "SGOV") continue;
     h += `<tr class="${r.group}"><td class="l">${r.name} <span class="se">${r.t}</span></td><td>${se(r.delta, r.delta_se, 2)}</td><td>${r.r2.toFixed(2)}</td><td>${se(r.delta_nvda, r.delta_nvda_se, 2)}</td><td>${se(r.gamma, r.gamma_se, 3)}</td><td>${se(r.gamma_ex, r.gamma_ex_se, 3)}</td><td>${se(r.vega, r.vega_se, 2)}</td><td>${se(r.flow_delta, r.flow_delta_se, 3)}</td></tr>`;
@@ -473,17 +473,17 @@ function dotPlot(el, rows, opt) {
 function drawDots() {
   const rows = D.rows.filter(r => r.t !== "SGOV").slice().sort((a, b) => a.week - b.week).map(r => ({
     t: r.t, name: r.name, actual: r.week, pred: r.pred_d, pred2: r.pred_v,
-    tip: `<b>${r.name} (${r.t})</b><br>Actual ${fmt(r.week)}%<br>Delta predicted ${fmt(r.pred_d)}%<br>Delta + vega (post hoc) ${fmt(r.pred_v)}%<br>Miss ${fmt(r.week - r.pred_d)} pts: Mon ${fmt(r.week - r.pred_d - r.tue_thu_miss - r.fri_miss)}, Tue–Thu ${fmt(r.tue_thu_miss)}, Fri ${fmt(r.fri_miss)}<br>Five-day misses this low: ${r.t === "TLT" || r.t === "GLD" || r.t === "SPY" ? "–" : (100 * r.miss_pctile).toFixed(1) + "% of the past two years"}`
+    tip: `<b>${r.name} (${r.t})</b><br>Actual ${fmt(r.week)}%<br>Beta predicted ${fmt(r.pred_d)}%<br>Beta + vega (post hoc) ${fmt(r.pred_v)}%<br>Miss ${fmt(r.week - r.pred_d)} pts: Mon ${fmt(r.week - r.pred_d - r.tue_thu_miss - r.fri_miss)}, Tue–Thu ${fmt(r.tue_thu_miss)}, Fri ${fmt(r.fri_miss)}<br>Five-day misses this low: ${r.t === "TLT" || r.t === "GLD" || r.t === "SPY" ? "–" : (100 * r.miss_pctile).toFixed(1) + "% of the past two years"}`
   }));
-  dotPlot($("dots"), rows, { lo: -10, hi: 4, step: 2, stepNarrow: 4, unit: "%", aria: "Week returns against delta predictions" });
+  dotPlot($("dots"), rows, { lo: -10, hi: 4, step: 2, stepNarrow: 4, unit: "%", aria: "Week returns against beta predictions" });
 }
 
 function drawIV() {
   const rows = D.iv.filter(r => r.pred != null).slice().sort((a, b) => b.change - a.change).map(r => ({
     t: r.t, name: r.name, actual: r.change, pred: r.pred, pred2: null,
-    tip: `<b>${r.name} (${r.t})</b><br>30-day ATM IV ${r.before.toFixed(1)} → ${r.after.toFixed(1)}<br>Change ${fmt(r.change, 1)} pts<br>Vol delta ${r.vd.toFixed(2)} ±${r.vd_se.toFixed(2)} → predicted ${fmt(r.pred, 1)} pts`
+    tip: `<b>${r.name} (${r.t})</b><br>30-day ATM IV ${r.before.toFixed(1)} → ${r.after.toFixed(1)}<br>Change ${fmt(r.change, 1)} pts<br>Vol beta ${r.vd.toFixed(2)} ±${r.vd_se.toFixed(2)} → predicted ${fmt(r.pred, 1)} pts`
   }));
-  dotPlot($("ivdots"), rows, { lo: 0, hi: 20, step: 5, unit: "", aria: "Implied vol change against vol-delta predictions" });
+  dotPlot($("ivdots"), rows, { lo: 0, hi: 20, step: 5, unit: "", aria: "Implied vol change against vol-beta predictions" });
 }
 
 // ---- flows
@@ -541,7 +541,7 @@ function setFlow(k) {
 $("by-trade").addEventListener("click", () => setFlow("trade"));
 $("by-posted").addEventListener("click", () => setFlow("posted"));
 
-// ---- small multiples (rolling delta)
+// ---- small multiples (rolling beta)
 function drawMultiples() {
   const host = $("multiples"), R = D.rolling, dates = R.dates, n = dates.length;
   const evStart = dates.indexOf(D.meta.event[0]);
@@ -554,7 +554,7 @@ function drawMultiples() {
     const t = el.dataset.t, v = R.series[t];
     const W = Math.max(120, el.clientWidth), H = 96, l = 26, r = 12, top = 6, b = 16;
     const x = scale(0, n - 1, l, W - r), y = scale(lo, hi, H - b, top);
-    let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${names[t]} rolling delta">`;
+    let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${names[t]} rolling beta">`;
     const bx = x(evStart) - 1, bw = Math.max(6, x(n - 1) - x(evStart) + 2);   // starts where last week starts; any extra width goes right
     s += `<rect x="${bx}" y="${top}" width="${bw}" height="${H - b - top}" fill="var(--band-strong)"/>`;
     s += `<g class="ax">` + [-0.5, 0, 0.5, 1].map(g => `<text x="${l - 4}" y="${y(g) + 3}" text-anchor="end">${g === 0 ? "0" : g.toFixed(1).replace("-", "−")}</text>`).join("") + `</g>`;
@@ -573,7 +573,7 @@ function drawMultiples() {
       const i = Math.max(0, Math.min(n - 1, Math.round((px - l) / (W - r - l) * (n - 1))));
       cross.setAttribute("x1", x(i)); cross.setAttribute("x2", x(i)); cross.setAttribute("visibility", "visible");
       hdot.setAttribute("cx", x(i)); hdot.setAttribute("cy", y(Math.max(lo, Math.min(hi, v[i])))); hdot.setAttribute("visibility", "visible");
-      showTip(`<b>${names[t]}</b><br>${dates[i]}<br>63-session delta ${fmt(v[i])}<br>Two-year delta ${fmt(R.base[t])}`, ev);
+      showTip(`<b>${names[t]}</b><br>${dates[i]}<br>63-session beta ${fmt(v[i])}<br>Two-year beta ${fmt(R.base[t])}`, ev);
     };
     svg.addEventListener("pointermove", onMove);
     svg.addEventListener("click", onMove);
