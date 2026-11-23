@@ -20,9 +20,10 @@ retried before the open), and from its Run workflow button:
      found") is asked once more after RETRY_PAUSE. A name whose LSEG data is not final at 22:00 is left for the
      01:00 retry; still not final at the retry, it is skipped with a note and the run ends red;
   3. decide each name with trading_app/trading_app/lib/far_wings_live.py (no I/O; tested in
-     trading_app/tests/far_wings_live/): its two wings' SHT limits at the closing mid on an entry night, and every
-     night the band check on its book's net delta, a market order to zero shares-delta at the next open only when it
-     is outside its $5,000 band;
+     trading_app/tests/far_wings_live/): its two wings' SHT limits at the closing mid on an entry night; no hedge
+     since 2026-11-23 (far_wings_live.HEDGE False: options held to expiry, any shares an assignment left closed at the
+     next open; with HEDGE True, every night the band check on its book's net delta, a market order to zero
+     shares-delta at the next open only when it is outside its $5,000 band);
   4. write mkt/open_orders.json once for every name (far_wings_live.compose_orders: the names decided tonight with
      their new orders, every other name with what the file had), or [] with the reasons printed, and record each
      decided name's night in data/far_wings_ledger.json (every order this script has written, by name and id), which
@@ -521,8 +522,9 @@ def late_run(day, for_day, now, tonight, *, done, tradable, books, ledger) -> st
                        f"is {e}, for the {x} expiry)")
     holders = [t for t in pending if _holds(books[t])]
     if holders:
-        out.append(f"the band check from {day}'s close for {', '.join(holders)} (any hedge, or the close of leftover "
-                   f"shares) is not written either: it waits for the next night's run, on {for_day}'s close")
+        out.append(f"the night's check from {day}'s close for {', '.join(holders)} (the close of leftover shares"
+                   + (", or a hedge" if FW.HEDGE else "") + f") is not written either: it waits for the next night's "
+                   f"run, on {for_day}'s close")
     return ". ".join(out) + "."
 
 

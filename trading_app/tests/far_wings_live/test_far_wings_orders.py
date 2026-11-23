@@ -332,7 +332,7 @@ def test_a_late_run_with_leftover_shares_leaves_them_for_the_next_night(env, cap
     with pytest.raises(SystemExit) as e:
         O.main([])
     msg = red(e)
-    assert ("the band check from 2026-11-23's close for NVDA (any hedge, or the close of leftover shares) is not "
+    assert ("the night's check from 2026-11-23's close for NVDA (the close of leftover shares) is not "
             "written either: it waits for the next night's run, on 2026-11-24's close") in msg
     assert files_now(env) == before and fake.requests == []
     # Tuesday 22:00: D is Tuesday, the shares are closed at Wednesday's open

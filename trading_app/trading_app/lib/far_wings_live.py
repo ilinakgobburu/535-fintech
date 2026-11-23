@@ -63,7 +63,10 @@ mid rounds to a limit of 0 is not sold either. That rule is for a chain that is 
 one two-sided quote (one_sided_problem: D's bids not posted yet) stops that name at 22:00 as data not final, and only
 the 01:00 retry, finding it so still, takes it as no eligible strike.
 
-EVERY NIGHT, THE BAND, name by name. The book's net delta in shares: each held option's delta at D's close (its own
+EVERY NIGHT, NO HEDGE (HEDGE = False, from 2026-11-23 at her request, after the backtest's final test: the hedge's
+shares lost more than the options made there). Options are held to expiry; any shares a name holds (delivered by an
+assignment) are closed at the next open, so a book holds only its options. With HEDGE = True, THE BAND, name by
+name, as registered: the book's net delta in shares: each held option's delta at D's close (its own
 closing mid's implied vol; a leg with no usable mid that close keeps its last IV, delta recomputed at D's spot and T:
 vol_arb_live.leg_delta) times its contracts and the lot, plus the shares held. When |net delta x D's close| is above
 the band (5% of that name's $100,000 book, $5,000; at exactly $5,000 nothing is done), a market order for the next
@@ -115,7 +118,10 @@ CAP = {PUT: 0.10, CALL: 0.05}             # a wing's strikes: |delta| strictly u
 TARGET = {PUT: 0.05, CALL: 0.03}          # ...the one whose |delta| is closest to this
 VEGA_DOLLARS = 200.0                      # each wing: round(200 / vega per vol point per contract), at least 1
 CAPITAL = 100_000.0                       # each name's book, which its $200 a vol point and band are sized on
-BAND_SHARE = 0.05                         # re-hedge a name when its |net delta x close| > 5% of its book
+BAND_SHARE = 0.05                         # re-hedge a name when its |net delta x close| > 5% of its book (HEDGE only)
+HEDGE = False                             # 2026-11-23, her request: no hedge. Options are held to expiry, and any
+                                          # shares a name holds (an assignment's) are closed at the next open; True
+                                          # restores the band below. config's `hedge` must agree
 LEDGER_FORMAT = "far_wings_ledger/2"      # by name: {"names": {ticker: {"orders", "nights"}}}
 LEDGER_PATH = "data/far_wings_ledger.json"
 CONFIG_PATH = "config/far_wings_live.yaml"
@@ -658,15 +664,23 @@ def plan_night(cfg: dict, day, for_day, book: Book, *, name: dict, entry_expiry=
     for (cp, expiry, strike), qty in sorted(held.items()):
         d = leg_delta(mkt, cp, expiry, strike, (leg_history or {}).get((cp, expiry, strike)), day)
         if not np.isfinite(d["delta"]):
-            raise ValueError(f"no usable quote for the {expiry} {strike:g} {cp} in the last {FALLBACK_SESSIONS} "
-                             f"sessions, so its delta (and the band check) is unknown")
+            if HEDGE:
+                raise ValueError(f"no usable quote for the {expiry} {strike:g} {cp} in the last {FALLBACK_SESSIONS} "
+                                 f"sessions, so its delta (and the band check) is unknown")
+            notes.append(f"no usable quote for the held {expiry} {strike:g} {cp}: no delta tonight (no hedge waits "
+                         f"on it)")
+            continue
         legs.append({"cp": cp, "expiry": expiry, "strike": strike, "qty": qty, **d})
     option_delta = float(sum(leg["qty"] * LOT * leg["delta"] for leg in legs))
     net = option_delta + book.shares
     hedge = {"legs": legs, "option_delta": option_delta, "net_delta": net, "shares": book.shares,
-             "band": band_dollars(), "exposure": None, "breached": None, "target": book.shares}
+             "band": band_dollars() if HEDGE else None, "exposure": None, "breached": None, "target": book.shares}
     spot = float(mkt["stock"].at[pd.Timestamp(day), "close"]) if mkt is not None else np.nan
-    if legs:
+    if held and not HEDGE:
+        hedge["target"] = 0
+        notes.append(f"options held, no hedge (net delta {net:+.1f} shares at {spot:.2f}): "
+                     + (f"close the {book.shares:+d} shares an assignment left" if book.shares else "no stock order"))
+    elif legs:
         hedge["exposure"], hedge["breached"] = abs(net) * spot, breached(net, spot)
         where = "outside" if hedge["breached"] else "inside"
         if hedge["breached"]:
@@ -780,6 +794,8 @@ def check_config(cfg: dict) -> None:
         raise ValueError(f"{CONFIG_PATH} disagrees with lib/far_wings_live.py: " + "; ".join(bad))
     if type(cfg.get("owns_open_orders")) is not bool:
         raise ValueError("owns_open_orders must be true or false")
+    if cfg.get("hedge") is not HEDGE:
+        raise ValueError(f"{CONFIG_PATH}'s hedge is {cfg.get('hedge')!r}, the code's HEDGE is {HEDGE!r}")
     ack = cfg.get("acknowledged", {})
     if not isinstance(ack, dict) or not all(isinstance(k, str) and isinstance(v, str) and v.strip()
                                             for k, v in ack.items()):

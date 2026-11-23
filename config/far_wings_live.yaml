@@ -369,6 +369,10 @@ owns_open_orders: true  # this strategy writes mkt/open_orders.json every night 
                         # the two scheduled runs a night stay green; delete the schedule in far-wings-orders.yml too to
                         # stop them running at all. Only then can the vol-arb's or the wheel's Run button write
 
+hedge: false          # lib/far_wings_live.py's HEDGE (2026-11-23, her request: "remove the hedge as a whole"): options
+                      # are held to expiry and any shares a name holds (an assignment's) are closed at the next open;
+                      # the script stops if the two disagree. The band below applies only with hedge: true
+
 registered:           # lib/far_wings_live.py's numbers; the script stops if the two disagree
   put_max_abs_delta: 0.10       # the put wing: two-sided puts with |delta| strictly under 0.10 ...
   put_target_abs_delta: 0.05    # ... the one closest to 0.05 (a tie to the lower strike)
@@ -579,7 +583,8 @@ technical_choices:    # Claude's, each with its reason, for her to scan (the bac
   fills: >-
     each wing SHT with a limit at the entry close's mid (to the cent), for the next session: her limit-at-mid choice.
   hedge: >-
-    each night options are held, the net delta in shares (options from their closing mids, carried IV when a mid is
+    none since 2026-11-23 (hedge: false above). With hedge: true, as registered: each night options are held, the net
+    delta in shares (options from their closing mids, carried IV when a mid is
     missing, plus shares); when |net delta x close| is above $5,000 (5% of the book), a market order re-hedges to zero
     shares-delta at the next open, otherwise no hedge trade. Hedging less often cuts share-trading costs; 5% of the
     book is a plain, explainable band.
@@ -636,6 +641,9 @@ technical_choices:    # Claude's, each with its reason, for her to scan (the bac
     single-name script stopped when NVDA's data was not final).
 
 live_rules:
+  - >-
+    No hedge (hedge: false, from 2026-11-23): each name's options are held to expiry, and any shares it holds, which only
+    an assignment delivers, are closed at the next open.
   - >-
     Entry nights are the backtest's: the first session after each monthly expiry, selling that cycle's two wings of
     the next monthly expiry from that session's closing quotes. The orders are for the next session, which Sanji

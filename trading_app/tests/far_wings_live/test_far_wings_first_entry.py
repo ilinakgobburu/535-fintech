@@ -517,7 +517,7 @@ def test_a_late_regular_entry_night_loses_no_entry_for_a_name_whose_cycle_began_
     assert ("2026-11-23 was an entry night, so this cycle's entry is lost for AAPL: its wings" in msg) == \
         ("AAPL" in tracked)
     assert "lost for NVDA" not in msg and "NVDA, AAPL" not in msg and "first entry" not in msg
-    band = ("the band check from 2026-11-23's close for NVDA (any hedge, or the close of leftover shares) is not "
+    band = ("the night's check from 2026-11-23's close for NVDA (the close of leftover shares) is not "
             "written either")
     assert (band in msg) is not nvda_written
     assert ("the orders already written from 2026-11-23's close for NVDA stand as written" in msg) is nvda_written
