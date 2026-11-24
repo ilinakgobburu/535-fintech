@@ -231,17 +231,21 @@
 
   <section class="part" id="flows-sec"><span class="no">3 · Money flows</span><h2>Monday to Wednesday: out of most sector funds, more than usual into Treasuries</h2>
     <div class="prose">
-      <p>Each ETF's net flow is the change in its shares outstanding times its NAV: shares are created when money comes in and redeemed when it leaves. Through Wednesday, money did not rotate into defensive sectors. By trade date, health care lost $638m, staples $340m and utilities $44m, and real estate took in only $22m; as posted, staples was about flat (+$45m).</p>
+      <p>Each ETF's net flow is the change in its shares outstanding times its NAV: shares are created when money comes in and redeemed when it leaves. The first chart below lines up the funds that lost money against the funds that gained; the second shows each fund's flow against its own history. Through Wednesday, money did not rotate into defensive sectors. By trade date, health care lost $638m, staples $340m and utilities $44m, and real estate took in only $22m; as posted, staples was about flat (+$45m).</p>
       <p>Energy lost $1.3bn, more than in 99% of three-day stretches for that fund, and financials lost $590m. Long Treasuries (TLT) took in $1.1bn, more than usual (94th percentile), and T-bills (SGOV) $1.6bn, about normal for a fund that grows most weeks. Tech itself (XLK, +$335m) and communication services (XLC, +$299m) also took in money; for XLK that was an ordinary three days.</p>
       <p>Flows can't be traced from one fund to another, and creations during a selloff can also meet short sellers' demand for shares, so these data show where money moved, not who moved it or why. For 13 of the 15 funds, Thursday's and Friday's trades, including Friday's 7% tech drop, had not posted as of the pull.</p>
     </div>
-    <div class="panel"><div class="ph"><h3 class="ph-t">Net ETF flows</h3><span class="tags"><span class="tag">$ and z-score against every run of the same length in the past two years</span></span></div><div class="pb">
+    <div class="panel"><div class="ph"><h3 class="ph-t">Where the money went, fund by fund</h3><span class="tags"><span class="tag">Net ETF flows, SPY left out</span></span></div><div class="pb">
       <div class="ctl local"><span class="ctl-k">Dated by</span>
         <div class="switch" role="group" aria-label="Flow dating">
           <button type="button" id="by-trade" class="on" aria-pressed="true">Trade date (Mon–Wed)</button>
           <button type="button" id="by-posted" aria-pressed="false">Date posted (Mon–Thu)</button>
         </div>
       </div>
+      <div class="chart" id="sankey"></div>
+      <p class="cap" id="sankeynote"></p>
+    </div></div>
+    <div class="panel"><div class="ph"><h3 class="ph-t">Each fund's net flow against its own history</h3><span class="tags"><span class="tag">$ and z-score against every run of the same length in the past two years</span></span></div><div class="pb">
       <div class="legend">
         <span><span class="key" style="background:var(--series-1)"></span>Money in</span>
         <span><span class="key" style="background:var(--series-2)"></span>Money out</span>
@@ -530,13 +534,85 @@ function missingText(days) {
 }
 $("by-trade").textContent = `Trade date (${dayRange(D.meta.flow_days.trade)})`;
 $("by-posted").textContent = `Date posted (${dayRange(D.meta.flow_days.posted)})`;
+// ---- where the money went: funds that lost money (left) and funds that gained (right), joined through one total
+const NODE_NAME = { SGOV: "T-bills", TLT: "Long Treasuries", GLD: "Gold", XLK: "Technology" };
+const SENT_NAME = { SGOV: "T-bills", TLT: "long Treasuries", GLD: "gold", XLK: "technology" };
+const usd = (v) => "$" + (v >= 1000 ? (v / 1000).toFixed(2) + "bn" : Math.round(v) + "m");
+function drawSankey() {
+  const el = $("sankey"), W = Math.max(300, el.clientWidth), narrow = W < 640;
+  const rows = D.flows[flowKey].filter(r => r.usd_m != null);
+  const outs = rows.filter(r => r.usd_m < 0).sort((a, b) => a.usd_m - b.usd_m).map(r => ({ ...r, v: -r.usd_m }));
+  const ins = rows.filter(r => r.usd_m > 0).sort((a, b) => b.usd_m - a.usd_m).map(r => ({ ...r, v: r.usd_m }));
+  const OUT = outs.reduce((a, r) => a + r.v, 0), IN = ins.reduce((a, r) => a + r.v, 0), rest = Math.abs(OUT - IN);
+  if (OUT > IN) ins.push({ t: "", name: narrow ? "Not back in" : "Not back in these funds", v: rest, rest: true });
+  else if (IN > OUT) outs.push({ t: "", name: narrow ? "From outside" : "From outside these funds", v: rest, rest: true });
+  const T = Math.max(OUT, IN);
+  const lab = narrow ? 108 : 250, nodeW = 10, poolW = 12, top = narrow ? 58 : 46, gap = narrow ? 5 : 7, minSp = narrow ? 15 : 17;
+  const Hb = narrow ? 300 : 360, k = Hb / T, nh = (r) => Math.max(1.5, r.v * k);
+  const colH = (a) => a.reduce((s2, r) => s2 + nh(r), 0) + gap * (a.length - 1);
+  const inner = Math.max(colH(outs), colH(ins), T * k);
+  const xL = lab, xP = W / 2 - poolW / 2, xR = W - lab - nodeW, poolTop = top + (inner - T * k) / 2;
+  const label = (r) => r.rest ? r.name : (narrow ? r.t : (NODE_NAME[r.t] || r.name) + " · " + r.t);
+  const amount = (r, side) => r.rest ? usd(r.v) : (side === "L" ? "−" : "+") + usd(r.v);
+  const tipFor = (r, side) => r.rest
+    ? (OUT > IN ? `<b>Not back in these 14 funds</b><br>${usd(r.v)} more left the funds that lost money than came into the funds that gained`
+                : `<b>From outside these 14 funds</b><br>${usd(r.v)} more came into the funds that gained than left the funds that lost money`)
+    : `<b>${r.name} (${r.t})</b><br>${side === "L" ? "Out" : "In"}: ${usd(r.v)} (${fmt(r.pct)}% of the fund)<br>z ${fmt(r.z, 1)} against its own past runs`;
+  let s = `<svg viewBox="0 0 0 0" role="img" aria-label="Money out of the funds that lost money and into the funds that gained, joined through one total">`;
+  s += `<text class="punit" x="${xL + nodeW}" y="14" text-anchor="end" style="font:600 12px var(--font);fill:var(--heading)">${narrow ? "Lost money" : "Funds that lost money"}</text>`;
+  s += `<text x="${xR}" y="14" style="font:600 12px var(--font);fill:var(--heading)">${narrow ? "Gained" : "Funds that gained"}</text>`;
+  s += `<text x="${W / 2}" y="${narrow ? 36 : poolTop - 18}" text-anchor="middle" style="font:12px var(--font);fill:var(--muted)">${usd(OUT)} out · ${usd(IN)} in</text>`;
+  let bottom = top + inner;
+  const side = (arr, sd) => {
+    let y = top + (inner - colH(arr)) / 2, py = poolTop, out = "", labs = [];
+    arr.forEach(r => {
+      const h = nh(r), hp = r.v * k, col = r.rest ? "var(--series-3)" : sd === "L" ? "var(--series-2)" : "var(--series-1)";
+      const xn = sd === "L" ? xL : xR, x1 = sd === "L" ? xL + nodeW : xP + poolW, x2 = sd === "L" ? xP : xR;
+      const ya = sd === "L" ? y : py, yb = sd === "L" ? py : y, mx = (x1 + x2) / 2;
+      const tip = tipFor(r, sd).replace(/"/g, "&quot;");
+      out += `<g data-tip="${tip}"><path d="M${x1} ${ya} C${mx} ${ya} ${mx} ${yb} ${x2} ${yb} L${x2} ${yb + hp} C${mx} ${yb + hp} ${mx} ${ya + hp} ${x1} ${ya + hp} Z" fill="${col}" fill-opacity=".28"/>`;
+      out += `<rect x="${xn}" y="${y}" width="${nodeW}" height="${h}" rx="2" fill="${col}"/></g>`;
+      labs.push({ r, cy: y + h / 2, ny: y + h / 2 });
+      y += h + gap; py += hp;
+    });
+    const half = (l) => (narrow && l.r.rest ? 2 : 1) * minSp / 2;   // a two-line label needs twice the room
+    for (let i = 1; i < labs.length; i++) {
+      const need = half(labs[i - 1]) + half(labs[i]);
+      if (labs[i].cy - labs[i - 1].cy < need) labs[i].cy = labs[i - 1].cy + need;
+    }
+    labs.forEach(({ r, cy, ny }) => {
+      const xt = sd === "L" ? xL - 8 : xR + nodeW + 8, anchor = sd === "L" ? "end" : "start";
+      const tip = tipFor(r, sd).replace(/"/g, "&quot;");
+      if (Math.abs(cy - ny) > 2) out += `<line x1="${sd === "L" ? xL - 6 : xR + nodeW + 6}" y1="${cy}" x2="${sd === "L" ? xL : xR + nodeW}" y2="${ny}" stroke="var(--zero)" stroke-width="1"/>`;
+      const two = narrow && r.rest;   // the long residual label takes two lines on a phone
+      out += two
+        ? `<text data-tip="${tip}" x="${xt}" y="${cy - 3}" text-anchor="${anchor}" style="font:12px var(--font);fill:var(--text)">${label(r)}<tspan x="${xt}" dy="15" style="font-weight:600" fill="var(--heading)">${amount(r, sd)}</tspan></text>`
+        : `<text data-tip="${tip}" x="${xt}" y="${cy + 4}" text-anchor="${anchor}" style="font:12px var(--font);fill:var(--text)">${label(r)} <tspan style="font-weight:600" fill="var(--heading)">${amount(r, sd)}</tspan></text>`;
+      bottom = Math.max(bottom, cy + (two ? 18 : 10));
+    });
+    return out;
+  };
+  s += side(outs, "L") + side(ins, "R");
+  s += `<rect x="${xP}" y="${poolTop}" width="${poolW}" height="${T * k}" rx="2" fill="var(--heading)" fill-opacity=".75"/>`;
+  const H = Math.ceil(bottom + 8);
+  el.innerHTML = s.replace(`viewBox="0 0 0 0"`, `viewBox="0 0 ${W} ${H}"`) + `</svg>`;
+  const lead = (arr) => {
+    const top3 = arr.filter(r => !r.rest).slice(0, 3).map(r => `${SENT_NAME[r.t] || r.name.toLowerCase()} (${usd(r.v)})`);
+    return top3.length > 1 ? top3.slice(0, -1).join(", ") + " and " + top3[top3.length - 1] : top3[0] || "none";
+  };
+  const when = flowKey === "trade" ? `Trades of ${dayRange(D.meta.flow_days.trade)}` : `Share counts posted ${dayRange(D.meta.flow_days.posted)}`;
+  $("sankeynote").innerHTML = `${when}. Funds that lost money: ${usd(OUT)} in all, led by ${lead(outs)}. Funds that gained: ${usd(IN)}, led by ${lead(ins)}. `
+    + (OUT > IN ? `${usd(rest)} more left these 14 funds than came into them. ` : IN > OUT ? `${usd(rest)} more came into these 14 funds than left them. ` : "")
+    + `ETF data record each fund's net flow, not where a given dollar went next, so the dark middle bar is a total, not a path. SPY is left out: its flows swing by billions on ordinary days (see the next chart).`;
+}
+
 function setFlow(k) {
   flowKey = k;
   for (const [id, key] of [["by-trade", "trade"], ["by-posted", "posted"]]) {
     $(id).classList.toggle("on", k === key);
     $(id).setAttribute("aria-pressed", k === key);
   }
-  drawFlows();
+  drawSankey(); drawFlows();
 }
 $("by-trade").addEventListener("click", () => setFlow("trade"));
 $("by-posted").addEventListener("click", () => setFlow("posted"));
@@ -594,7 +670,7 @@ function drawMultiples() {
   $("daily").innerHTML = d + `</tbody>`;
 })();
 
-function drawAll() { drawGreeks(); drawDots(); drawFlows(); drawMultiples(); drawIV(); }
+function drawAll() { drawGreeks(); drawDots(); drawSankey(); drawFlows(); drawMultiples(); drawIV(); }
 drawAll();
 let rt; window.addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(drawAll, 120); });
 </script>
